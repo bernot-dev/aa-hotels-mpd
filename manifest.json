@@ -7,7 +7,7 @@
 		{
 			"js": ["scripts/content.js"],
 			"matches": [
-				"https://aadvantagehotels.com/search?*"
+				"https://www.aadvantagehotels.com/search?*"
 			]
 
 		}
