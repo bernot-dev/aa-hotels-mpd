@@ -19,15 +19,12 @@ const showMilesPerDollar = () => {
 	}
 }
 
-let resultsListContainer;
-while (!resultsListContainer) {
-	resultsListContainer = document.querySelector('[data-testid="hotel-results-list-container"]');
-	setTimeout(1000);
+const observeResultsList = () => {
+	const resultsListContainer = document.querySelector('[data-testid="hotel-results-list-container"]');
+	const observer = new MutationObserver(mutationList => {
+		console.log('Mutations observed.');
+		console.log(mutations);
+		showMilesPerDollar();
+	});
+	observer.observe(document.body, { childList: true, subtree: true });
 }
-const observer = new MutationObserver(mutationList => {
-	console.log('Mutations observed.');
-	console.log(mutations);
-	showMilesPerDollar();
-});
-console.log(resultsListContainer);
-observer.observe(resultsListContainer, { childList: true, subtree: true });
