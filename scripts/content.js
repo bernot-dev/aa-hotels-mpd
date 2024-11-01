@@ -20,13 +20,5 @@ const showMilesPerDollar = () => {
 }
 
 const resultsListContainer = document.querySelector('[data-testid="hotel-results-list-container"]');
-
-const config = { childList: true, subtree: true };
-
-const callback = (mutationList, observer) = {
-	console.log('Mutation observed');
-}
-
-const observer = new MutationObserver(showMilesPerDollar);
-
-observer.observe(resultsListContainer, config);
+const observer = new MutationObserver((mutationList, observer) => showMilesPerDollar());
+observer.observe(resultsListContainer, { childList: true, subtree: true });
