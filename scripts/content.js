@@ -19,7 +19,11 @@ const showMilesPerDollar = () => {
 	}
 }
 
-const resultsListContainer = document.querySelector('[data-testid="hotel-results-list-container"]');
+let resultsListContainer;
+while (!resultsListContainer) {
+	resultsListContainer = document.querySelector('[data-testid="hotel-results-list-container"]');
+	setTimeout(1000);
+}
 const observer = new MutationObserver(mutationList => {
 	console.log('Mutations observed.');
 	console.log(mutations);
