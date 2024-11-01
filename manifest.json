@@ -8,8 +8,8 @@
 			"js": ["scripts/content.js"],
 			"matches": [
 				"https://www.aadvantagehotels.com/search?*"
-			]
-
+			],
+			"run_at": "document_end"
 		}
 	]
 }
