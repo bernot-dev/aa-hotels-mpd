@@ -1,3 +1,5 @@
+console.log('AA Hotels Miles Per Dollar Loaded');
+
 const checkInDate = document.getElementById('check-in-date').value;
 const checkOutDate = document.getElementById('check-out-date').value;
 const dayInMs = 1000 * 60 * 60 * 24;
