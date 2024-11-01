@@ -18,3 +18,7 @@ const showMilesPerDollar = () => {
 		dollarsElem.insertAdjacentText('beforebegin', `${mpd} miles/$`);
 	}
 }
+
+setTimeout(() => {
+	showMilesPerDollar();
+}, 5000);
