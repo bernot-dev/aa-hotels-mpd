@@ -19,6 +19,10 @@ const showMilesPerDollar = () => {
 	}
 }
 
-setTimeout(() => {
-	showMilesPerDollar();
-}, 5000);
+const resultsListContainer = document.querySelector('[data-testid="hotel-results-list-container"]');
+
+const config = { attributes: true, childList: true, subtree: true };
+
+const observer = new MutationObserver(showMilesPerDollar);
+
+observer.observe(resultsListContainer, config);
