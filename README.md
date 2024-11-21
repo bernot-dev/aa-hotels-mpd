@@ -11,5 +11,4 @@ miles per dollar")
 dollar](./images/card-screenshot.png?raw=true "Search results card with miles
 per dollar")
 
-[AA Hotels MPD on Chrome Web
-Store](https://chromewebstore.google.com/detail/aa-hotels-mpd/ojdenlcjodnolmcgdpghhmdlmginhiei)
+## [AA Hotels MPD on Chrome Web Store](https://chromewebstore.google.com/detail/aa-hotels-mpd/ojdenlcjodnolmcgdpghhmdlmginhiei)
