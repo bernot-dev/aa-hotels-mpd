@@ -7,7 +7,7 @@ export const processSearchPage = (container: Element) => {
 	maxMPDElem.style.margin = "20px";
 	maxMPDElem.style.display = "none";
 
-    const cardSelector = '[data-testid="earn-pricing-aadvantage"]';
+    const cardSelector = '[data-testid="hotel-card-pricing"]';
     const callback = updateCards(container, maxMPDElem, cardSelector);
     const observer = new MutationObserver(callback);
     observer.observe(container, {childList: true});
