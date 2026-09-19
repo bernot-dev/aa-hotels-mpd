@@ -12,9 +12,7 @@ const DETAILS_SELECTOR = 'div[data-testid="room-group"]';
 
 // Listen for intercepted network data dispatched by the MAIN world interceptor
 if (typeof window !== "undefined") {
-  window.addEventListener("AA_HOTELS_MPD_NETWORK_DATA", async (e: Event) => {
-    const customEvent = e as CustomEvent<{ hotels: RawHotelRate[] }>;
-    const hotels = customEvent.detail?.hotels;
+  const handleIncomingRates = async (hotels: RawHotelRate[] | undefined) => {
     if (!hotels || hotels.length === 0) return;
 
     let includeBonusMiles = false;
@@ -39,6 +37,19 @@ if (typeof window !== "undefined") {
         }
       }
     }
+  };
+
+  // 1. Listen for postMessage (cross-world MAIN -> ISOLATED)
+  window.addEventListener("message", (event) => {
+    if (event.data?.type === "AA_HOTELS_MPD_NETWORK_DATA") {
+      handleIncomingRates(event.data.hotels);
+    }
+  });
+
+  // 2. Also listen for CustomEvent
+  window.addEventListener("AA_HOTELS_MPD_NETWORK_DATA", (e: Event) => {
+    const customEvent = e as CustomEvent<{ hotels: RawHotelRate[] }>;
+    handleIncomingRates(customEvent.detail?.hotels);
   });
 }
 

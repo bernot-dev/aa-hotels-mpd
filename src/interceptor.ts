@@ -16,13 +16,24 @@ export const EVENT_NAME = "AA_HOTELS_MPD_NETWORK_DATA";
  */
 export function dispatchInterceptedRates(rates: RawHotelRate[]): void {
   if (!rates || rates.length === 0) return;
-  if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+  if (typeof window !== "undefined") {
     try {
-      window.dispatchEvent(
-        new CustomEvent(EVENT_NAME, {
-          detail: { hotels: rates },
-        })
-      );
+      if (typeof window.postMessage === "function") {
+        window.postMessage(
+          {
+            type: EVENT_NAME,
+            hotels: rates,
+          },
+          "*"
+        );
+      }
+      if (typeof window.dispatchEvent === "function") {
+        window.dispatchEvent(
+          new CustomEvent(EVENT_NAME, {
+            detail: { hotels: rates },
+          })
+        );
+      }
     } catch (err) {
       console.debug("[AA-Hotels-MPD] Failed to dispatch network rates event:", err);
     }
