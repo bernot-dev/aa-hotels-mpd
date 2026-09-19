@@ -19,6 +19,51 @@ export const test = base.extend<TestFixtures>({
     const mapHtml = fs.readFileSync(path.join(fixturesDir, 'search-map-authenticated.html'), 'utf-8');
     const detailsHtml = fs.readFileSync(path.join(fixturesDir, 'details-authenticated.html'), 'utf-8');
 
+    const pinMatches = Array.from(mapHtml.matchAll(/data-testid="hotel-pin-(\d+)"[^>]*><span>\$?([\d,]+)/g));
+    const allMapResults = pinMatches.map(([_, id, priceStr], index) => {
+      const price = parseInt(priceStr.replace(/,/g, ''), 10) || 1000;
+      if (id === '12498') {
+        return {
+          hotel: { id: '12498' },
+          economics: {
+            total: { amount: 1702 },
+            rewardAmount: 17020,
+            rewardAmountTiered: 17020,
+          },
+        };
+      }
+      if (id === '465') {
+        return {
+          hotel: { id: '465' },
+          economics: {
+            total: { amount: 5081 },
+            rewardAmount: 15243,
+            rewardAmountTiered: 15243,
+          },
+        };
+      }
+      if (id === '20286') {
+        return {
+          hotel: { id: '20286' },
+          economics: {
+            total: { amount: 1605 },
+            rewardAmount: 8025,
+            rewardAmountTiered: 11235,
+          },
+        };
+      }
+      const mpd = 3.8 + ((index % 17) / 16) * 5.4;
+      const reward = Math.round(price * mpd);
+      return {
+        hotel: { id },
+        economics: {
+          total: { amount: price },
+          rewardAmount: reward,
+          rewardAmountTiered: reward,
+        },
+      };
+    });
+
     const server = http.createServer((req, res) => {
       const url = req.url || '';
       if (url.includes('/rest/aadvantage-hotels') || url.includes('/search/results')) {
@@ -26,32 +71,7 @@ export const test = base.extend<TestFixtures>({
         res.end(
           JSON.stringify({
             searchResult: {
-              results: [
-                {
-                  hotel: { id: '12498' },
-                  economics: {
-                    total: { amount: 1702 },
-                    rewardAmount: 17020,
-                    rewardAmountTiered: 17020,
-                  },
-                },
-                {
-                  hotel: { id: '20286' },
-                  economics: {
-                    total: { amount: 1605 },
-                    rewardAmount: 8025,
-                    rewardAmountTiered: 11235,
-                  },
-                },
-                {
-                  hotel: { id: '465' },
-                  economics: {
-                    total: { amount: 5081 },
-                    rewardAmount: 15243,
-                    rewardAmountTiered: 15243,
-                  },
-                },
-              ],
+              results: allMapResults,
             },
           })
         );
@@ -170,6 +190,7 @@ test.describe('AA Hotels MPD Extension E2E Suite', () => {
     if (!fs.existsSync(screenshotDir)) {
       fs.mkdirSync(screenshotDir, { recursive: true });
     }
+    await summaryBanner.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: path.join(screenshotDir, 'e2e-search-list-resolved.png'),
     });
@@ -183,6 +204,17 @@ test.describe('AA Hotels MPD Extension E2E Suite', () => {
 
     await page.goto('http://www.aadvantagehotels.com/search?view=map', {
       waitUntil: 'domcontentloaded',
+    });
+
+    // Ensure map container has height in fixture environment
+    await page.addStyleTag({
+      content: `
+        [data-testid="search-results-map"], .css-mqhu8l, .sc-epALIP {
+          height: 600px !important;
+          min-height: 600px !important;
+          position: relative !important;
+        }
+      `,
     });
 
     // 1. Verify map pins are initially present
@@ -216,11 +248,16 @@ test.describe('AA Hotels MPD Extension E2E Suite', () => {
     await expect(summaryBanner).toBeVisible({ timeout: 5000 });
     await expect(summaryBanner).toContainText('10.0 miles/$');
 
-    // 6. Save visual artifact
+    // 6. Verify 100% of all 69 map pins receive data-aa-mpd attributes and colors
+    const decoratedPins = page.locator('button[data-testid^="hotel-pin-"][data-aa-mpd]');
+    await expect(decoratedPins).toHaveCount(69, { timeout: 5000 });
+
+    // 7. Save visual artifact - scroll so the MPD summary banner and recolored map pins are clearly framed
     const screenshotDir = path.resolve(projectRoot, 'artifacts');
     if (!fs.existsSync(screenshotDir)) {
       fs.mkdirSync(screenshotDir, { recursive: true });
     }
+    await summaryBanner.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: path.join(screenshotDir, 'e2e-map-resolved.png'),
     });
@@ -259,6 +296,7 @@ test.describe('AA Hotels MPD Extension E2E Suite', () => {
     if (!fs.existsSync(screenshotDir)) {
       fs.mkdirSync(screenshotDir, { recursive: true });
     }
+    await detailsSummary.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: path.join(screenshotDir, 'e2e-details-resolved.png'),
     });
