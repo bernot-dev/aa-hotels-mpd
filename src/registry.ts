@@ -1,12 +1,48 @@
 // Shared Hotel MPD Registry and DOM ID extraction helpers
 
 export const hotelMpdRegistry = new Map<string, number>();
+const STORAGE_KEY = "aa_hotels_mpd_registry";
+
+// Initialize from sessionStorage if available
+try {
+  if (typeof sessionStorage !== "undefined") {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === "object" && parsed !== null) {
+        for (const id of Object.keys(parsed)) {
+          const mpd = (parsed as Record<string, number>)[id];
+          if (typeof mpd === "number" && mpd > 0) {
+            hotelMpdRegistry.set(id, mpd);
+          }
+        }
+      }
+    }
+  }
+} catch {
+  // Ignore storage access errors
+}
+
+function persistToStorage(): void {
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      const obj: Record<string, number> = {};
+      hotelMpdRegistry.forEach((mpd, id) => {
+        obj[id] = mpd;
+      });
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+    }
+  } catch {
+    // Ignore storage write errors
+  }
+}
 
 export function registerHotelMPD(hotelId: string, mpd: number): void {
   if (!hotelId || isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return;
   const current = hotelMpdRegistry.get(hotelId) || 0;
   if (mpd > current) {
     hotelMpdRegistry.set(hotelId, mpd);
+    persistToStorage();
   }
 }
 
@@ -16,6 +52,13 @@ export function getHotelMPD(hotelId: string): number | undefined {
 
 export function clearHotelMpdRegistry(): void {
   hotelMpdRegistry.clear();
+  try {
+    if (typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 export function getHotelIdFromPin(pin: Element): string | null {

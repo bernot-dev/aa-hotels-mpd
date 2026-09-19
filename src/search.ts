@@ -1,6 +1,6 @@
 import { updateCards } from "./cards";
 import { getNights } from "./nights";
-import { setupMapController, updateMapPins } from "./map";
+import { processMapPreviewCards, updateMapPins } from "./map";
 
 export interface SearchExpansionOptions {
   expandSearchResults: boolean;
@@ -179,12 +179,22 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
   return { onMutation, teardown };
 }
 
-export const processSearchPage = async (container: Element): Promise<() => void> => {
-  // Clean up any existing summary banner
-  const existingSummary = document.getElementById("aa-mpd-search-summary");
-  if (existingSummary) {
-    existingSummary.remove();
+export interface ProcessSearchPageOptions {
+  signal?: AbortSignal;
+}
+
+export const processSearchPage = async (
+  container: Element,
+  options: ProcessSearchPageOptions = {}
+): Promise<() => void> => {
+  if (options.signal?.aborted) {
+    return () => {};
   }
+
+  // Clean up ALL existing summary banners to prevent duplicate banners
+  document
+    .querySelectorAll('#aa-mpd-search-summary, [id^="aa-mpd-search-summary"]')
+    .forEach((el) => el.remove());
 
   const maxMPDElem = document.createElement("div");
   maxMPDElem.id = "aa-mpd-search-summary";
@@ -213,11 +223,25 @@ export const processSearchPage = async (container: Element): Promise<() => void>
     console.warn("[AA-Hotels-MPD] Failed to read storage options:", err);
   }
 
+  if (options.signal?.aborted) {
+    return () => {};
+  }
+
+  // Ensure no other banner was inserted while awaiting storage
+  document
+    .querySelectorAll('#aa-mpd-search-summary, [id^="aa-mpd-search-summary"]')
+    .forEach((el) => el.remove());
+
   container.insertAdjacentElement("beforebegin", maxMPDElem);
 
   const cardSelector = '[data-testid="hotel-card-pricing"]';
+  const commonRoot =
+    container.closest(".sc-aXZVg.sc-gEvEer.jXXVcr") ||
+    container.parentElement ||
+    document.body;
+
   const callback = updateCards(
-    container,
+    commonRoot,
     maxMPDElem,
     cardSelector,
     includeBonusMiles
@@ -229,33 +253,83 @@ export const processSearchPage = async (container: Element): Promise<() => void>
 
   const nights = getNights();
 
-  // Find map container if present or watch container
-  const mapContainer =
-    container.matches('[data-testid="search-results-map"]') ||
-    container.querySelector('[data-testid="search-results-map"]')
-      ? container
-      : document.querySelector('[data-testid="search-results-map"]') || container;
+  let isScheduled = false;
+  const runDomUpdate = () => {
+    isScheduled = false;
 
-  const mapController = setupMapController(mapContainer, nights, includeBonusMiles);
+    // Ensure summary banner remains attached if view toggled
+    const currentBanner = document.getElementById("aa-mpd-search-summary");
+    if (!currentBanner || !currentBanner.parentElement) {
+      const activeContainer =
+        document.querySelector('[data-testid="hotel-results-list-container"]') ||
+        document.querySelector('[data-testid="search-results-map"]');
+      if (activeContainer) {
+        activeContainer.insertAdjacentElement("beforebegin", maxMPDElem);
+      }
+    }
 
-  const observer = new MutationObserver((mutations) => {
-    callback(mutations);
+    // 1. Process search list cards
+    callback();
     searchExpansion.onMutation();
+
+    // 2. Process map preview cards and pins anywhere in the page
+    processMapPreviewCards(document.body, nights, includeBonusMiles);
     updateMapPins(document.body);
+  };
+
+  const scheduleDomUpdate = () => {
+    if (isScheduled) return;
+    isScheduled = true;
+    if (typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(runDomUpdate);
+    } else {
+      setTimeout(runDomUpdate, 16);
+    }
+  };
+
+  // Watch for mutations across commonRoot (covers both list and map view elements)
+  const observer = new MutationObserver((mutations) => {
+    const hasExternal = mutations.some((m) => {
+      const target = m.target as HTMLElement;
+      if (
+        target?.classList?.contains("aa-mpd-badge") ||
+        target?.id === "aa-mpd-search-summary" ||
+        target?.dataset?.aaMpd
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    if (hasExternal) {
+      scheduleDomUpdate();
+    }
   });
 
-  // Observe container subtree for async additions (e.g. infinite scroll / filtering)
-  observer.observe(container, { childList: true, subtree: true });
+  observer.observe(commonRoot, { childList: true, subtree: true });
 
-  // Process existing cards immediately without waiting for a mutation
-  callback();
-  updateMapPins(document.body);
+  // Handle map toggle clicks explicitly
+  const handleMapToggleClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('[data-testid="map-toggle-button"]')) {
+      setTimeout(runDomUpdate, 50);
+      setTimeout(runDomUpdate, 200);
+      setTimeout(runDomUpdate, 600);
+      setTimeout(runDomUpdate, 1200);
+    }
+  };
+  document.body.addEventListener("click", handleMapToggleClick);
+
+  // Initial immediate processing
+  runDomUpdate();
 
   // Return cleanup teardown function
   return () => {
+    document.body.removeEventListener("click", handleMapToggleClick);
     searchExpansion.teardown();
-    mapController.teardown();
     observer.disconnect();
-    maxMPDElem.remove();
+    document
+      .querySelectorAll('#aa-mpd-search-summary, [id^="aa-mpd-search-summary"]')
+      .forEach((el) => el.remove());
   };
 };

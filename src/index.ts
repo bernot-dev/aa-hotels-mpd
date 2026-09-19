@@ -4,13 +4,17 @@ import { processDetailsPage } from "./details";
 import { processSearchPage } from "./search";
 import { mountDebugButton } from "./debug";
 
-const SEARCH_SELECTOR = '[data-testid="hotel-results-list-container"], [data-testid="search-results-map"]';
+const SEARCH_SELECTOR =
+  '[data-testid="hotel-results-list-container"], [data-testid="search-results-map"]';
 const DETAILS_SELECTOR = 'div[data-testid="room-group"]';
 
 let activeTeardown: (() => void) | null = null;
 let activeAbortController: AbortController | null = null;
+let currentNavEpoch = 0;
 
 async function handleRouteChange(routeInfo: RouteInfo) {
+  const thisEpoch = ++currentNavEpoch;
+
   // 1. Teardown active controller and cancel ongoing wait observers from previous route
   if (activeAbortController) {
     activeAbortController.abort();
@@ -21,7 +25,7 @@ async function handleRouteChange(routeInfo: RouteInfo) {
     try {
       activeTeardown();
     } catch (err) {
-      console.error('[AA-Hotels-MPD] Error during controller teardown:', err);
+      console.error("[AA-Hotels-MPD] Error during controller teardown:", err);
     }
     activeTeardown = null;
   }
@@ -34,27 +38,52 @@ async function handleRouteChange(routeInfo: RouteInfo) {
   activeAbortController = currentAbort;
 
   try {
-    if (routeInfo.route === 'search') {
+    if (routeInfo.route === "search") {
       const container = await waitForElement(SEARCH_SELECTOR, {
         signal: currentAbort.signal,
       });
-      if (!currentAbort.signal.aborted) {
-        activeTeardown = await processSearchPage(container);
+
+      if (thisEpoch !== currentNavEpoch || currentAbort.signal.aborted) {
+        return;
       }
-    } else if (routeInfo.route === 'details') {
+
+      const teardown = await processSearchPage(container, {
+        signal: currentAbort.signal,
+      });
+
+      if (thisEpoch !== currentNavEpoch || currentAbort.signal.aborted) {
+        teardown();
+        return;
+      }
+
+      activeTeardown = teardown;
+    } else if (routeInfo.route === "details") {
       const container = await waitForElement(DETAILS_SELECTOR, {
         signal: currentAbort.signal,
       });
-      if (!currentAbort.signal.aborted) {
-        activeTeardown = await processDetailsPage(container);
+
+      if (thisEpoch !== currentNavEpoch || currentAbort.signal.aborted) {
+        return;
       }
+
+      const teardown = await processDetailsPage(container);
+
+      if (thisEpoch !== currentNavEpoch || currentAbort.signal.aborted) {
+        teardown();
+        return;
+      }
+
+      activeTeardown = teardown;
     }
   } catch (err: unknown) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
+    if (err instanceof DOMException && err.name === "AbortError") {
       // Route changed while waiting for element - expected behavior
       return;
     }
-    console.error(`[AA-Hotels-MPD] Error mounting ${routeInfo.route} page:`, err);
+    console.error(
+      `[AA-Hotels-MPD] Error mounting ${routeInfo.route} page:`,
+      err
+    );
   }
 }
 

@@ -12,6 +12,7 @@ import {
   setupMapController,
 } from '../src/map';
 import { processCard } from '../src/cards';
+import { processSearchPage } from '../src/search';
 
 describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
   beforeEach(() => {
@@ -161,6 +162,54 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
       expect(highestPin).not.toBeNull();
       expect(highestPin?.getAttribute('data-aa-mpd')).toBe('16.4');
       expect(highestPin?.style.backgroundColor).toBe('rgb(21, 128, 61)');
+    });
+
+    it('resolves the bug in search-map-authenticated (bug).html by deduplicating banners and decorating map pins', async () => {
+      // 1. Populate registry from search-authenticated.html
+      const searchHtmlPath = path.resolve(__dirname, '../fixtures/search-authenticated.html');
+      const searchHtml = fs.readFileSync(searchHtmlPath, 'utf-8');
+      const searchDom = new JSDOM(searchHtml);
+      const searchCards = searchDom.window.document.querySelectorAll('[data-testid="hotel-card-pricing"]');
+      searchCards.forEach((card) => {
+        processCard(card, 6, false);
+      });
+
+      // 2. Load the bug fixture (which had 3 stacked duplicate banners)
+      const bugHtmlPath = path.resolve(__dirname, '../fixtures/search-map-authenticated (bug).html');
+      const bugHtml = fs.readFileSync(bugHtmlPath, 'utf-8');
+      const bugDom = new JSDOM(bugHtml);
+
+      document.body.innerHTML = bugDom.window.document.body.innerHTML;
+
+      // Verify that initially the bug fixture has 3 banners
+      const initialBanners = document.querySelectorAll('#aa-mpd-search-summary');
+      expect(initialBanners.length).toBe(3);
+
+      const mapContainer = document.querySelector('[data-testid="search-results-map"]');
+      expect(mapContainer).not.toBeNull();
+
+      // 3. Mount processSearchPage
+      const cleanup = await processSearchPage(mapContainer!);
+      await new Promise((r) => setTimeout(r, 80));
+
+      // 4. Verify duplicate banners are eliminated: EXACTLY 1 banner remains
+      const deduplicatedBanners = document.querySelectorAll('#aa-mpd-search-summary');
+      expect(deduplicatedBanners.length).toBe(1);
+      expect(deduplicatedBanners[0].innerHTML).toContain('Best earn rate on this page:');
+
+      // 5. Verify matching pins in bug fixture are decorated
+      const decoratedPins = document.querySelectorAll('button[data-aa-mpd]');
+      expect(decoratedPins.length).toBe(27);
+
+      const worstPin = document.querySelector<HTMLElement>('[data-testid="hotel-pin-465"]');
+      expect(worstPin?.getAttribute('data-aa-mpd')).toBe('3.0');
+      expect(worstPin?.style.backgroundColor).toBe('rgb(185, 28, 28)'); // Red
+
+      const bestPin = document.querySelector<HTMLElement>('[data-testid="hotel-pin-13863"]');
+      expect(bestPin?.getAttribute('data-aa-mpd')).toBe('16.4');
+      expect(bestPin?.style.backgroundColor).toBe('rgb(21, 128, 61)'); // Green
+
+      cleanup();
     });
   });
 

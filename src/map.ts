@@ -72,11 +72,17 @@ export function updateMapPins(root: Element = document.body): void {
     const ratio = maxMPD > minMPD ? (mpd - minMPD) / (maxMPD - minMPD) : 1.0;
     const color = getColorForRatio(ratio);
 
+    pin.style.setProperty("background", color, "important");
     pin.style.setProperty("background-color", color, "important");
     pin.style.setProperty("border-color", color, "important");
     pin.style.setProperty("color", "#ffffff", "important");
     pin.style.setProperty("font-weight", "bold", "important");
     pin.setAttribute("data-aa-mpd", mpd.toFixed(1));
+    const span = pin.querySelector("span");
+    if (span) {
+      span.style.setProperty("color", "#ffffff", "important");
+      span.style.setProperty("font-weight", "bold", "important");
+    }
     const price = pin.textContent?.trim() || "";
     pin.title = `${mpd.toFixed(1)} miles/$ (${price})`;
   });

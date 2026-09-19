@@ -1,5 +1,5 @@
 import { getNights } from "./nights";
-import { registerHotelMPD, getHotelIdFromCard } from "./registry";
+import { registerHotelMPD, getHotelIdFromCard, hotelMpdRegistry } from "./registry";
 
 export const extractNumber = (e: Element): number | null => {
   // Ignore text inside our own injected badges when extracting original numbers
@@ -135,6 +135,12 @@ export const updateCards = (
     if (maxMPD > 0) {
       maxMPDElem.innerHTML = `Best earn rate on this page: <b>${maxMPD.toFixed(1)} miles/$</b>.`;
       maxMPDElem.style.display = "block";
+    } else if (hotelMpdRegistry.size > 0) {
+      const highestCached = Math.max(...hotelMpdRegistry.values());
+      if (highestCached > 0) {
+        maxMPDElem.innerHTML = `Best earn rate on this page: <b>${highestCached.toFixed(1)} miles/$</b>.`;
+        maxMPDElem.style.display = "block";
+      }
     }
   };
 
