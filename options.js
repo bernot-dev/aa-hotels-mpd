@@ -4,6 +4,7 @@
 async function save_options() {
   const expandRoomRates = document.getElementById('expandRoomRates').checked;
   const expandRoomTypes = document.getElementById('expandRoomTypes').checked;
+  const expandSearchResults = document.getElementById('expandSearchResults').checked;
   const includeBonusMiles = document.getElementById('includeBonusMiles').checked;
   const showDebugButton = document.getElementById('showDebugButton').checked;
 
@@ -11,6 +12,7 @@ async function save_options() {
     await chrome.storage.sync.set({
       expandRoomRates,
       expandRoomTypes,
+      expandSearchResults,
       includeBonusMiles,
       showDebugButton,
     });
@@ -33,12 +35,14 @@ async function restore_options() {
     const config = await chrome.storage.sync.get({
       expandRoomRates: false,
       expandRoomTypes: false,
+      expandSearchResults: false,
       includeBonusMiles: false,
       showDebugButton: true,
     });
 
     document.getElementById('expandRoomRates').checked = config.expandRoomRates;
     document.getElementById('expandRoomTypes').checked = config.expandRoomTypes;
+    document.getElementById('expandSearchResults').checked = config.expandSearchResults;
     document.getElementById('includeBonusMiles').checked = config.includeBonusMiles;
     document.getElementById('showDebugButton').checked = config.showDebugButton;
   } catch (err) {

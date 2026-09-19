@@ -1,4 +1,183 @@
 import { updateCards } from "./cards";
+import { getNights } from "./nights";
+import { setupMapController, updateMapPins } from "./map";
+
+export interface SearchExpansionOptions {
+  expandSearchResults: boolean;
+  maxClicks?: number;
+  maxConsecutiveNoChange?: number;
+  pollIntervalMs?: number;
+  postClickDelayMs?: number;
+  waitTimeoutMs?: number;
+  maxInitialWaitMs?: number;
+}
+
+export function setupSearchExpansion(options: SearchExpansionOptions) {
+  const {
+    expandSearchResults,
+    maxClicks = 50,
+    maxConsecutiveNoChange = 3,
+    pollIntervalMs = 200,
+    postClickDelayMs = 100,
+    waitTimeoutMs = 2000,
+    maxInitialWaitMs = 5000,
+  } = options;
+
+  let isDisposed = false;
+  let scheduledTimer: ReturnType<typeof setTimeout> | null = null;
+  let initialPollInterval: ReturnType<typeof setInterval> | null = null;
+  let waitTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  let isWaitingForNewCards = false;
+  let totalClicks = 0;
+  let consecutiveNoChange = 0;
+  let lastCardCount = 0;
+  let initialPollElapsedMs = 0;
+  const INITIAL_POLL_STEP_MS = 250;
+
+  const clearScheduledTimer = () => {
+    if (scheduledTimer !== null) {
+      clearTimeout(scheduledTimer);
+      scheduledTimer = null;
+    }
+  };
+
+  const clearInitialPoll = () => {
+    if (initialPollInterval !== null) {
+      clearInterval(initialPollInterval);
+      initialPollInterval = null;
+    }
+  };
+
+  const clearWaitTimeout = () => {
+    if (waitTimeoutTimer !== null) {
+      clearTimeout(waitTimeoutTimer);
+      waitTimeoutTimer = null;
+    }
+  };
+
+  const findLoadMoreButton = (): HTMLButtonElement | null => {
+    // 1. Check aria-label="Load more" or data-testid
+    const byAttr = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Load more"], [data-testid="load-more-button"], [data-testid*="load-more"]'
+    );
+    if (byAttr) return byAttr;
+
+    // 2. Check by text content
+    const allButtons = document.querySelectorAll<HTMLButtonElement>("button");
+    for (let i = 0; i < allButtons.length; i++) {
+      const btn = allButtons[i];
+      const text = btn.textContent?.trim().toLowerCase() || "";
+      if (text === "load more" || text.startsWith("load more")) {
+        return btn;
+      }
+    }
+    return null;
+  };
+
+  const checkAndExpand = () => {
+    if (!expandSearchResults || isDisposed) return;
+    if (totalClicks >= maxClicks) return;
+
+    const moreButton = findLoadMoreButton();
+    if (!moreButton) {
+      if (totalClicks > 0) {
+        clearInitialPoll();
+      }
+      return;
+    }
+
+    clearInitialPoll();
+
+    const currentCount = document.querySelectorAll(
+      '[data-testid="hotel-card-pricing"]'
+    ).length;
+
+    if (isWaitingForNewCards) {
+      if (currentCount > lastCardCount) {
+        isWaitingForNewCards = false;
+        consecutiveNoChange = 0;
+        clearWaitTimeout();
+      } else {
+        return;
+      }
+    }
+
+    const isBusy =
+      moreButton.disabled ||
+      moreButton.getAttribute("aria-disabled") === "true" ||
+      moreButton.hasAttribute("data-loading");
+
+    if (isBusy) {
+      scheduleCheck(pollIntervalMs);
+      return;
+    }
+
+    lastCardCount = currentCount;
+    totalClicks++;
+    isWaitingForNewCards = true;
+
+    clearWaitTimeout();
+    waitTimeoutTimer = setTimeout(() => {
+      if (isWaitingForNewCards && !isDisposed) {
+        consecutiveNoChange++;
+        isWaitingForNewCards = false;
+        if (consecutiveNoChange < maxConsecutiveNoChange) {
+          scheduleCheck(pollIntervalMs);
+        } else {
+          console.warn(
+            "[AA-Hotels-MPD] Stopped search expansion: no new hotels appeared after multiple attempts."
+          );
+        }
+      }
+    }, waitTimeoutMs);
+
+    try {
+      moreButton.click();
+    } catch (err) {
+      console.warn("[AA-Hotels-MPD] Error clicking Load more button:", err);
+      isWaitingForNewCards = false;
+      clearWaitTimeout();
+    }
+
+    scheduleCheck(postClickDelayMs);
+  };
+
+  const scheduleCheck = (delayMs: number) => {
+    if (isDisposed) return;
+    clearScheduledTimer();
+    scheduledTimer = setTimeout(() => {
+      scheduledTimer = null;
+      checkAndExpand();
+    }, delayMs);
+  };
+
+  if (expandSearchResults) {
+    scheduleCheck(100);
+    initialPollInterval = setInterval(() => {
+      initialPollElapsedMs += INITIAL_POLL_STEP_MS;
+      if (initialPollElapsedMs >= maxInitialWaitMs || isDisposed) {
+        clearInitialPoll();
+      }
+      checkAndExpand();
+    }, INITIAL_POLL_STEP_MS);
+  }
+
+  const onMutation = () => {
+    if (isDisposed) return;
+    if (expandSearchResults) {
+      scheduleCheck(50);
+    }
+  };
+
+  const teardown = () => {
+    isDisposed = true;
+    clearScheduledTimer();
+    clearInitialPoll();
+    clearWaitTimeout();
+  };
+
+  return { onMutation, teardown };
+}
 
 export const processSearchPage = async (container: Element): Promise<() => void> => {
   // Clean up any existing summary banner
@@ -19,32 +198,63 @@ export const processSearchPage = async (container: Element): Promise<() => void>
   maxMPDElem.style.display = "none";
 
   let includeBonusMiles = false;
+  let expandSearchResults = false;
+
   try {
-    if (typeof chrome !== 'undefined' && chrome.storage?.sync) {
-      const result = await chrome.storage.sync.get(['includeBonusMiles']);
+    if (typeof chrome !== "undefined" && chrome.storage?.sync) {
+      const result = await chrome.storage.sync.get([
+        "includeBonusMiles",
+        "expandSearchResults",
+      ]);
       includeBonusMiles = Boolean(result.includeBonusMiles);
+      expandSearchResults = Boolean(result.expandSearchResults);
     }
   } catch (err) {
-    console.warn('[AA-Hotels-MPD] Failed to read storage options:', err);
+    console.warn("[AA-Hotels-MPD] Failed to read storage options:", err);
   }
 
+  container.insertAdjacentElement("beforebegin", maxMPDElem);
+
   const cardSelector = '[data-testid="hotel-card-pricing"]';
-  const callback = updateCards(container, maxMPDElem, cardSelector, includeBonusMiles);
+  const callback = updateCards(
+    container,
+    maxMPDElem,
+    cardSelector,
+    includeBonusMiles
+  );
+
+  const searchExpansion = setupSearchExpansion({
+    expandSearchResults,
+  });
+
+  const nights = getNights();
+
+  // Find map container if present or watch container
+  const mapContainer =
+    container.matches('[data-testid="search-results-map"]') ||
+    container.querySelector('[data-testid="search-results-map"]')
+      ? container
+      : document.querySelector('[data-testid="search-results-map"]') || container;
+
+  const mapController = setupMapController(mapContainer, nights, includeBonusMiles);
 
   const observer = new MutationObserver((mutations) => {
     callback(mutations);
+    searchExpansion.onMutation();
+    updateMapPins(document.body);
   });
 
   // Observe container subtree for async additions (e.g. infinite scroll / filtering)
   observer.observe(container, { childList: true, subtree: true });
 
-  container.insertAdjacentElement("beforebegin", maxMPDElem);
-
   // Process existing cards immediately without waiting for a mutation
   callback();
+  updateMapPins(document.body);
 
   // Return cleanup teardown function
   return () => {
+    searchExpansion.teardown();
+    mapController.teardown();
     observer.disconnect();
     maxMPDElem.remove();
   };

@@ -97,6 +97,94 @@ describe('Details Page Presentation Regression Tests', () => {
     fixtureCleanup();
     expect(document.getElementById('aa-mpd-details-summary')).toBeNull();
   });
+
+  it('runs against real details-authenticated.html fixture with 162 cards across 49 room groups', async () => {
+    const fixturePath = path.resolve(__dirname, '../fixtures/details-authenticated.html');
+    const fixtureHtml = fs.readFileSync(fixturePath, 'utf-8');
+
+    // 1. Test with includeBonusMiles: false (default) -> exactly 81 unboosted cards get badges
+    setGlobalChrome({
+      storage: {
+        sync: {
+          get: vi.fn().mockResolvedValue({
+            includeBonusMiles: false,
+          }),
+        },
+      },
+    });
+
+    let dom = new JSDOM(fixtureHtml);
+    document.body.innerHTML = dom.window.document.body.innerHTML;
+
+    let roomGroup = document.querySelector('div[data-testid="room-group"]');
+    expect(roomGroup).not.toBeNull();
+
+    let fixtureCleanup = await processDetailsPage(roomGroup!);
+    await new Promise((r) => setTimeout(r, 80));
+
+    let banner = document.getElementById('aa-mpd-details-summary');
+    expect(banner).not.toBeNull();
+    expect(banner?.style.display).toBe('block');
+    expect(banner?.innerHTML).toContain('Best earn rate on this page:');
+
+    let badges = document.querySelectorAll('.aa-mpd-badge');
+    expect(badges.length).toBe(81);
+
+    fixtureCleanup();
+
+    // 2. Test with includeBonusMiles: true -> all 162 cards get badges
+    setGlobalChrome({
+      storage: {
+        sync: {
+          get: vi.fn().mockResolvedValue({
+            includeBonusMiles: true,
+          }),
+        },
+      },
+    });
+
+    dom = new JSDOM(fixtureHtml);
+    document.body.innerHTML = dom.window.document.body.innerHTML;
+
+    roomGroup = document.querySelector('div[data-testid="room-group"]');
+    fixtureCleanup = await processDetailsPage(roomGroup!);
+    await new Promise((r) => setTimeout(r, 80));
+
+    badges = document.querySelectorAll('.aa-mpd-badge');
+    expect(badges.length).toBe(162);
+
+    fixtureCleanup();
+    expect(document.getElementById('aa-mpd-details-summary')).toBeNull();
+  });
+
+  it('does not re-toggle room rate buttons that are labeled "Show fewer room rates"', async () => {
+    setGlobalChrome({
+      storage: {
+        sync: {
+          get: vi.fn().mockResolvedValue({
+            expandRoomRates: true,
+          }),
+        },
+      },
+    });
+
+    let clickCount = 0;
+    const toggle = document.createElement('button');
+    toggle.setAttribute('data-testid', 'room-group-see-more-toggle');
+    toggle.textContent = 'Show fewer room rates';
+    toggle.onclick = () => {
+      clickCount++;
+    };
+    roomGroupContainer.appendChild(toggle);
+    roomGroupContainer.appendChild(createRoomCard(200, 1000));
+
+    cleanupFn = await processDetailsPage(roomGroupContainer);
+    await new Promise((r) => setTimeout(r, 250));
+
+    // Because it is already showing fewer (expanded), it must NOT be clicked
+    expect(clickCount).toBe(0);
+    expect(toggle.dataset.aaMpdExpanded).toBe('true');
+  });
 });
 
 type MockChrome = {

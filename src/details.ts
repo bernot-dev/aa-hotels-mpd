@@ -69,7 +69,12 @@ export function setupRoomExpansion(options: RoomExpansionOptions): {
         return;
       }
       const text = button.textContent?.toLowerCase() || "";
-      if (text.includes("hide") || button.getAttribute("aria-expanded") === "true") {
+      if (
+        text.includes("hide") ||
+        text.includes("fewer") ||
+        text.includes("less") ||
+        button.getAttribute("aria-expanded") === "true"
+      ) {
         button.dataset.aaMpdExpanded = "true";
         return;
       }

@@ -4,7 +4,7 @@ import { processDetailsPage } from "./details";
 import { processSearchPage } from "./search";
 import { mountDebugButton } from "./debug";
 
-const SEARCH_SELECTOR = '[data-testid="hotel-results-list-container"]';
+const SEARCH_SELECTOR = '[data-testid="hotel-results-list-container"], [data-testid="search-results-map"]';
 const DETAILS_SELECTOR = 'div[data-testid="room-group"]';
 
 let activeTeardown: (() => void) | null = null;
