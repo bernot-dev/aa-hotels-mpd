@@ -3,10 +3,44 @@ import { waitForElement } from "./wait";
 import { processDetailsPage } from "./details";
 import { processSearchPage } from "./search";
 import { mountDebugButton } from "./debug";
+import { ingestHotelRates, RawHotelRate, hotelMpdRegistry } from "./registry";
+import { updateMapPins } from "./map";
 
 const SEARCH_SELECTOR =
   '[data-testid="hotel-results-list-container"], [data-testid="search-results-map"]';
 const DETAILS_SELECTOR = 'div[data-testid="room-group"]';
+
+// Listen for intercepted network data dispatched by the MAIN world interceptor
+if (typeof window !== "undefined") {
+  window.addEventListener("AA_HOTELS_MPD_NETWORK_DATA", async (e: Event) => {
+    const customEvent = e as CustomEvent<{ hotels: RawHotelRate[] }>;
+    const hotels = customEvent.detail?.hotels;
+    if (!hotels || hotels.length === 0) return;
+
+    let includeBonusMiles = false;
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.sync) {
+        const result = await chrome.storage.sync.get(["includeBonusMiles"]);
+        includeBonusMiles = Boolean(result.includeBonusMiles);
+      }
+    } catch {
+      // Ignore storage read errors
+    }
+
+    const updated = ingestHotelRates(hotels, includeBonusMiles);
+    if (updated > 0) {
+      updateMapPins(document.body);
+      const summaryBanner = document.getElementById("aa-mpd-search-summary");
+      if (summaryBanner && hotelMpdRegistry.size > 0) {
+        const highest = Math.max(...hotelMpdRegistry.values());
+        if (highest > 0) {
+          summaryBanner.innerHTML = `Best earn rate on this page: <b>${highest.toFixed(1)} miles/$</b>.`;
+          summaryBanner.style.display = "block";
+        }
+      }
+    }
+  });
+}
 
 let activeTeardown: (() => void) | null = null;
 let activeAbortController: AbortController | null = null;

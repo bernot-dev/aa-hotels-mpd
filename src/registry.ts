@@ -37,6 +37,40 @@ function persistToStorage(): void {
   }
 }
 
+export interface RawHotelRate {
+  hotelId: string;
+  price: number;
+  baseMiles: number;
+  tieredMiles: number;
+}
+
+export function ingestHotelRates(
+  rates: RawHotelRate[],
+  includeBonusMiles: boolean = false
+): number {
+  let updatedCount = 0;
+  rates.forEach(({ hotelId, price, baseMiles, tieredMiles }) => {
+    if (!hotelId || price <= 0) return;
+    const miles = includeBonusMiles
+      ? tieredMiles || baseMiles
+      : baseMiles || tieredMiles;
+    if (miles <= 0) return;
+    const mpd = miles / price;
+    if (isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return;
+
+    const prev = hotelMpdRegistry.get(hotelId) || 0;
+    if (mpd > prev) {
+      hotelMpdRegistry.set(hotelId, mpd);
+      updatedCount++;
+    }
+  });
+
+  if (updatedCount > 0) {
+    persistToStorage();
+  }
+  return updatedCount;
+}
+
 export function registerHotelMPD(hotelId: string, mpd: number): void {
   if (!hotelId || isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return;
   const current = hotelMpdRegistry.get(hotelId) || 0;

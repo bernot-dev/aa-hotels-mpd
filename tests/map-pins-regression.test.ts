@@ -211,6 +211,71 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
 
       cleanup();
     });
+
+    it('resolves all 71 map pins when network interception data is received for remaining hotels', async () => {
+      // 1. Populate initial 27 hotels from search list cards
+      const searchHtmlPath = path.resolve(__dirname, '../fixtures/search-authenticated.html');
+      const searchHtml = fs.readFileSync(searchHtmlPath, 'utf-8');
+      const searchDom = new JSDOM(searchHtml);
+      const searchCards = searchDom.window.document.querySelectorAll('[data-testid="hotel-card-pricing"]');
+      searchCards.forEach((card) => {
+        processCard(card, 6, false);
+      });
+
+      // 2. Load the bug fixture (71 total pins)
+      const bugHtmlPath = path.resolve(__dirname, '../fixtures/search-map-authenticated (bug).html');
+      const bugHtml = fs.readFileSync(bugHtmlPath, 'utf-8');
+      const bugDom = new JSDOM(bugHtml);
+      document.body.innerHTML = bugDom.window.document.body.innerHTML;
+
+      const mapContainer = document.querySelector('[data-testid="search-results-map"]');
+      const cleanup = await processSearchPage(mapContainer!);
+      await new Promise((r) => setTimeout(r, 80));
+
+      // Before network interception: only 27 pins have MPD
+      const initialDecorated = document.querySelectorAll('button[data-aa-mpd]');
+      expect(initialDecorated.length).toBe(27);
+
+      // 3. Find all 44 unresolved pin IDs
+      const allPins = document.querySelectorAll<HTMLElement>('button[data-testid^="hotel-pin-"]');
+      expect(allPins.length).toBe(71);
+
+      const mockNetworkHotels: { hotelId: string; price: number; baseMiles: number; tieredMiles: number }[] = [];
+      allPins.forEach((pin) => {
+        if (!pin.hasAttribute('data-aa-mpd')) {
+          const id = pin.getAttribute('data-testid')?.replace('hotel-pin-', '') || '';
+          const priceStr = pin.textContent?.replace(/[^0-9.]/g, '') || '1000';
+          const price = parseFloat(priceStr) || 1000;
+          mockNetworkHotels.push({
+            hotelId: id,
+            price,
+            baseMiles: Math.round(price * 8.5),
+            tieredMiles: Math.round(price * 10.0),
+          });
+        }
+      });
+      expect(mockNetworkHotels.length).toBe(44);
+
+      // 4. Ingest network rates (simulating interceptor dispatch)
+      const { ingestHotelRates } = await import('../src/registry');
+      ingestHotelRates(mockNetworkHotels, false);
+      updateMapPins(document.body);
+
+      // 5. Verify 100% of all 71 pins are now decorated with colors and MPD attributes
+      const finalDecorated = document.querySelectorAll('button[data-aa-mpd]');
+      expect(finalDecorated.length).toBe(71);
+
+      // Verify specific previously-blue pins from user screenshot are now resolved
+      const pin1702 = document.querySelector<HTMLElement>('[data-testid="hotel-pin-12498"]'); // $1,702
+      expect(pin1702?.getAttribute('data-aa-mpd')).toBe('8.5');
+      expect(pin1702?.style.backgroundColor).toBeTruthy();
+
+      const pin1605 = document.querySelector<HTMLElement>('[data-testid="hotel-pin-20286"]'); // $1,605
+      expect(pin1605?.getAttribute('data-aa-mpd')).toBe('8.5');
+      expect(pin1605?.style.backgroundColor).toBeTruthy();
+
+      cleanup();
+    });
   });
 
   describe('Property Preview Card in Map View', () => {
