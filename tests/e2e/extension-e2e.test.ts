@@ -10,12 +10,14 @@ const fixturesDir = path.resolve(projectRoot, 'fixtures');
 interface TestFixtures {
   context: BrowserContext;
   serverUrl: string;
+  extensionId: string;
 }
 
 export const test = base.extend<TestFixtures>({
   serverUrl: async ({}, use) => {
     const searchHtml = fs.readFileSync(path.join(fixturesDir, 'search-authenticated.html'), 'utf-8');
     const mapHtml = fs.readFileSync(path.join(fixturesDir, 'search-map-authenticated.html'), 'utf-8');
+    const detailsHtml = fs.readFileSync(path.join(fixturesDir, 'details-authenticated.html'), 'utf-8');
 
     const server = http.createServer((req, res) => {
       const url = req.url || '';
@@ -60,6 +62,11 @@ export const test = base.extend<TestFixtures>({
         res.end(mapHtml);
         return;
       }
+      if (url.includes('/details')) {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(detailsHtml);
+        return;
+      }
       if (url.includes('/search')) {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(searchHtml);
@@ -96,31 +103,45 @@ export const test = base.extend<TestFixtures>({
     await context.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   },
+
+  extensionId: async ({ context }, use) => {
+    let worker = context.serviceWorkers()[0];
+    if (!worker) {
+      worker = await context.waitForEvent('serviceworker', { timeout: 5000 });
+    }
+    const extensionId = new URL(worker.url()).hostname;
+    await use(extensionId);
+  },
 });
 
 export const expect = test.expect;
 
-test.describe('AA Hotels MPD Extension E2E Suite', () => {
-  test('search list view renders MPD summary banner and hotel card badges', async ({ context }) => {
-    const page = await context.newPage();
+// Helper to block external telemetry and analytics scripts in tests
+async function setupPageRoutes(page: any) {
+  await page.route('**/*', async (route: any) => {
+    const url = route.request().url();
+    if (
+      url.includes('cloudfront.net') ||
+      url.includes('googletagmanager') ||
+      url.includes('hotjar') ||
+      url.includes('cookielaw') ||
+      url.includes('doubleclick') ||
+      url.includes('google-analytics') ||
+      url.includes('maps.googleapis.com')
+    ) {
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+}
 
-    // Abort external third-party tracking scripts to prevent React crashes on static fixtures
-    await page.route('**/*', async (route) => {
-      const url = route.request().url();
-      if (
-        url.includes('cloudfront.net') ||
-        url.includes('googletagmanager') ||
-        url.includes('hotjar') ||
-        url.includes('cookielaw') ||
-        url.includes('doubleclick') ||
-        url.includes('google-analytics') ||
-        url.includes('maps.googleapis.com')
-      ) {
-        await route.abort();
-        return;
-      }
-      await route.continue();
-    });
+test.describe('AA Hotels MPD Extension E2E Suite', () => {
+  test('1. Search list view (/search): renders MPD summary banner, hotel card badges, and export button', async ({
+    context,
+  }) => {
+    const page = await context.newPage();
+    await setupPageRoutes(page);
 
     await page.goto(
       'http://www.aadvantagehotels.com/search?adults=2&checkIn=10%2F04%2F2026&checkOut=10%2F10%2F2026&currency=USD',
@@ -138,27 +159,27 @@ test.describe('AA Hotels MPD Extension E2E Suite', () => {
     await expect(badges.first()).toBeVisible({ timeout: 5000 });
     const badgeCount = await badges.count();
     expect(badgeCount).toBeGreaterThanOrEqual(42);
+
+    // 3. Verify debug DOM export button is mounted
+    const debugBtn = page.locator('#aa-mpd-debug-btn');
+    await expect(debugBtn).toBeVisible({ timeout: 5000 });
+    await expect(debugBtn).toContainText('Export Fixture');
+
+    // 4. Save visual artifact
+    const screenshotDir = path.resolve(projectRoot, 'artifacts');
+    if (!fs.existsSync(screenshotDir)) {
+      fs.mkdirSync(screenshotDir, { recursive: true });
+    }
+    await page.screenshot({
+      path: path.join(screenshotDir, 'e2e-search-list-resolved.png'),
+    });
   });
 
-  test('map view resolves pins and recolors them via network interception', async ({ context }) => {
+  test('2. Search map view (/search?view=map): resolves pins and recolors them via network interception', async ({
+    context,
+  }) => {
     const page = await context.newPage();
-
-    await page.route('**/*', async (route) => {
-      const url = route.request().url();
-      if (
-        url.includes('cloudfront.net') ||
-        url.includes('googletagmanager') ||
-        url.includes('hotjar') ||
-        url.includes('cookielaw') ||
-        url.includes('doubleclick') ||
-        url.includes('google-analytics') ||
-        url.includes('maps.googleapis.com')
-      ) {
-        await route.abort();
-        return;
-      }
-      await route.continue();
-    });
+    await setupPageRoutes(page);
 
     await page.goto('http://www.aadvantagehotels.com/search?view=map', {
       waitUntil: 'domcontentloaded',
@@ -202,6 +223,87 @@ test.describe('AA Hotels MPD Extension E2E Suite', () => {
     }
     await page.screenshot({
       path: path.join(screenshotDir, 'e2e-map-resolved.png'),
+    });
+  });
+
+  test('3. Hotel details view (/details): renders room rates summary banner, room card badges, and export button', async ({
+    context,
+  }) => {
+    const page = await context.newPage();
+    await setupPageRoutes(page);
+
+    await page.goto(
+      'http://www.aadvantagehotels.com/details?hotelId=12498&checkIn=10%2F04%2F2026&checkOut=10%2F10%2F2026&currency=USD',
+      { waitUntil: 'domcontentloaded' }
+    );
+
+    // 1. Verify details summary banner is injected
+    const detailsSummary = page.locator('#aa-mpd-details-summary');
+    await expect(detailsSummary).toBeVisible({ timeout: 10000 });
+    await expect(detailsSummary).toContainText('Best earn rate on this page:');
+    await expect(detailsSummary).toContainText('3.7 miles/$');
+
+    // 2. Verify room rate cards receive MPD badges (81 unboosted base rate cards)
+    const badges = page.locator('.aa-mpd-badge');
+    await expect(badges.first()).toBeVisible({ timeout: 5000 });
+    const badgeCount = await badges.count();
+    expect(badgeCount).toBe(81);
+
+    // 3. Verify debug DOM export button is mounted
+    const debugBtn = page.locator('#aa-mpd-debug-btn');
+    await expect(debugBtn).toBeVisible({ timeout: 5000 });
+    await expect(debugBtn).toContainText('Export Fixture');
+
+    // 4. Save visual artifact
+    const screenshotDir = path.resolve(projectRoot, 'artifacts');
+    if (!fs.existsSync(screenshotDir)) {
+      fs.mkdirSync(screenshotDir, { recursive: true });
+    }
+    await page.screenshot({
+      path: path.join(screenshotDir, 'e2e-details-resolved.png'),
+    });
+  });
+
+  test('4. Extension options page (options.html): persists configuration changes to chrome.storage.sync', async ({
+    context,
+    extensionId,
+  }) => {
+    const page = await context.newPage();
+
+    // Navigate to unpacked Chrome extension options page
+    await page.goto(`chrome-extension://${extensionId}/options.html`);
+
+    await expect(page).toHaveTitle('AA Hotels MPD Options');
+
+    // Verify all 5 setting checkboxes are present
+    const expandRoomRates = page.locator('#expandRoomRates');
+    const expandRoomTypes = page.locator('#expandRoomTypes');
+    const expandSearchResults = page.locator('#expandSearchResults');
+    const includeBonusMiles = page.locator('#includeBonusMiles');
+    const showDebugButton = page.locator('#showDebugButton');
+
+    await expect(expandRoomRates).toBeAttached();
+    await expect(expandRoomTypes).toBeAttached();
+    await expect(expandSearchResults).toBeAttached();
+    await expect(includeBonusMiles).toBeAttached();
+    await expect(showDebugButton).toBeAttached();
+
+    // Toggle options and save
+    await expandSearchResults.check();
+    await includeBonusMiles.check();
+    await page.locator('#save').click();
+
+    // Verify status confirmation message appears
+    const statusMsg = page.locator('#status');
+    await expect(statusMsg).toHaveText('Options saved.', { timeout: 3000 });
+
+    // Save visual artifact
+    const screenshotDir = path.resolve(projectRoot, 'artifacts');
+    if (!fs.existsSync(screenshotDir)) {
+      fs.mkdirSync(screenshotDir, { recursive: true });
+    }
+    await page.screenshot({
+      path: path.join(screenshotDir, 'e2e-options-saved.png'),
     });
   });
 });
