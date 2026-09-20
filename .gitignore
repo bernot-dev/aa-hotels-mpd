@@ -1,2 +1,10 @@
 .DS_Store
 node_modules
+.env
+.env.*
+fixtures
+fixtures/
+.worktrees/
+test-results/
+playwright-report/
+artifacts/
