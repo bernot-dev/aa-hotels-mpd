@@ -3,12 +3,15 @@ name: Release to Chrome Web Store
 on:
   release:
     types: [published]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish / submit for review (false = upload as draft only)'
+        description: 'Publish / submit for review automatically (set false for draft only)'
         type: boolean
-        default: false
+        default: true
       dry_run:
         description: 'Dry run: build and validate package without uploading to Chrome Web Store'
         type: boolean
@@ -148,7 +151,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload Package via CWS API v2 Direct
+      - name: Upload Package to Chrome Web Store
         if: ${{ inputs.dry_run != true && inputs.check_status_only != true }}
         env:
           EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID || vars.EXTENSION_ID }}
@@ -159,8 +162,8 @@ jobs:
         run: |
           node scripts/cws-tool.mjs upload extension.zip
 
-      - name: Publish / Submit for Review (if enabled)
-        if: ${{ inputs.dry_run != true && inputs.check_status_only != true && (github.event_name == 'release' || inputs.publish == true) }}
+      - name: Publish / Submit for Review
+        if: ${{ inputs.dry_run != true && inputs.check_status_only != true && (github.event_name == 'release' || github.event_name == 'push' || inputs.publish == true) }}
         env:
           EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID || vars.EXTENSION_ID }}
           PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID || vars.PUBLISHER_ID || secrets.CHROME_PUBLISHER_ID || secrets.PUBLISHER_ID }}
