@@ -344,4 +344,49 @@ test.describe('AA Hotels MPD Extension E2E Suite', () => {
       path: path.join(screenshotDir, 'e2e-options-saved.png'),
     });
   });
+
+  test('5. Search view auto-expansion: automatically clicks Load more and expands additional hotel batches', async ({
+    context,
+  }) => {
+    const page = await context.newPage();
+    await setupPageRoutes(page);
+
+    await page.goto(
+      'http://www.aadvantagehotels.com/search?adults=2&checkIn=10%2F04%2F2026&checkOut=10%2F10%2F2026&currency=USD',
+      { waitUntil: 'domcontentloaded' }
+    );
+
+    // Initial 42 cards
+    const badges = page.locator('.aa-mpd-badge');
+    await expect(badges.first()).toBeVisible({ timeout: 5000 });
+    const initialCount = await badges.count();
+    expect(initialCount).toBe(42);
+
+    // Add click handler to simulate server returning next batch of hotels when Load more is clicked
+    await page.evaluate(() => {
+      const moreBtn = document.querySelector('button[aria-label="Load more"]');
+      if (moreBtn) {
+        moreBtn.addEventListener('click', () => {
+          const container =
+            document.querySelector('[data-testid="hotel-results-list-container"]') || document.body;
+          for (let i = 1; i <= 10; i++) {
+            const card = document.createElement('div');
+            card.setAttribute('data-testid', 'hotel-card-pricing');
+            card.innerHTML = `
+              <div data-testid="hotel-card-999${i}">
+                <div data-testid="pricing-text">Total (6 nights)</div>
+                <div data-testid="earn-price">$416</div>
+                <div data-testid="tier-earn-rewards">Earn 2,500 miles per stay</div>
+              </div>
+            `;
+            container.appendChild(card);
+          }
+          moreBtn.remove();
+        });
+      }
+    });
+
+    // Verify extension automatically triggers Load more and decorates the newly expanded cards
+    await expect(page.locator('.aa-mpd-badge')).toHaveCount(52, { timeout: 10000 });
+  });
 });

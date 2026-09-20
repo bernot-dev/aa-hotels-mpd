@@ -35,7 +35,7 @@ async function restore_options() {
     const config = await chrome.storage.sync.get({
       expandRoomRates: false,
       expandRoomTypes: false,
-      expandSearchResults: false,
+      expandSearchResults: true,
       includeBonusMiles: false,
       showDebugButton: true,
     });

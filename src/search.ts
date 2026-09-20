@@ -15,11 +15,11 @@ export interface SearchExpansionOptions {
 export function setupSearchExpansion(options: SearchExpansionOptions) {
   const {
     expandSearchResults,
-    maxClicks = 50,
-    maxConsecutiveNoChange = 3,
+    maxClicks = 100,
+    maxConsecutiveNoChange = 5,
     pollIntervalMs = 200,
     postClickDelayMs = 100,
-    waitTimeoutMs = 2000,
+    waitTimeoutMs = 8000,
     maxInitialWaitMs = 5000,
   } = options;
 
@@ -58,20 +58,51 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
   const findLoadMoreButton = (): HTMLButtonElement | null => {
     // 1. Check aria-label="Load more" or data-testid
     const byAttr = document.querySelector<HTMLButtonElement>(
-      'button[aria-label="Load more"], [data-testid="load-more-button"], [data-testid*="load-more"]'
+      'button[aria-label*="load more" i], [data-testid*="load-more" i], [data-testid="load-more-button"]'
     );
     if (byAttr) return byAttr;
 
-    // 2. Check by text content
-    const allButtons = document.querySelectorAll<HTMLButtonElement>("button");
+    // 2. Check by text content across all button and role=button elements
+    const allButtons = document.querySelectorAll<HTMLButtonElement>(
+      'button, [role="button"]'
+    );
     for (let i = 0; i < allButtons.length; i++) {
       const btn = allButtons[i];
       const text = btn.textContent?.trim().toLowerCase() || "";
-      if (text === "load more" || text.startsWith("load more")) {
+      if (
+        text === "load more" ||
+        text.startsWith("load more") ||
+        text.includes("load more")
+      ) {
         return btn;
       }
     }
     return null;
+  };
+
+  const countCards = (): number => {
+    return document.querySelectorAll(
+      '[data-testid="hotel-card-pricing"], [data-testid^="hotel-card-"], section[data-testid^="hotel-card-"]'
+    ).length;
+  };
+
+  const isButtonBusy = (btn: HTMLElement): boolean => {
+    if ((btn as HTMLButtonElement).disabled) return true;
+    if (btn.getAttribute("aria-disabled") === "true") return true;
+    if (btn.getAttribute("aria-busy") === "true") return true;
+    if (btn.hasAttribute("data-loading")) return true;
+    if (
+      btn.querySelector(
+        '.chakra-spinner, .chakra-button__spinner, [data-loading], svg[class*="spin"], [class*="spinner" i]'
+      )
+    ) {
+      return true;
+    }
+    const text = btn.textContent?.trim().toLowerCase() || "";
+    if (text.includes("loading") || text.includes("searching")) {
+      return true;
+    }
+    return false;
   };
 
   const checkAndExpand = () => {
@@ -88,9 +119,7 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
 
     clearInitialPoll();
 
-    const currentCount = document.querySelectorAll(
-      '[data-testid="hotel-card-pricing"]'
-    ).length;
+    const currentCount = countCards();
 
     if (isWaitingForNewCards) {
       if (currentCount > lastCardCount) {
@@ -98,16 +127,13 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
         consecutiveNoChange = 0;
         clearWaitTimeout();
       } else {
+        // Still waiting for network response or DOM hydration; keep polling
+        scheduleCheck(pollIntervalMs);
         return;
       }
     }
 
-    const isBusy =
-      moreButton.disabled ||
-      moreButton.getAttribute("aria-disabled") === "true" ||
-      moreButton.hasAttribute("data-loading");
-
-    if (isBusy) {
+    if (isButtonBusy(moreButton)) {
       scheduleCheck(pollIntervalMs);
       return;
     }
@@ -208,7 +234,7 @@ export const processSearchPage = async (
   maxMPDElem.style.display = "none";
 
   let includeBonusMiles = false;
-  let expandSearchResults = false;
+  let expandSearchResults = true;
 
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.sync) {
@@ -217,7 +243,9 @@ export const processSearchPage = async (
         "expandSearchResults",
       ]);
       includeBonusMiles = Boolean(result.includeBonusMiles);
-      expandSearchResults = Boolean(result.expandSearchResults);
+      if (typeof result.expandSearchResults === "boolean") {
+        expandSearchResults = result.expandSearchResults;
+      }
     }
   } catch (err) {
     console.warn("[AA-Hotels-MPD] Failed to read storage options:", err);
@@ -235,13 +263,10 @@ export const processSearchPage = async (
   container.insertAdjacentElement("beforebegin", maxMPDElem);
 
   const cardSelector = '[data-testid="hotel-card-pricing"]';
-  const commonRoot =
-    container.closest(".sc-aXZVg.sc-gEvEer.jXXVcr") ||
-    container.parentElement ||
-    document.body;
+  const observeRoot = document.body;
 
   const callback = updateCards(
-    commonRoot,
+    observeRoot,
     maxMPDElem,
     cardSelector,
     includeBonusMiles
@@ -306,7 +331,7 @@ export const processSearchPage = async (
     }
   });
 
-  observer.observe(commonRoot, { childList: true, subtree: true });
+  observer.observe(observeRoot, { childList: true, subtree: true });
 
   // Handle map toggle clicks explicitly
   const handleMapToggleClick = (e: MouseEvent) => {
