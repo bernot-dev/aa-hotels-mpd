@@ -251,6 +251,14 @@ export interface LocationHierarchyState {
   cities: LocationHierarchyCity[];
 }
 
+export interface LocationHierarchyCountry {
+  countryKey: string; // e.g. "United States"
+  countryName: string; // e.g. "United States"
+  displayLabel: string; // e.g. "United States"
+  totalDeals: number;
+  states: LocationHierarchyState[];
+}
+
 export const US_STATE_CODE_TO_NAME: Record<string, string> = {
   AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
   CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
@@ -265,18 +273,138 @@ export const US_STATE_CODE_TO_NAME: Record<string, string> = {
   WY: "Wyoming", DC: "District of Columbia",
 };
 
+export const CA_PROVINCES_MAP: Record<string, string> = {
+  AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick",
+  NL: "Newfoundland and Labrador", NS: "Nova Scotia", ON: "Ontario",
+  PE: "Prince Edward Island", QC: "Quebec", SK: "Saskatchewan",
+  NT: "Northwest Territories", NU: "Nunavut", YT: "Yukon",
+};
+
+export function normalizeCountryName(countryRaw?: string): string {
+  if (!countryRaw) return "";
+  const trimmed = countryRaw.trim();
+  if (/^(?:US|USA|United States|United States of America)$/i.test(trimmed)) {
+    return "United States";
+  }
+  if (/^(?:UK|GB|Great Britain|United Kingdom)$/i.test(trimmed)) {
+    return "United Kingdom";
+  }
+  if (/^(?:CA|CAN|Canada)$/i.test(trimmed)) {
+    return "Canada";
+  }
+  if (/^(?:MX|MEX|Mexico)$/i.test(trimmed)) {
+    return "Mexico";
+  }
+  return trimmed;
+}
+
+export function parseLocationHierarchy(
+  location: string,
+  explicitCountry?: string
+): {
+  countryName: string;
+  stateKey: string;
+  stateName: string;
+  stateDisplayLabel: string;
+  cityName: string;
+} {
+  const normCountry = normalizeCountryName(explicitCountry);
+  const parts = location.split(",").map((s) => s.trim());
+  const cityName = parts[0] || location;
+
+  if (parts.length >= 3) {
+    // e.g. "Toronto, ON, Canada" or "Dallas, TX, US"
+    const lastPart = parts[parts.length - 1];
+    const midPart = parts[1].toUpperCase();
+    const countryName = normCountry || normalizeCountryName(lastPart);
+
+    if (US_STATE_CODE_TO_NAME[midPart]) {
+      return {
+        countryName: countryName || "United States",
+        stateKey: midPart,
+        stateName: US_STATE_CODE_TO_NAME[midPart],
+        stateDisplayLabel: `${US_STATE_CODE_TO_NAME[midPart]} (${midPart})`,
+        cityName,
+      };
+    }
+    if (CA_PROVINCES_MAP[midPart]) {
+      return {
+        countryName: countryName || "Canada",
+        stateKey: midPart,
+        stateName: CA_PROVINCES_MAP[midPart],
+        stateDisplayLabel: `${CA_PROVINCES_MAP[midPart]} (${midPart})`,
+        cityName,
+      };
+    }
+    return {
+      countryName: countryName || "Other",
+      stateKey: parts[1],
+      stateName: parts[1],
+      stateDisplayLabel: parts[1],
+      cityName,
+    };
+  }
+
+  if (parts.length === 2) {
+    // e.g. "Corvallis, OR" or "Dallas, TX" or "Paris, France" or "London, United Kingdom"
+    const second = parts[1].toUpperCase();
+    if (US_STATE_CODE_TO_NAME[second]) {
+      return {
+        countryName: normCountry || "United States",
+        stateKey: second,
+        stateName: US_STATE_CODE_TO_NAME[second],
+        stateDisplayLabel: `${US_STATE_CODE_TO_NAME[second]} (${second})`,
+        cityName,
+      };
+    }
+    if (CA_PROVINCES_MAP[second]) {
+      return {
+        countryName: normCountry || "Canada",
+        stateKey: second,
+        stateName: CA_PROVINCES_MAP[second],
+        stateDisplayLabel: `${CA_PROVINCES_MAP[second]} (${second})`,
+        cityName,
+      };
+    }
+    const country = normCountry || normalizeCountryName(parts[1]);
+    return {
+      countryName: country || "Other",
+      stateKey: parts[1],
+      stateName: parts[1],
+      stateDisplayLabel: parts[1],
+      cityName,
+    };
+  }
+
+  return {
+    countryName: normCountry || "Other",
+    stateKey: "Other",
+    stateName: "Other",
+    stateDisplayLabel: "Other Locations",
+    cityName,
+  };
+}
+
 /**
- * Builds a 2-level hierarchical location tree (State -> Cities) from records.
- * Enables selecting a whole state (e.g. Oregon) to select all cities in that state (e.g. Corvallis + Albany).
+ * Builds a 3-level hierarchical location tree (Country -> State -> Cities) from records.
+ * Enables selecting a whole Country (e.g. United States) or State (e.g. Oregon) to select all child cities.
  */
-export function buildLocationHierarchy(records: TopMpdRecord[]): LocationHierarchyState[] {
-  const stateMap = new Map<
+export function buildLocationHierarchy(records: TopMpdRecord[]): LocationHierarchyCountry[] {
+  const countryMap = new Map<
     string,
     {
-      stateKey: string;
-      stateName: string;
+      countryKey: string;
+      countryName: string;
       displayLabel: string;
-      cityCounts: Map<string, { cityName: string; count: number }>;
+      stateMap: Map<
+        string,
+        {
+          stateKey: string;
+          stateName: string;
+          displayLabel: string;
+          cityCounts: Map<string, { cityName: string; count: number }>;
+        }
+      >;
     }
   >();
 
@@ -284,65 +412,74 @@ export function buildLocationHierarchy(records: TopMpdRecord[]): LocationHierarc
     const rawLoc = (r.location || "").trim();
     if (!rawLoc || rawLoc.toLowerCase() === "unknown location") continue;
 
-    const parts = rawLoc.split(",").map((s) => s.trim());
-    let stateKey = "";
-    let stateName = "";
-    let displayLabel = "";
-    let cityName = parts[0] || rawLoc;
+    const parsed = parseLocationHierarchy(rawLoc, r.country);
+    const countryKey = parsed.countryName;
 
-    if (parts.length >= 2) {
-      const statePart = parts[parts.length - 1].toUpperCase();
-      if (US_STATE_CODE_TO_NAME[statePart]) {
-        stateKey = statePart;
-        stateName = US_STATE_CODE_TO_NAME[statePart];
-        displayLabel = `${stateName} (${stateKey})`;
-      } else {
-        stateKey = parts[parts.length - 1];
-        stateName = stateKey;
-        displayLabel = stateKey;
-      }
-    } else {
-      stateKey = "Other";
-      stateName = "Other";
-      displayLabel = "Other Locations";
+    let countryEntry = countryMap.get(countryKey);
+    if (!countryEntry) {
+      countryEntry = {
+        countryKey,
+        countryName: parsed.countryName,
+        displayLabel: parsed.countryName,
+        stateMap: new Map(),
+      };
+      countryMap.set(countryKey, countryEntry);
     }
 
-    let stateEntry = stateMap.get(stateKey);
+    let stateEntry = countryEntry.stateMap.get(parsed.stateKey);
     if (!stateEntry) {
       stateEntry = {
-        stateKey,
-        stateName,
-        displayLabel,
+        stateKey: parsed.stateKey,
+        stateName: parsed.stateName,
+        displayLabel: parsed.stateDisplayLabel,
         cityCounts: new Map(),
       };
-      stateMap.set(stateKey, stateEntry);
+      countryEntry.stateMap.set(parsed.stateKey, stateEntry);
     }
 
-    const cityEntry = stateEntry.cityCounts.get(rawLoc) || { cityName, count: 0 };
+    const cityEntry = stateEntry.cityCounts.get(rawLoc) || { cityName: parsed.cityName, count: 0 };
     cityEntry.count++;
     stateEntry.cityCounts.set(rawLoc, cityEntry);
   }
 
-  const result: LocationHierarchyState[] = [];
-  stateMap.forEach((entry) => {
-    const cities: LocationHierarchyCity[] = Array.from(entry.cityCounts.entries())
-      .map(([cityLocation, { cityName, count }]) => ({
-        cityLocation,
-        cityName,
-        count,
-      }))
-      .sort((a, b) => a.cityName.localeCompare(b.cityName));
+  const result: LocationHierarchyCountry[] = [];
+  countryMap.forEach((cEntry) => {
+    const states: LocationHierarchyState[] = [];
+    cEntry.stateMap.forEach((sEntry) => {
+      const cities: LocationHierarchyCity[] = Array.from(sEntry.cityCounts.entries())
+        .map(([cityLocation, { cityName, count }]) => ({
+          cityLocation,
+          cityName,
+          count,
+        }))
+        .sort((a, b) => a.cityName.localeCompare(b.cityName));
 
-    const totalDeals = cities.reduce((sum, c) => sum + c.count, 0);
+      const totalDeals = cities.reduce((sum, c) => sum + c.count, 0);
+      states.push({
+        stateKey: sEntry.stateKey,
+        stateName: sEntry.stateName,
+        displayLabel: sEntry.displayLabel,
+        totalDeals,
+        cities,
+      });
+    });
+
+    states.sort((a, b) => a.stateName.localeCompare(b.stateName));
+    const totalCountryDeals = states.reduce((sum, s) => sum + s.totalDeals, 0);
+
     result.push({
-      stateKey: entry.stateKey,
-      stateName: entry.stateName,
-      displayLabel: entry.displayLabel,
-      totalDeals,
-      cities,
+      countryKey: cEntry.countryKey,
+      countryName: cEntry.countryName,
+      displayLabel: cEntry.displayLabel,
+      totalDeals: totalCountryDeals,
+      states,
     });
   });
 
-  return result.sort((a, b) => a.stateName.localeCompare(b.stateName));
+  return result.sort((a, b) => {
+    if (a.countryName === "United States") return -1;
+    if (b.countryName === "United States") return 1;
+    return a.countryName.localeCompare(b.countryName);
+  });
 }
 

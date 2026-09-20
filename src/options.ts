@@ -22,7 +22,9 @@ import {
   computeCpm,
   deduplicateRecordsByHotel,
   buildLocationHierarchy,
+  LocationHierarchyCountry,
   LocationHierarchyState,
+  LocationHierarchyCity,
 } from "./analytics";
 
 export type Config = {
@@ -263,8 +265,44 @@ function renderSeasonality(seasonality?: SeasonalityStats): void {
   }
 }
 
-// 5. Hierarchical Location Multi-select Filter (State -> Cities)
-function updateLocationDropdownText(hierarchy?: LocationHierarchyState[]): void {
+// 5. Hierarchical Location Multi-select Filter (Country -> State -> Cities)
+function syncLocationCheckboxStates(): void {
+  // 1. Sync State checkboxes based on their child City checkboxes
+  document.querySelectorAll<HTMLElement>(".multiselect-state-group").forEach((group) => {
+    const stateCb = group.querySelector<HTMLInputElement>(".state-cb");
+    const cityCbs = Array.from(group.querySelectorAll<HTMLInputElement>(".city-cb"));
+    if (stateCb && cityCbs.length > 0) {
+      const allChecked = cityCbs.every((cb) => cb.checked);
+      const someChecked = !allChecked && cityCbs.some((cb) => cb.checked);
+      stateCb.checked = allChecked;
+      stateCb.indeterminate = someChecked;
+    }
+  });
+
+  // 2. Sync Country checkboxes based on their child City checkboxes
+  document.querySelectorAll<HTMLElement>(".multiselect-country-group").forEach((group) => {
+    const countryCb = group.querySelector<HTMLInputElement>(".country-cb");
+    const cityCbs = Array.from(group.querySelectorAll<HTMLInputElement>(".city-cb"));
+    if (countryCb && cityCbs.length > 0) {
+      const allChecked = cityCbs.every((cb) => cb.checked);
+      const someChecked = !allChecked && cityCbs.some((cb) => cb.checked);
+      countryCb.checked = allChecked;
+      countryCb.indeterminate = someChecked;
+    }
+  });
+}
+
+function getCountryCities(country: LocationHierarchyCountry): LocationHierarchyCity[] {
+  const cities: LocationHierarchyCity[] = [];
+  for (const s of country.states) {
+    for (const c of s.cities) {
+      cities.push(c);
+    }
+  }
+  return cities;
+}
+
+function updateLocationDropdownText(hierarchy?: LocationHierarchyCountry[]): void {
   const textSpan = document.getElementById("locationDropdownText");
   if (!textSpan) return;
 
@@ -274,27 +312,60 @@ function updateLocationDropdownText(hierarchy?: LocationHierarchyState[]): void 
   }
 
   const h = hierarchy || (currentStats ? buildLocationHierarchy(currentStats.topMpds) : []);
-  // Check if exactly one state is fully selected
-  const fullySelectedStates = h.filter(
+
+  // Total available unique cities
+  const allCities: string[] = [];
+  h.forEach((country) => {
+    country.states.forEach((state) => {
+      state.cities.forEach((city) => {
+        allCities.push(city.cityLocation);
+      });
+    });
+  });
+
+  if (allCities.length > 0 && selectedLocations.size === allCities.length) {
+    textSpan.textContent = "All Locations";
+    return;
+  }
+
+  // Check if exactly one Country is fully selected (and no other cities outside it)
+  const fullySelectedCountries = h.filter((country) => {
+    const countryCities = getCountryCities(country);
+    return countryCities.length > 0 && countryCities.every((c) => selectedLocations.has(c.cityLocation));
+  });
+
+  if (fullySelectedCountries.length === 1) {
+    const countryCities = getCountryCities(fullySelectedCountries[0]);
+    if (selectedLocations.size === countryCities.length) {
+      textSpan.textContent = `${fullySelectedCountries[0].countryName} (All)`;
+      return;
+    }
+  }
+
+  // Check if exactly one State is fully selected (and no other cities outside it)
+  const allStates: LocationHierarchyState[] = [];
+  for (const c of h) {
+    for (const s of c.states) {
+      allStates.push(s);
+    }
+  }
+  const fullySelectedStates = allStates.filter(
     (s) => s.cities.length > 0 && s.cities.every((c) => selectedLocations.has(c.cityLocation))
   );
-  const partiallySelectedStates = h.filter(
-    (s) =>
-      s.cities.some((c) => selectedLocations.has(c.cityLocation)) &&
-      !s.cities.every((c) => selectedLocations.has(c.cityLocation))
-  );
 
-  if (
-    fullySelectedStates.length === 1 &&
-    partiallySelectedStates.length === 0 &&
-    selectedLocations.size === fullySelectedStates[0].cities.length
-  ) {
-    textSpan.textContent = `${fullySelectedStates[0].stateName} (All)`;
-  } else if (selectedLocations.size === 1) {
-    textSpan.textContent = Array.from(selectedLocations)[0];
-  } else {
-    textSpan.textContent = `${selectedLocations.size} Locations Selected`;
+  if (fullySelectedStates.length === 1) {
+    if (selectedLocations.size === fullySelectedStates[0].cities.length) {
+      textSpan.textContent = `${fullySelectedStates[0].stateName} (All)`;
+      return;
+    }
   }
+
+  if (selectedLocations.size === 1) {
+    textSpan.textContent = Array.from(selectedLocations)[0];
+    return;
+  }
+
+  textSpan.textContent = `${selectedLocations.size} Locations Selected`;
 }
 
 function populateLocationFilterOptions(records: TopMpdRecord[]): void {
@@ -309,26 +380,46 @@ function populateLocationFilterOptions(records: TopMpdRecord[]): void {
   }
 
   listContainer.innerHTML = hierarchy
-    .map((state) => {
-      const allCitiesChecked = state.cities.every((c) => selectedLocations.has(c.cityLocation));
+    .map((country) => {
+      const countryCities = getCountryCities(country);
+      const allCountryCitiesChecked =
+        countryCities.length > 0 && countryCities.every((c) => selectedLocations.has(c.cityLocation));
+
       return `
-        <div class="multiselect-state-group" data-state="${escapeHtml(state.stateKey)}">
-          <label class="multiselect-state-label">
-            <input type="checkbox" class="state-cb" data-state="${escapeHtml(state.stateKey)}" ${allCitiesChecked ? "checked" : ""}>
-            <span>${escapeHtml(state.displayLabel)}</span>
-            <span class="count-badge">${state.totalDeals}</span>
+        <div class="multiselect-country-group" data-country="${escapeHtml(country.countryKey)}">
+          <label class="multiselect-country-label">
+            <input type="checkbox" class="country-cb" data-country="${escapeHtml(country.countryKey)}" ${allCountryCitiesChecked ? "checked" : ""}>
+            <span>${escapeHtml(country.displayLabel)}</span>
+            <span class="count-badge">${country.totalDeals}</span>
           </label>
-          <div class="multiselect-city-list">
-            ${state.cities
-              .map(
-                (city) => `
-                  <label class="multiselect-city-label">
-                    <input type="checkbox" class="city-cb" data-state="${escapeHtml(state.stateKey)}" data-location="${escapeHtml(city.cityLocation)}" ${selectedLocations.has(city.cityLocation) ? "checked" : ""}>
-                    <span>${escapeHtml(city.cityLocation)}</span>
-                    <span class="count-badge">${city.count}</span>
-                  </label>
-                `
-              )
+          <div class="multiselect-country-content">
+            ${country.states
+              .map((state) => {
+                const allStateCitiesChecked =
+                  state.cities.length > 0 && state.cities.every((c) => selectedLocations.has(c.cityLocation));
+                return `
+                  <div class="multiselect-state-group" data-country="${escapeHtml(country.countryKey)}" data-state="${escapeHtml(state.stateKey)}">
+                    <label class="multiselect-state-label">
+                      <input type="checkbox" class="state-cb" data-country="${escapeHtml(country.countryKey)}" data-state="${escapeHtml(state.stateKey)}" ${allStateCitiesChecked ? "checked" : ""}>
+                      <span>${escapeHtml(state.displayLabel)}</span>
+                      <span class="count-badge">${state.totalDeals}</span>
+                    </label>
+                    <div class="multiselect-city-list">
+                      ${state.cities
+                        .map(
+                          (city) => `
+                            <label class="multiselect-city-label">
+                              <input type="checkbox" class="city-cb" data-country="${escapeHtml(country.countryKey)}" data-state="${escapeHtml(state.stateKey)}" data-location="${escapeHtml(city.cityLocation)}" ${selectedLocations.has(city.cityLocation) ? "checked" : ""}>
+                              <span>${escapeHtml(city.cityLocation)}</span>
+                              <span class="count-badge">${city.count}</span>
+                            </label>
+                          `
+                        )
+                        .join("")}
+                    </div>
+                  </div>
+                `;
+              })
               .join("")}
           </div>
         </div>
@@ -336,17 +427,7 @@ function populateLocationFilterOptions(records: TopMpdRecord[]): void {
     })
     .join("");
 
-  // Sync indeterminate state for states where some but not all cities are selected
-  hierarchy.forEach((state) => {
-    const stateCb = listContainer.querySelector<HTMLInputElement>(`.state-cb[data-state="${state.stateKey}"]`);
-    if (stateCb) {
-      const allChecked = state.cities.length > 0 && state.cities.every((c) => selectedLocations.has(c.cityLocation));
-      const someChecked = !allChecked && state.cities.some((c) => selectedLocations.has(c.cityLocation));
-      stateCb.checked = allChecked;
-      stateCb.indeterminate = someChecked;
-    }
-  });
-
+  syncLocationCheckboxStates();
   updateLocationDropdownText(hierarchy);
 }
 
@@ -830,37 +911,50 @@ document.addEventListener("DOMContentLoaded", () => {
     const target = e.target as HTMLInputElement;
     if (!target) return;
 
-    if (target.classList.contains("state-cb")) {
-      const stateKey = target.dataset.state;
+    if (target.classList.contains("country-cb")) {
       const isChecked = target.checked;
-      const cityCbs = document.querySelectorAll<HTMLInputElement>(`.city-cb[data-state="${stateKey}"]`);
-      cityCbs.forEach((cb) => {
-        cb.checked = isChecked;
-        const loc = cb.dataset.location;
-        if (loc) {
-          if (isChecked) selectedLocations.add(loc);
-          else selectedLocations.delete(loc);
-        }
-      });
+      const group = target.closest(".multiselect-country-group");
+      if (group) {
+        group.querySelectorAll<HTMLInputElement>(".state-cb, .city-cb").forEach((cb) => {
+          cb.checked = isChecked;
+          if (cb.classList.contains("state-cb")) {
+            cb.indeterminate = false;
+          }
+          const loc = cb.dataset.location;
+          if (loc) {
+            if (isChecked) selectedLocations.add(loc);
+            else selectedLocations.delete(loc);
+          }
+        });
+      }
       target.indeterminate = false;
+      syncLocationCheckboxStates();
+      updateLocationDropdownText();
+      renderFilteredTopMpds();
+    } else if (target.classList.contains("state-cb")) {
+      const isChecked = target.checked;
+      const stateGroup = target.closest(".multiselect-state-group");
+      if (stateGroup) {
+        stateGroup.querySelectorAll<HTMLInputElement>(".city-cb").forEach((cb) => {
+          cb.checked = isChecked;
+          const loc = cb.dataset.location;
+          if (loc) {
+            if (isChecked) selectedLocations.add(loc);
+            else selectedLocations.delete(loc);
+          }
+        });
+      }
+      target.indeterminate = false;
+      syncLocationCheckboxStates();
       updateLocationDropdownText();
       renderFilteredTopMpds();
     } else if (target.classList.contains("city-cb")) {
       const loc = target.dataset.location;
-      const stateKey = target.dataset.state;
       if (loc) {
         if (target.checked) selectedLocations.add(loc);
         else selectedLocations.delete(loc);
       }
-      // Update parent state checkbox state
-      const cityCbs = Array.from(document.querySelectorAll<HTMLInputElement>(`.city-cb[data-state="${stateKey}"]`));
-      const stateCb = document.querySelector<HTMLInputElement>(`.state-cb[data-state="${stateKey}"]`);
-      if (stateCb && cityCbs.length > 0) {
-        const allChecked = cityCbs.every((cb) => cb.checked);
-        const someChecked = !allChecked && cityCbs.some((cb) => cb.checked);
-        stateCb.checked = allChecked;
-        stateCb.indeterminate = someChecked;
-      }
+      syncLocationCheckboxStates();
       updateLocationDropdownText();
       renderFilteredTopMpds();
     }
@@ -870,10 +964,16 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedLocations.clear();
     document.querySelectorAll<HTMLInputElement>(".city-cb").forEach((cb) => {
       cb.checked = true;
+      const loc = cb.dataset.location;
+      if (loc) selectedLocations.add(loc);
     });
     document.querySelectorAll<HTMLInputElement>(".state-cb").forEach((scb) => {
       scb.checked = true;
       scb.indeterminate = false;
+    });
+    document.querySelectorAll<HTMLInputElement>(".country-cb").forEach((ccb) => {
+      ccb.checked = true;
+      ccb.indeterminate = false;
     });
     updateLocationDropdownText();
     renderFilteredTopMpds();
@@ -887,6 +987,10 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll<HTMLInputElement>(".state-cb").forEach((scb) => {
       scb.checked = false;
       scb.indeterminate = false;
+    });
+    document.querySelectorAll<HTMLInputElement>(".country-cb").forEach((ccb) => {
+      ccb.checked = false;
+      ccb.indeterminate = false;
     });
     updateLocationDropdownText();
     renderFilteredTopMpds();

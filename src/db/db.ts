@@ -146,6 +146,7 @@ export async function recordRates(
       imageUrl: rate.imageUrl,
       refundable: rate.refundable,
       neighborhood: rate.neighborhood,
+      country: rate.country,
       chain,
       cpm,
       valueScore,

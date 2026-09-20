@@ -633,6 +633,37 @@
       padding: 4px 0;
     }
 
+    .multiselect-country-group {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 2px 0;
+    }
+
+    .multiselect-country-group:last-child {
+      border-bottom: none;
+    }
+
+    .multiselect-country-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 800;
+      color: var(--text);
+      background: #f8fafc;
+      user-select: none;
+      transition: background 0.15s;
+    }
+
+    .multiselect-country-label:hover {
+      background: #f1f5f9;
+    }
+
+    .multiselect-country-content {
+      padding-left: 10px;
+    }
+
     .multiselect-state-group {
       border-bottom: 1px solid #f1f5f9;
       padding: 2px 0;
@@ -646,8 +677,8 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 12px;
-      font-size: 13px;
+      padding: 5px 10px 5px 12px;
+      font-size: 12.5px;
       cursor: pointer;
       font-weight: 700;
       color: var(--text);
@@ -660,7 +691,7 @@
     }
 
     .multiselect-city-list {
-      padding-left: 26px;
+      padding-left: 24px;
       display: flex;
       flex-direction: column;
     }
@@ -669,7 +700,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 4px 12px;
+      padding: 4px 10px;
       font-size: 12px;
       cursor: pointer;
       color: var(--text);
@@ -891,7 +922,7 @@
       <!-- Filter & Sort Toolbar -->
       <div class="filter-bar">
         <div class="filter-group">
-          <label>Location (State & City)</label>
+          <label>Location (Country, State & City)</label>
           <div class="multiselect-dropdown" id="locationDropdown">
             <button type="button" class="multiselect-btn" id="locationDropdownBtn">
               <span class="multiselect-btn-text" id="locationDropdownText">All Locations</span>

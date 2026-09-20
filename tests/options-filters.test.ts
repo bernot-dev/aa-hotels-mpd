@@ -332,7 +332,7 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
     expect(results.length).toBe(5);
   });
 
-  it("builds a 2-level hierarchical location tree (State -> Cities)", () => {
+  it("builds a 3-level hierarchical location tree (Country -> State -> Cities)", () => {
     const oregonRecords: TopMpdRecord[] = [
       { id: "101", hotelName: "Courtyard Corvallis", location: "Corvallis, OR", checkIn: "2026-11-10", checkOut: "2026-11-12", nights: 2, rooms: 1, guests: 2, price: 458, miles: 3800, mpd: 8.3, timestamp: "2026-09-20" },
       { id: "102", hotelName: "Comfort Suites Corvallis", location: "Corvallis, OR", checkIn: "2026-11-10", checkOut: "2026-11-12", nights: 2, rooms: 1, guests: 2, price: 300, miles: 3480, mpd: 11.6, timestamp: "2026-09-20" },
@@ -341,9 +341,13 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
     ];
 
     const hierarchy = buildLocationHierarchy(oregonRecords);
-    expect(hierarchy.length).toBe(2); // Oregon and Texas
+    expect(hierarchy.length).toBe(1); // United States
+    expect(hierarchy[0].countryName).toBe("United States");
+    expect(hierarchy[0].displayLabel).toBe("United States");
+    expect(hierarchy[0].totalDeals).toBe(7); // 3 OR + 4 TX
+    expect(hierarchy[0].states.length).toBe(2); // Oregon and Texas
 
-    const oregon = hierarchy.find((h) => h.stateKey === "OR");
+    const oregon = hierarchy[0].states.find((h) => h.stateKey === "OR");
     expect(oregon).toBeDefined();
     expect(oregon?.stateName).toBe("Oregon");
     expect(oregon?.displayLabel).toBe("Oregon (OR)");
@@ -358,7 +362,7 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
     expect(oregon?.cities[1].cityLocation).toBe("Corvallis, OR");
     expect(oregon?.cities[1].count).toBe(2);
 
-    const texas = hierarchy.find((h) => h.stateKey === "TX");
+    const texas = hierarchy[0].states.find((h) => h.stateKey === "TX");
     expect(texas).toBeDefined();
     expect(texas?.totalDeals).toBe(4);
     expect(texas?.cities[0].cityName).toBe("Dallas");
@@ -379,7 +383,8 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
     ];
 
     const hierarchy = buildLocationHierarchy(mixedRecords);
-    const oregon = hierarchy.find((h) => h.stateKey === "OR")!;
+    const us = hierarchy.find((c) => c.countryName === "United States")!;
+    const oregon = us.states.find((h) => h.stateKey === "OR")!;
     // Selecting Oregon selects all cities in Oregon
     const oregonCities = oregon.cities.map((c) => c.cityLocation);
 
@@ -389,6 +394,29 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
     expect(results.length).toBe(2);
     expect(results.map((r) => r.hotelName)).toContain("Courtyard Corvallis");
     expect(results.map((r) => r.hotelName)).toContain("Phoenix Inn Albany");
+  });
+
+  it("filters by country selection (selecting United States selects all cities across US states)", () => {
+    const internationalRecords: TopMpdRecord[] = [
+      ...sampleRecords, // Dallas, TX (4)
+      { id: "201", hotelName: "The Savoy", location: "London, United Kingdom", country: "United Kingdom", checkIn: "2026-12-01", checkOut: "2026-12-03", nights: 2, rooms: 1, guests: 2, price: 950, miles: 18000, mpd: 18.9, timestamp: "2026-09-20" },
+      { id: "202", hotelName: "Hotel Le Marais", location: "Paris, France", country: "France", checkIn: "2026-12-05", checkOut: "2026-12-07", nights: 2, rooms: 1, guests: 2, price: 420, miles: 8400, mpd: 20.0, timestamp: "2026-09-20" },
+    ];
+
+    const hierarchy = buildLocationHierarchy(internationalRecords);
+    expect(hierarchy.length).toBe(3); // United States, France, United Kingdom (US first, then alphabetical)
+    expect(hierarchy[0].countryName).toBe("United States");
+    expect(hierarchy[1].countryName).toBe("France");
+    expect(hierarchy[2].countryName).toBe("United Kingdom");
+
+    const us = hierarchy.find((c) => c.countryName === "United States")!;
+    const usCities = us.states.flatMap((s) => s.cities.map((c) => c.cityLocation));
+
+    const results = filterAndSort(internationalRecords, {
+      locations: usCities,
+    });
+    expect(results.length).toBe(4);
+    expect(results.every((r) => r.location === "Dallas, TX")).toBe(true);
   });
 
   it("filters by multi-selected chains (e.g. Marriott + Hilton)", () => {

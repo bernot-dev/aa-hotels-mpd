@@ -29,6 +29,7 @@ export interface CapturedRate {
   imageUrl?: string;
   refundable?: boolean;
   neighborhood?: string;
+  country?: string;
   chain?: string;
   checkIn?: string;
   checkOut?: string;
@@ -41,6 +42,7 @@ export interface TopMpdRecord {
   hotelId?: string;
   location: string;
   neighborhood?: string;
+  country?: string;
   checkIn: string;
   checkOut: string;
   nights: number;

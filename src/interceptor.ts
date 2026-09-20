@@ -15,6 +15,7 @@ export interface EnrichedHotelRate {
   city: string;
   state: string;
   location: string; // Canonical e.g. "Flagstaff, AZ"
+  country?: string;
   zipcode?: string;
   neighborhood?: string;
   latitude?: number;
@@ -248,6 +249,21 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
     const city = normalizeCityName(address.city || searchCity);
     const state = normalizeState(address.state || searchState);
     const location = getCanonicalLocation(city, state);
+    const rawCountry =
+      address.country?.name ||
+      address.country?.code ||
+      (typeof address.country === "string" ? address.country : "") ||
+      address.countryCode ||
+      searchPlace.country?.name ||
+      searchPlace.country?.code ||
+      (typeof searchPlace.country === "string" ? searchPlace.country : "") ||
+      searchPlace.countryCode ||
+      "";
+    let country = String(rawCountry).trim();
+    if (/^(?:US|USA|United States)$/i.test(country) || (!country && (US_STATES[state.toLowerCase()] || /^[A-Z]{2}$/.test(state)))) {
+      country = "United States";
+    }
+
     const neighborhood =
       address.neighborhoodName ||
       item.neighborhoodName ||
@@ -278,6 +294,7 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
       city,
       state,
       location,
+      country: country || undefined,
       neighborhood: neighborhood || undefined,
       zipcode: zipcode || undefined,
       latitude: !isNaN(latitude) ? Number(latitude) : undefined,
