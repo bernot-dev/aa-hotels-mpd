@@ -8,7 +8,7 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://www.aadvantagehotels.com/*"
+    "*://www.aadvantagehotels.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js"
@@ -23,12 +23,32 @@
   "content_scripts": [
     {
       "js": [
+        "dist/interceptor.js"
+      ],
+      "matches": [
+        "*://www.aadvantagehotels.com/*"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "js": [
         "dist/content.js"
       ],
       "matches": [
-        "https://www.aadvantagehotels.com/*"
+        "*://www.aadvantagehotels.com/*"
       ],
       "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "dist/interceptor.js"
+      ],
+      "matches": [
+        "*://www.aadvantagehotels.com/*"
+      ]
     }
   ]
 }

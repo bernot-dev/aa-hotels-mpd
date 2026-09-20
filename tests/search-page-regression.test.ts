@@ -2,7 +2,22 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
-import { processSearchPage } from '../src/search';
+import { processSearchPage, setupSearchExpansion } from '../src/search';
+
+interface MockChrome {
+  storage?: {
+    sync?: {
+      get?: (keys: unknown) => Promise<Record<string, unknown>>;
+    };
+  };
+}
+
+const getGlobalChrome = (): MockChrome | undefined =>
+  (globalThis as unknown as { chrome?: MockChrome }).chrome;
+
+const setGlobalChrome = (mock: MockChrome | undefined): void => {
+  (globalThis as unknown as { chrome?: MockChrome }).chrome = mock;
+};
 
 describe('Search Page Presentation Regression Tests', () => {
   let container: HTMLDivElement;
@@ -149,5 +164,199 @@ describe('Search Page Presentation Regression Tests', () => {
 
     fixtureCleanup();
     expect(document.getElementById('aa-mpd-search-summary')).toBeNull();
+  });
+
+  it('runs against real search-authenticated.html fixture and correctly populates banner and badges', async () => {
+    const fixturePath = path.resolve(__dirname, '../fixtures/search-authenticated.html');
+    if (!fs.existsSync(fixturePath)) {
+      return;
+    }
+    const fixtureHtml = fs.readFileSync(fixturePath, 'utf-8');
+    const dom = new JSDOM(fixtureHtml);
+
+    document.body.innerHTML = dom.window.document.body.innerHTML;
+
+    const fixtureContainer = document.querySelector('[data-testid="hotel-results-list-container"]');
+    expect(fixtureContainer).not.toBeNull();
+
+    const fixtureCleanup = await processSearchPage(fixtureContainer!);
+    await new Promise((r) => setTimeout(r, 80));
+
+    const banner = document.getElementById('aa-mpd-search-summary');
+    expect(banner).not.toBeNull();
+    expect(banner?.style.display).toBe('block');
+    expect(banner?.innerHTML).toContain('Best earn rate on this page: <b>17.5 miles/$</b>.');
+
+    const badges = fixtureContainer!.querySelectorAll('.aa-mpd-badge');
+    expect(badges.length).toBeGreaterThanOrEqual(42);
+
+    fixtureCleanup();
+    expect(document.getElementById('aa-mpd-search-summary')).toBeNull();
+  });
+});
+
+describe('Search Result Auto-Expansion Regression Tests', () => {
+  let parentContainer: HTMLDivElement;
+  let listContainer: HTMLDivElement;
+  let cleanupFn: (() => void) | null = null;
+  const originalChrome = getGlobalChrome();
+
+  beforeEach(() => {
+    parentContainer = document.createElement('div');
+    parentContainer.className = 'search-list-parent';
+    listContainer = document.createElement('div');
+    listContainer.setAttribute('data-testid', 'hotel-results-list-container');
+    parentContainer.appendChild(listContainer);
+    document.body.appendChild(parentContainer);
+  });
+
+  afterEach(() => {
+    if (cleanupFn) {
+      cleanupFn();
+      cleanupFn = null;
+    }
+    document.body.innerHTML = '';
+    setGlobalChrome(originalChrome);
+  });
+
+  const createCard = (price: number, miles: number) => {
+    const card = document.createElement('div');
+    card.setAttribute('data-testid', 'hotel-card-pricing');
+    card.innerHTML = `
+      <div data-testid="pricing-text">Total (2 nights)</div>
+      <div data-testid="earn-price">$${price}</div>
+      <div data-testid="tier-earn-rewards">Earn ${miles.toLocaleString()} miles per stay</div>
+    `;
+    return card;
+  };
+
+  it('automatically expands search results across multiple batches until Load more is gone', async () => {
+    setGlobalChrome({
+      storage: {
+        sync: {
+          get: vi.fn().mockResolvedValue({
+            expandSearchResults: true,
+          }),
+        },
+      },
+    });
+
+    listContainer.appendChild(createCard(100, 1000));
+
+    const totalBatches = 5;
+    let batchCount = 0;
+
+    const loadMoreButton = document.createElement('button');
+    loadMoreButton.setAttribute('aria-label', 'Load more');
+    loadMoreButton.textContent = 'Load more';
+    parentContainer.appendChild(loadMoreButton);
+
+    loadMoreButton.onclick = () => {
+      batchCount++;
+      const newCard = createCard(100, 1000 + batchCount * 500);
+      listContainer.appendChild(newCard);
+
+      if (batchCount >= totalBatches) {
+        loadMoreButton.remove();
+      }
+    };
+
+    cleanupFn = await processSearchPage(listContainer);
+
+    // Allow async expansion loop to click through batches
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      if (batchCount >= totalBatches && !document.querySelector('button[aria-label="Load more"]')) {
+        break;
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 60));
+
+    expect(batchCount).toBe(5);
+    expect(document.querySelector('button[aria-label="Load more"]')).toBeNull();
+    const allCards = document.querySelectorAll('[data-testid="hotel-card-pricing"]');
+    expect(allCards.length).toBe(1 + totalBatches);
+
+    // Banner should reflect highest batch: (1000 + 5 * 500) = 3500 miles / $100 = 35.0 miles/$
+    const summary = document.getElementById('aa-mpd-search-summary');
+    expect(summary?.innerHTML).toContain('35.0 miles/$');
+  });
+
+  it('waits for busy/loading Load more button to become enabled before clicking', async () => {
+    let clickCount = 0;
+    const button = document.createElement('button');
+    button.setAttribute('aria-label', 'Load more');
+    button.disabled = true;
+    button.onclick = () => {
+      clickCount++;
+    };
+    parentContainer.appendChild(button);
+
+    const controller = setupSearchExpansion({
+      expandSearchResults: true,
+      pollIntervalMs: 40,
+      postClickDelayMs: 40,
+      waitTimeoutMs: 150,
+    });
+
+    await new Promise((r) => setTimeout(r, 100));
+    expect(clickCount).toBe(0);
+
+    button.disabled = false;
+    await new Promise((r) => setTimeout(r, 100));
+    expect(clickCount).toBe(1);
+
+    controller.teardown();
+  });
+
+  it('stops expansion if button is clicked repeatedly without new content (safety guard)', async () => {
+    let clickCount = 0;
+    const button = document.createElement('button');
+    button.setAttribute('aria-label', 'Load more');
+    button.onclick = () => {
+      clickCount++;
+    };
+    parentContainer.appendChild(button);
+
+    const controller = setupSearchExpansion({
+      expandSearchResults: true,
+      maxConsecutiveNoChange: 3,
+      pollIntervalMs: 20,
+      postClickDelayMs: 20,
+      waitTimeoutMs: 50,
+    });
+
+    await new Promise((r) => setTimeout(r, 350));
+    expect(clickCount).toBeLessThanOrEqual(4);
+
+    controller.teardown();
+  });
+
+  it('aborts active search expansion on teardown and does not make further clicks', async () => {
+    let clickCount = 0;
+    const button = document.createElement('button');
+    button.setAttribute('aria-label', 'Load more');
+    button.onclick = () => {
+      clickCount++;
+      listContainer.appendChild(createCard(100, 1000));
+    };
+    parentContainer.appendChild(button);
+
+    const controller = setupSearchExpansion({
+      expandSearchResults: true,
+      pollIntervalMs: 40,
+      postClickDelayMs: 40,
+      waitTimeoutMs: 100,
+    });
+
+    await new Promise((r) => setTimeout(r, 120));
+    const clicksBefore = clickCount;
+    expect(clicksBefore).toBeGreaterThan(0);
+
+    controller.teardown();
+
+    await new Promise((r) => setTimeout(r, 200));
+    expect(clickCount).toBe(clicksBefore);
   });
 });

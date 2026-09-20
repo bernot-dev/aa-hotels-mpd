@@ -9,6 +9,15 @@ import { exportQueriesToSql } from "./export/sql";
 import { triggerFileDownload } from "./export/download";
 import { DashboardStats, TopMpdRecord, LocationStatRecord } from "./types";
 
+export type Config = {
+  expandRoomRates: boolean;
+  expandRoomTypes: boolean;
+  expandSearchResults: boolean;
+  includeBonusMiles: boolean;
+  showDebugButton: boolean;
+  keepExhaustiveQueryHistory?: boolean;
+};
+
 let currentStats: DashboardStats | null = null;
 let showAllTopMpds = false;
 let showAllTopLocs = false;
@@ -125,7 +134,6 @@ function renderNightsBreakdown(stats: DashboardStats): void {
   for (let n = 1; n <= 7; n++) {
     const record = stats.nightsStats[n];
     if (record) {
-      const isHigh = record.topMpd >= 20;
       html += `
         <div class="night-card">
           <div class="night-card-title">${n} ${n === 1 ? "Night" : "Nights"}</div>
@@ -237,6 +245,7 @@ async function handleDeleteHistory(): Promise<void> {
 async function saveOptions(): Promise<void> {
   const expandRoomRates = (document.getElementById("expandRoomRates") as HTMLInputElement).checked;
   const expandRoomTypes = (document.getElementById("expandRoomTypes") as HTMLInputElement).checked;
+  const expandSearchResults = (document.getElementById("expandSearchResults") as HTMLInputElement).checked;
   const includeBonusMiles = (document.getElementById("includeBonusMiles") as HTMLInputElement).checked;
   const showDebugButton = (document.getElementById("showDebugButton") as HTMLInputElement).checked;
   const keepExhaustiveQueryHistory = (
@@ -248,6 +257,7 @@ async function saveOptions(): Promise<void> {
       await chrome.storage.sync.set({
         expandRoomRates,
         expandRoomTypes,
+        expandSearchResults,
         includeBonusMiles,
         showDebugButton,
         keepExhaustiveQueryHistory,
@@ -275,6 +285,7 @@ async function restoreOptions(): Promise<void> {
     let config = {
       expandRoomRates: false,
       expandRoomTypes: false,
+      expandSearchResults: true,
       includeBonusMiles: false,
       showDebugButton: true,
       keepExhaustiveQueryHistory: false,
@@ -284,12 +295,23 @@ async function restoreOptions(): Promise<void> {
       config = (await chrome.storage.sync.get(config)) as typeof config;
     }
 
-    (document.getElementById("expandRoomRates") as HTMLInputElement).checked = config.expandRoomRates;
-    (document.getElementById("expandRoomTypes") as HTMLInputElement).checked = config.expandRoomTypes;
-    (document.getElementById("includeBonusMiles") as HTMLInputElement).checked = config.includeBonusMiles;
-    (document.getElementById("showDebugButton") as HTMLInputElement).checked = config.showDebugButton;
-    (document.getElementById("keepExhaustiveQueryHistory") as HTMLInputElement).checked =
-      config.keepExhaustiveQueryHistory;
+    const ratesEl = document.getElementById("expandRoomRates") as HTMLInputElement | null;
+    if (ratesEl) ratesEl.checked = config.expandRoomRates;
+
+    const typesEl = document.getElementById("expandRoomTypes") as HTMLInputElement | null;
+    if (typesEl) typesEl.checked = config.expandRoomTypes;
+
+    const searchEl = document.getElementById("expandSearchResults") as HTMLInputElement | null;
+    if (searchEl) searchEl.checked = config.expandSearchResults;
+
+    const bonusEl = document.getElementById("includeBonusMiles") as HTMLInputElement | null;
+    if (bonusEl) bonusEl.checked = config.includeBonusMiles;
+
+    const debugEl = document.getElementById("showDebugButton") as HTMLInputElement | null;
+    if (debugEl) debugEl.checked = config.showDebugButton;
+
+    const historyEl = document.getElementById("keepExhaustiveQueryHistory") as HTMLInputElement | null;
+    if (historyEl) historyEl.checked = config.keepExhaustiveQueryHistory;
   } catch (err) {
     console.error("Failed to restore options:", err);
   }

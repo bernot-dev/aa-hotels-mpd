@@ -3,10 +3,12 @@
   "scripts": {
     "build": "webpack build",
     "watch": "webpack --watch --mode development",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
+    "@playwright/test": "^1.63.0",
     "@types/jsdom": "^30.0.0",
     "chrome-types": "^0.1.414",
     "eslint": "^9.15.0",
