@@ -38,13 +38,12 @@ describe("Rate and Criteria Capture Pipeline", () => {
       expect(criteria.timestamp).toBeDefined();
     });
 
-    it("falls back to DOM inputs when URL params are missing", () => {
+    it("extracts criteria from card details link when URL destination param is missing", () => {
       const dom = new JSDOM(`
         <div>
-          <input data-testid="search-destination" value="Austin, TX" />
-          <input id="check-in-date" value="2026-11-01" />
-          <input id="check-out-date" value="2026-11-03" />
-          <button data-testid="search-rooms-and-guests-button">1 Room, 2 Guests</button>
+          <a href="/details?destination=Austin%2C%20TX&checkIn=2026-11-01&checkOut=2026-11-03&rooms=1&adults=2">
+            <div data-testid="hotel-card-pricing">Card</div>
+          </a>
         </div>
       `);
 
@@ -61,35 +60,14 @@ describe("Rate and Criteria Capture Pipeline", () => {
       expect(criteria.guests).toBe(2);
     });
 
-    it("rejects partial typing fragments and active autocomplete in destination input", () => {
-      // 1. Partial length < 3
-      const dom1 = new JSDOM(`
+    it("never reads destination input box under any circumstances", () => {
+      const dom = new JSDOM(`
         <div>
-          <input id="downshift-0-input" value="Bo" />
+          <input data-testid="search-destination" id="downshift-0-input" value="Chicago, IL" />
         </div>
       `);
-      const criteria1 = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom1.window.document);
-      expect(criteria1.location).toBe("Unknown Location");
-
-      // 2. Active autocomplete dropdown open
-      const dom2 = new JSDOM(`
-        <div>
-          <input id="downshift-0-input" value="Boston" aria-expanded="true" />
-        </div>
-      `);
-      const criteria2 = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom2.window.document);
-      expect(criteria2.location).toBe("Unknown Location");
-
-      // 3. Actively focused input (user is typing)
-      const dom3 = new JSDOM(`
-        <div>
-          <input id="downshift-0-input" value="New Orlea" />
-        </div>
-      `);
-      const input = dom3.window.document.getElementById("downshift-0-input") as HTMLInputElement;
-      input.focus();
-      const criteria3 = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom3.window.document);
-      expect(criteria3.location).toBe("Unknown Location");
+      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      expect(criteria.location).toBe("Unknown Location");
     });
 
     it("extracts destination from hotel card details links when URL parameter is missing", () => {

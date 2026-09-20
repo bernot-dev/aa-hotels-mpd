@@ -58,19 +58,44 @@ export function extractSearchCriteria(
     }
   }
 
-  // 2. DOM extraction: card links (ground truth for currently displayed cards on search page)
-  if (location === "Unknown Location" && doc) {
+  // 2. DOM extraction: card details links (authoritative source for currently displayed cards on search page)
+  if (doc) {
     const cardLink = doc.querySelector<HTMLAnchorElement>(
-      'a[href*="/details"][href*="destination="], a[href*="destination="]'
+      'a[href*="/details"][href*="destination="], a[href*="destination="], a[href*="/details"]'
     );
     if (cardLink && cardLink.href) {
       try {
         const cardUrl = new URL(cardLink.href, "https://www.aadvantagehotels.com");
-        const dest = cardUrl.searchParams.get("destination");
-        if (dest && dest.trim()) {
-          const decoded = decodeURIComponent(dest.trim().replace(/\+/g, " "));
-          if (isValidLocation(decoded)) {
-            location = decoded;
+        if (location === "Unknown Location") {
+          const dest = cardUrl.searchParams.get("destination");
+          if (dest && dest.trim()) {
+            const decoded = decodeURIComponent(dest.trim().replace(/\+/g, " "));
+            if (isValidLocation(decoded)) {
+              location = decoded;
+            }
+          }
+        }
+        if (!checkIn) {
+          const inParam = cardUrl.searchParams.get("checkIn") || cardUrl.searchParams.get("checkin");
+          if (inParam) checkIn = inParam;
+        }
+        if (!checkOut) {
+          const outParam = cardUrl.searchParams.get("checkOut") || cardUrl.searchParams.get("checkout");
+          if (outParam) checkOut = outParam;
+        }
+        if (rooms === 1) {
+          const roomsParam = cardUrl.searchParams.get("rooms");
+          if (roomsParam && !isNaN(Number(roomsParam)) && Number(roomsParam) > 0) {
+            rooms = parseInt(roomsParam, 10);
+          }
+        }
+        if (guests === 2) {
+          const adultsParam = cardUrl.searchParams.get("adults");
+          const childrenParam = cardUrl.searchParams.get("children") || "0";
+          const totalAdults = adultsParam ? parseInt(adultsParam, 10) : 0;
+          const totalChildren = parseInt(childrenParam, 10) || 0;
+          if (totalAdults > 0) {
+            guests = totalAdults + totalChildren;
           }
         }
       } catch {}
@@ -91,24 +116,7 @@ export function extractSearchCriteria(
     }
   }
 
-  // 4. Safe input fallback ONLY when:
-  // - location is still Unknown Location
-  // - user is NOT currently focusing or typing in the input
-  // - autocomplete dropdown menu is NOT open (aria-expanded !== "true")
-  // - value is a valid, non-partial location (isValidLocation(val))
-  if (location === "Unknown Location" && doc) {
-    const destInput = doc.querySelector<HTMLInputElement>(
-      '[data-testid="search-destination"], #downshift-0-input'
-    );
-    if (destInput && destInput.value) {
-      const val = destInput.value.trim();
-      const isFocused = doc.activeElement === destInput;
-      const isExpanded = destInput.getAttribute("aria-expanded") === "true";
-      if (!isFocused && !isExpanded && isValidLocation(val)) {
-        location = val;
-      }
-    }
-  }
+  // NOTE: Destination input box is NEVER read. The details URL is the sole authoritative source.
 
   if (doc) {
     if (!checkIn) {
