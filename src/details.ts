@@ -1,4 +1,8 @@
 import { updateCards } from "./cards";
+import { extractSearchCriteria } from "./capture/criteria";
+import { extractRatesFromDetailsCards } from "./capture/rates";
+import { queueRatesForDispatch, resetRateCollector } from "./capture/collector";
+import { getNights } from "./nights";
 
 export const processDetailsPage = async (container: Element): Promise<() => void> => {
   const targetContainer = container.parentElement || container;
@@ -25,22 +29,42 @@ export const processDetailsPage = async (container: Element): Promise<() => void
   let includeBonusMiles = false;
 
   try {
-    if (typeof chrome !== 'undefined' && chrome.storage?.sync) {
+    if (typeof chrome !== "undefined" && chrome.storage?.sync) {
       const result = await chrome.storage.sync.get([
-        'expandRoomRates',
-        'expandRoomTypes',
-        'includeBonusMiles',
+        "expandRoomRates",
+        "expandRoomTypes",
+        "includeBonusMiles",
       ]);
       expandRoomRates = Boolean(result.expandRoomRates);
       expandRoomTypes = Boolean(result.expandRoomTypes);
       includeBonusMiles = Boolean(result.includeBonusMiles);
     }
   } catch (err) {
-    console.warn('[AA-Hotels-MPD] Failed to read storage options:', err);
+    console.warn("[AA-Hotels-MPD] Failed to read storage options:", err);
   }
 
   const cardSelector = '[data-testid="room-card"]';
-  const callback = updateCards(targetContainer, maxMPDElem, cardSelector, includeBonusMiles);
+
+  const onCardsProcessed = () => {
+    try {
+      const nights = getNights();
+      const criteria = extractSearchCriteria();
+      const rates = extractRatesFromDetailsCards(targetContainer, nights, includeBonusMiles);
+      if (rates.length > 0) {
+        queueRatesForDispatch(criteria, rates);
+      }
+    } catch (err) {
+      console.debug("[AA-Hotels-MPD] Error capturing details rates:", err);
+    }
+  };
+
+  const callback = updateCards(
+    targetContainer,
+    maxMPDElem,
+    cardSelector,
+    includeBonusMiles,
+    onCardsProcessed
+  );
 
   const observer = new MutationObserver((mutations) => {
     callback(mutations);
@@ -83,5 +107,6 @@ export const processDetailsPage = async (container: Element): Promise<() => void
   return () => {
     observer.disconnect();
     maxMPDElem.remove();
+    resetRateCollector();
   };
 };

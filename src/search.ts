@@ -1,4 +1,8 @@
 import { updateCards } from "./cards";
+import { extractSearchCriteria } from "./capture/criteria";
+import { extractRatesFromSearchCards } from "./capture/rates";
+import { queueRatesForDispatch, resetRateCollector } from "./capture/collector";
+import { getNights } from "./nights";
 
 export const processSearchPage = async (container: Element): Promise<() => void> => {
   // Clean up any existing summary banner
@@ -20,16 +24,36 @@ export const processSearchPage = async (container: Element): Promise<() => void>
 
   let includeBonusMiles = false;
   try {
-    if (typeof chrome !== 'undefined' && chrome.storage?.sync) {
-      const result = await chrome.storage.sync.get(['includeBonusMiles']);
+    if (typeof chrome !== "undefined" && chrome.storage?.sync) {
+      const result = await chrome.storage.sync.get(["includeBonusMiles"]);
       includeBonusMiles = Boolean(result.includeBonusMiles);
     }
   } catch (err) {
-    console.warn('[AA-Hotels-MPD] Failed to read storage options:', err);
+    console.warn("[AA-Hotels-MPD] Failed to read storage options:", err);
   }
 
   const cardSelector = '[data-testid="hotel-card-pricing"]';
-  const callback = updateCards(container, maxMPDElem, cardSelector, includeBonusMiles);
+
+  const onCardsProcessed = () => {
+    try {
+      const nights = getNights();
+      const criteria = extractSearchCriteria();
+      const rates = extractRatesFromSearchCards(container, nights, includeBonusMiles);
+      if (rates.length > 0) {
+        queueRatesForDispatch(criteria, rates);
+      }
+    } catch (err) {
+      console.debug("[AA-Hotels-MPD] Error capturing search rates:", err);
+    }
+  };
+
+  const callback = updateCards(
+    container,
+    maxMPDElem,
+    cardSelector,
+    includeBonusMiles,
+    onCardsProcessed
+  );
 
   const observer = new MutationObserver((mutations) => {
     callback(mutations);
@@ -47,5 +71,6 @@ export const processSearchPage = async (container: Element): Promise<() => void>
   return () => {
     observer.disconnect();
     maxMPDElem.remove();
+    resetRateCollector();
   };
 };

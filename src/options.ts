@@ -1,6 +1,356 @@
-export type Config = {
-  expandRoomRates: boolean;
-  expandRoomTypes: boolean;
-  includeBonusMiles: boolean;
-  showDebugButton: boolean;
-};
+import {
+  getDashboardStats,
+  getStorageEstimate,
+  getExhaustiveQueries,
+  clearExhaustiveHistory,
+} from "./db/db";
+import { exportQueriesToCsv } from "./export/csv";
+import { exportQueriesToSql } from "./export/sql";
+import { triggerFileDownload } from "./export/download";
+import { DashboardStats, TopMpdRecord, LocationStatRecord } from "./types";
+
+let currentStats: DashboardStats | null = null;
+let showAllTopMpds = false;
+let showAllTopLocs = false;
+let showAllLowestLocs = false;
+
+// 1. Tab Navigation
+function setupTabs(): void {
+  const tabs = document.querySelectorAll<HTMLButtonElement>(".tab-btn");
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      tabs.forEach((t) => t.classList.remove("active"));
+      document.querySelectorAll(".tab-content").forEach((c) => c.classList.remove("active"));
+
+      tab.classList.add("active");
+      const targetId = tab.dataset.tab;
+      if (targetId) {
+        document.getElementById(targetId)?.classList.add("active");
+      }
+    });
+  });
+}
+
+// 2. Render Top MPDs Table
+function renderTopMpds(records: TopMpdRecord[], showAll: boolean): void {
+  const tbody = document.getElementById("topMpdsBody");
+  const table = document.getElementById("topMpdsTable");
+  const empty = document.getElementById("topMpdsEmpty");
+  const toggleBtn = document.getElementById("toggleTopMpds") as HTMLButtonElement | null;
+
+  if (!tbody || !table || !empty) return;
+
+  if (records.length === 0) {
+    table.style.display = "none";
+    empty.style.display = "block";
+    if (toggleBtn) toggleBtn.style.display = "none";
+    return;
+  }
+
+  table.style.display = "table";
+  empty.style.display = "none";
+  if (toggleBtn) {
+    toggleBtn.style.display = records.length > 3 ? "inline-flex" : "none";
+    toggleBtn.textContent = showAll ? "Show Top 3" : `Show Top 100 (${records.length})`;
+  }
+
+  const displayed = showAll ? records.slice(0, 100) : records.slice(0, 3);
+  tbody.innerHTML = displayed
+    .map((r, index) => {
+      const isHigh = r.mpd >= 20;
+      return `
+        <tr>
+          <td><b>#${index + 1}</b></td>
+          <td><span class="mpd-badge ${isHigh ? "high" : ""}">${r.mpd.toFixed(1)}</span></td>
+          <td>${escapeHtml(r.hotelName)}</td>
+          <td>${escapeHtml(r.location)}</td>
+          <td>${escapeHtml(r.checkIn)} → ${escapeHtml(r.checkOut)}</td>
+          <td>${r.nights}</td>
+          <td>$${r.price.toLocaleString()}</td>
+          <td>${r.miles.toLocaleString()}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+// 3. Render Locations Table
+function renderLocationsTable(
+  tbodyId: string,
+  emptyId: string,
+  toggleId: string,
+  records: LocationStatRecord[],
+  showAll: boolean
+): void {
+  const tbody = document.getElementById(tbodyId);
+  const empty = document.getElementById(emptyId);
+  const toggleBtn = document.getElementById(toggleId) as HTMLButtonElement | null;
+
+  if (!tbody || !empty) return;
+
+  if (records.length === 0) {
+    tbody.innerHTML = "";
+    empty.style.display = "block";
+    if (toggleBtn) toggleBtn.style.display = "none";
+    return;
+  }
+
+  empty.style.display = "none";
+  if (toggleBtn) {
+    toggleBtn.style.display = records.length > 3 ? "inline-flex" : "none";
+    toggleBtn.textContent = showAll ? "Show Top 3" : `Show All (${records.length})`;
+  }
+
+  const displayed = showAll ? records : records.slice(0, 3);
+  tbody.innerHTML = displayed
+    .map((loc) => {
+      const isHigh = loc.topMpd >= 20;
+      return `
+        <tr>
+          <td><b>${escapeHtml(loc.location)}</b></td>
+          <td><span class="mpd-badge ${isHigh ? "high" : ""}">${loc.topMpd.toFixed(1)}</span></td>
+          <td>${escapeHtml(loc.hotelName)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+// 4. Render Nights Breakdown (1-7 nights)
+function renderNightsBreakdown(stats: DashboardStats): void {
+  const container = document.getElementById("nightsGrid");
+  if (!container) return;
+
+  let html = "";
+  for (let n = 1; n <= 7; n++) {
+    const record = stats.nightsStats[n];
+    if (record) {
+      const isHigh = record.topMpd >= 20;
+      html += `
+        <div class="night-card">
+          <div class="night-card-title">${n} ${n === 1 ? "Night" : "Nights"}</div>
+          <div class="night-card-mpd">${record.topMpd.toFixed(1)} <span style="font-size: 11px;">m/$</span></div>
+          <div class="night-card-sub" title="${escapeHtml(record.hotelName)}">${escapeHtml(record.hotelName)}</div>
+          <div class="night-card-sub" title="${escapeHtml(record.location)}">${escapeHtml(record.location)}</div>
+        </div>
+      `;
+    } else {
+      html += `
+        <div class="night-card" style="opacity: 0.65;">
+          <div class="night-card-title">${n} ${n === 1 ? "Night" : "Nights"}</div>
+          <div class="night-card-mpd" style="color: var(--text-muted); font-size: 14px; margin: 6px 0;">No data</div>
+          <div class="night-card-sub">—</div>
+        </div>
+      `;
+    }
+  }
+  container.innerHTML = html;
+}
+
+// 5. Load and Render Dashboard
+async function loadDashboard(): Promise<void> {
+  try {
+    currentStats = await getDashboardStats();
+    renderTopMpds(currentStats.topMpds, showAllTopMpds);
+    renderLocationsTable(
+      "topLocsBody",
+      "topLocsEmpty",
+      "toggleTopLocs",
+      currentStats.allLocations,
+      showAllTopLocs
+    );
+    renderLocationsTable(
+      "lowestLocsBody",
+      "lowestLocsEmpty",
+      "toggleLowestLocs",
+      currentStats.lowestLocations,
+      showAllLowestLocs
+    );
+    renderNightsBreakdown(currentStats);
+  } catch (err) {
+    console.error("[AA-Hotels-MPD] Failed to load dashboard stats:", err);
+  }
+}
+
+// 6. Update Storage Usage Readout
+async function updateStorageReadout(): Promise<void> {
+  const readout = document.getElementById("storageReadout");
+  if (!readout) return;
+  readout.textContent = "Calculating...";
+
+  try {
+    const estimate = await getStorageEstimate();
+    readout.textContent = estimate.humanized;
+  } catch (err) {
+    readout.textContent = "Unavailable";
+    console.error("[AA-Hotels-MPD] Storage estimate failed:", err);
+  }
+}
+
+// 7. Export Handlers
+async function handleExportCsv(): Promise<void> {
+  try {
+    const queries = await getExhaustiveQueries();
+    if (queries.length === 0) {
+      alert("No exhaustive queries stored yet.\nEnsure 'Keep an exhaustive list of every query ever' is enabled in options and you have searched on AA Hotels.");
+      return;
+    }
+    const csv = exportQueriesToCsv(queries);
+    const dateStr = new Date().toISOString().split("T")[0];
+    triggerFileDownload(csv, `aa-hotels-queries-${dateStr}.csv`, "text/csv;charset=utf-8");
+  } catch (err) {
+    alert(`Failed to export CSV: ${err}`);
+  }
+}
+
+async function handleExportSql(): Promise<void> {
+  try {
+    const queries = await getExhaustiveQueries();
+    if (queries.length === 0) {
+      alert("No exhaustive queries stored yet.\nEnsure 'Keep an exhaustive list of every query ever' is enabled in options and you have searched on AA Hotels.");
+      return;
+    }
+    const sql = exportQueriesToSql(queries);
+    const dateStr = new Date().toISOString().split("T")[0];
+    triggerFileDownload(sql, `aa-hotels-queries-${dateStr}.sql`, "application/sql;charset=utf-8");
+  } catch (err) {
+    alert(`Failed to export SQL: ${err}`);
+  }
+}
+
+async function handleDeleteHistory(): Promise<void> {
+  const confirmed = confirm(
+    "Are you sure you want to permanently delete all stored query history?\nThis action cannot be undone."
+  );
+  if (!confirmed) return;
+
+  try {
+    await clearExhaustiveHistory();
+    await updateStorageReadout();
+    alert("Query history cleared successfully.");
+  } catch (err) {
+    alert(`Failed to clear history: ${err}`);
+  }
+}
+
+// 8. Options Save & Restore
+async function saveOptions(): Promise<void> {
+  const expandRoomRates = (document.getElementById("expandRoomRates") as HTMLInputElement).checked;
+  const expandRoomTypes = (document.getElementById("expandRoomTypes") as HTMLInputElement).checked;
+  const includeBonusMiles = (document.getElementById("includeBonusMiles") as HTMLInputElement).checked;
+  const showDebugButton = (document.getElementById("showDebugButton") as HTMLInputElement).checked;
+  const keepExhaustiveQueryHistory = (
+    document.getElementById("keepExhaustiveQueryHistory") as HTMLInputElement
+  ).checked;
+
+  try {
+    if (typeof chrome !== "undefined" && chrome.storage?.sync) {
+      await chrome.storage.sync.set({
+        expandRoomRates,
+        expandRoomTypes,
+        includeBonusMiles,
+        showDebugButton,
+        keepExhaustiveQueryHistory,
+      });
+    }
+
+    const status = document.getElementById("status");
+    if (status) {
+      status.textContent = "Settings saved.";
+      setTimeout(() => {
+        status.textContent = "";
+      }, 1500);
+    }
+  } catch {
+    const status = document.getElementById("status");
+    if (status) {
+      status.style.color = "red";
+      status.textContent = "Failed to save settings.";
+    }
+  }
+}
+
+async function restoreOptions(): Promise<void> {
+  try {
+    let config = {
+      expandRoomRates: false,
+      expandRoomTypes: false,
+      includeBonusMiles: false,
+      showDebugButton: true,
+      keepExhaustiveQueryHistory: false,
+    };
+
+    if (typeof chrome !== "undefined" && chrome.storage?.sync) {
+      config = (await chrome.storage.sync.get(config)) as typeof config;
+    }
+
+    (document.getElementById("expandRoomRates") as HTMLInputElement).checked = config.expandRoomRates;
+    (document.getElementById("expandRoomTypes") as HTMLInputElement).checked = config.expandRoomTypes;
+    (document.getElementById("includeBonusMiles") as HTMLInputElement).checked = config.includeBonusMiles;
+    (document.getElementById("showDebugButton") as HTMLInputElement).checked = config.showDebugButton;
+    (document.getElementById("keepExhaustiveQueryHistory") as HTMLInputElement).checked =
+      config.keepExhaustiveQueryHistory;
+  } catch (err) {
+    console.error("Failed to restore options:", err);
+  }
+}
+
+function escapeHtml(str: string): string {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// Initialization
+document.addEventListener("DOMContentLoaded", () => {
+  setupTabs();
+  restoreOptions();
+  loadDashboard();
+  updateStorageReadout();
+
+  // Button listeners
+  document.getElementById("save")?.addEventListener("click", saveOptions);
+  document.getElementById("keepExhaustiveQueryHistory")?.addEventListener("change", saveOptions);
+  document.getElementById("refreshStorageBtn")?.addEventListener("click", updateStorageReadout);
+  document.getElementById("exportCsvBtn")?.addEventListener("click", handleExportCsv);
+  document.getElementById("exportSqlBtn")?.addEventListener("click", handleExportSql);
+  document.getElementById("deleteHistoryBtn")?.addEventListener("click", handleDeleteHistory);
+
+  // Toggle buttons
+  document.getElementById("toggleTopMpds")?.addEventListener("click", () => {
+    showAllTopMpds = !showAllTopMpds;
+    if (currentStats) {
+      renderTopMpds(currentStats.topMpds, showAllTopMpds);
+    }
+  });
+
+  document.getElementById("toggleTopLocs")?.addEventListener("click", () => {
+    showAllTopLocs = !showAllTopLocs;
+    if (currentStats) {
+      renderLocationsTable(
+        "topLocsBody",
+        "topLocsEmpty",
+        "toggleTopLocs",
+        currentStats.allLocations,
+        showAllTopLocs
+      );
+    }
+  });
+
+  document.getElementById("toggleLowestLocs")?.addEventListener("click", () => {
+    showAllLowestLocs = !showAllLowestLocs;
+    if (currentStats) {
+      renderLocationsTable(
+        "lowestLocsBody",
+        "lowestLocsEmpty",
+        "toggleLowestLocs",
+        currentStats.lowestLocations,
+        showAllLowestLocs
+      );
+    }
+  });
+});

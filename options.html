@@ -1,59 +1,483 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>AA Hotels MPD Options</title>
+  <meta charset="UTF-8">
+  <title>AA Hotels MPD - Dashboard & Settings</title>
   <style>
+    :root {
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --green: #16a34a;
+      --green-bg: #dcfce7;
+      --amber: #d97706;
+      --amber-bg: #fef3c7;
+      --red: #dc2626;
+      --red-hover: #b91c1c;
+      --radius: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
     body {
-      font-family: system-ui, -apple-system, sans-serif;
-      padding: 20px;
-      line-height: 1.6;
-      max-width: 480px;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px;
+      max-width: 880px;
+      margin: 0 auto;
     }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .header-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-title img {
+      width: 32px;
+      height: 32px;
+    }
+
     h1 {
-      font-size: 18px;
-      margin-bottom: 16px;
+      font-size: 20px;
+      font-weight: 700;
     }
-    label {
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 8px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--primary);
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-bottom: 12px;
-      cursor: pointer;
     }
-    button {
+
+    /* Tables */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .data-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+      background: #f1f5f9;
+    }
+
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .mpd-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 12px;
+      background: #f1f5f9;
+      color: var(--text);
+    }
+
+    .mpd-badge.high {
+      background: var(--green-bg);
+      color: var(--green);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    /* Night cards grid */
+    .nights-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+      gap: 12px;
+    }
+
+    .night-card {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      text-align: center;
+    }
+
+    .night-card-title {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .night-card-mpd {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+
+    .night-card-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
       padding: 8px 16px;
-      cursor: pointer;
+      font-size: 14px;
       font-weight: 500;
-      margin-top: 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s ease;
     }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background-color: #ffffff;
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background-color: #f1f5f9;
+    }
+
+    .btn-danger {
+      background-color: var(--red);
+      color: #ffffff;
+    }
+
+    .btn-danger:hover {
+      background-color: var(--red-hover);
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    /* Form Controls */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label.checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .storage-box {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin: 14px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .storage-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+    }
+
     #status {
       margin-top: 10px;
-      color: green;
+      color: var(--green);
       font-size: 14px;
       min-height: 20px;
     }
   </style>
 </head>
 <body>
-  <h1>AA Hotels MPD Settings</h1>
-  <label>
-    <input type="checkbox" id="expandRoomRates">
-    Expand Room Rates
-  </label>
-  <label>
-    <input type="checkbox" id="expandRoomTypes">
-    Expand Room Types
-  </label>
-  <label>
-    <input type="checkbox" id="includeBonusMiles">
-    Include Bonus Miles Offers
-  </label>
-  <label>
-    <input type="checkbox" id="showDebugButton">
-    Show DOM Fixture Export Button
-  </label>
-  <button id="save">Save Settings</button>
-  <div id="status"></div>
-  <script src="options.js"></script>
+  <header>
+    <div class="header-title">
+      <img src="images/icon-32.png" alt="Icon">
+      <h1>AA Hotels MPD - Insights & Options</h1>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="dashboard-tab">📊 Dashboard</button>
+    <button class="tab-btn" data-tab="history-tab">💾 Query History & Export</button>
+    <button class="tab-btn" data-tab="settings-tab">⚙️ Settings</button>
+  </nav>
+
+  <!-- TAB 1: DASHBOARD -->
+  <main id="dashboard-tab" class="tab-content active">
+    <!-- Top MPDs Found -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">🏆 Top MPDs Found</div>
+        <button id="toggleTopMpds" class="btn btn-secondary btn-sm">Show Top 100</button>
+      </div>
+      <div id="topMpdsContainer">
+        <table class="data-table" id="topMpdsTable">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Rate (miles/$)</th>
+              <th>Hotel</th>
+              <th>Location</th>
+              <th>Dates</th>
+              <th>Nights</th>
+              <th>Price</th>
+              <th>Miles</th>
+            </tr>
+          </thead>
+          <tbody id="topMpdsBody"></tbody>
+        </table>
+        <div id="topMpdsEmpty" class="empty-state" style="display: none;">
+          No MPD rates captured yet. Search on <a href="https://www.aadvantagehotels.com" target="_blank">aadvantagehotels.com</a> to start tracking!
+        </div>
+      </div>
+    </section>
+
+    <!-- Location Stats (Highest vs Lowest) -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <!-- Top MPD Locations -->
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">🌟 Top MPD Locations</div>
+          <button id="toggleTopLocs" class="btn btn-secondary btn-sm" style="display: none;">Show All</button>
+        </div>
+        <div id="topLocsContainer">
+          <table class="data-table" id="topLocsTable">
+            <thead>
+              <tr>
+                <th>Location</th>
+                <th>Best MPD</th>
+                <th>Hotel</th>
+              </tr>
+            </thead>
+            <tbody id="topLocsBody"></tbody>
+          </table>
+          <div id="topLocsEmpty" class="empty-state" style="display: none;">No locations recorded.</div>
+        </div>
+      </section>
+
+      <!-- Lowest MPD Locations -->
+      <section class="card">
+        <div class="card-header">
+          <div class="card-title">📉 Lowest MPD Locations</div>
+          <button id="toggleLowestLocs" class="btn btn-secondary btn-sm" style="display: none;">Show All</button>
+        </div>
+        <div id="lowestLocsContainer">
+          <table class="data-table" id="lowestLocsTable">
+            <thead>
+              <tr>
+                <th>Location</th>
+                <th>Best MPD</th>
+                <th>Hotel</th>
+              </tr>
+            </thead>
+            <tbody id="lowestLocsBody"></tbody>
+          </table>
+          <div id="lowestLocsEmpty" class="empty-state" style="display: none;">No locations recorded.</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Top MPDs by Number of Nights -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">🌙 Top MPDs by Number of Nights (1–7 Nights)</div>
+      </div>
+      <div class="nights-grid" id="nightsGrid"></div>
+    </section>
+  </main>
+
+  <!-- TAB 2: QUERY HISTORY & EXPORT -->
+  <section id="history-tab" class="tab-content">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">📦 Exhaustive Query Logging</div>
+      </div>
+      <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 14px;">
+        When enabled, every search query and observed rate is stored in full detail in local IndexedDB storage for querying or offline analysis.
+      </p>
+
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="keepExhaustiveQueryHistory">
+          <b>Keep an exhaustive list of every query ever</b> (for export/querying externally)
+        </label>
+      </div>
+
+      <div class="storage-box">
+        <div class="storage-info">
+          <span style="font-size: 20px;">💽</span>
+          <div>
+            <div style="font-weight: 600; font-size: 13px; color: var(--text-muted);">Current Storage Usage</div>
+            <div id="storageReadout" style="font-size: 15px; font-weight: 700;">Loading...</div>
+          </div>
+        </div>
+        <button id="refreshStorageBtn" class="btn btn-secondary btn-sm">🔄 Refresh</button>
+      </div>
+
+      <div class="card-title" style="margin-top: 20px;">Export & Data Management</div>
+      <p style="font-size: 13px; color: var(--text-muted); margin-top: 4px;">
+        Export all captured queries and rates to standard data formats or wipe stored history.
+      </p>
+
+      <div class="btn-group">
+        <button id="exportCsvBtn" class="btn btn-secondary">📥 Export as .CSV</button>
+        <button id="exportSqlBtn" class="btn btn-secondary">💾 Export as .SQL</button>
+        <button id="deleteHistoryBtn" class="btn btn-danger">🗑️ Delete Stored History</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3: EXTENSION SETTINGS -->
+  <section id="settings-tab" class="tab-content">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">⚙️ Extension Preferences</div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="expandRoomRates">
+          Expand Room Rates automatically
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="expandRoomTypes">
+          Expand Room Types automatically
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="includeBonusMiles">
+          Include Bonus Miles Offers
+        </label>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="showDebugButton">
+          Show DOM Fixture Export Button
+        </label>
+      </div>
+      <button id="save" class="btn btn-primary">Save Settings</button>
+      <div id="status"></div>
+    </div>
+  </section>
+
+  <script src="dist/options.js"></script>
 </body>
 </html>

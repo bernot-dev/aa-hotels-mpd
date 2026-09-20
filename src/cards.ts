@@ -103,7 +103,8 @@ export const updateCards = (
   container: Element,
   maxMPDElem: HTMLElement,
   cardSelector: string,
-  includeBonusMiles: boolean
+  includeBonusMiles: boolean,
+  onProcessed?: () => void
 ): ((mutationList?: MutationRecord[]) => void) => {
   let isScheduled = false;
 
@@ -127,6 +128,14 @@ export const updateCards = (
     if (maxMPD > 0) {
       maxMPDElem.innerHTML = `Best earn rate on this page: <b>${maxMPD.toFixed(1)} miles/$</b>.`;
       maxMPDElem.style.display = "block";
+    }
+
+    if (onProcessed) {
+      try {
+        onProcessed();
+      } catch (err) {
+        console.debug('[AA-Hotels-MPD] Error in onProcessed callback:', err);
+      }
     }
   };
 
