@@ -8,6 +8,13 @@ import {
   DashboardStats,
 } from "../types";
 import { isValidLocation } from "../capture/criteria";
+import {
+  identifyHotelChain,
+  computeCpm,
+  computeValueScore,
+  computeChainStats,
+  computeSeasonalityStats,
+} from "../analytics";
 
 export { isValidLocation };
 
@@ -111,6 +118,10 @@ export async function recordRates(
     const rateLoc = (rate.location || criteria.location || "").trim();
     if (!isValidLocation(rateLoc)) continue;
 
+    const cpm = computeCpm(rate.price, rate.miles);
+    const valueScore = computeValueScore(rate.mpd, rate.rating);
+    const chain = rate.chain || identifyHotelChain(rate.hotelName);
+
     const recordId = `${rateLoc}_${rate.hotelName}_${criteria.checkIn}_${criteria.checkOut}_${rate.price}_${rate.miles}`;
     const newRecord: TopMpdRecord = {
       id: recordId,
@@ -124,8 +135,18 @@ export async function recordRates(
       rooms: criteria.rooms,
       guests: criteria.guests,
       price: rate.price,
+      basePrice: rate.basePrice,
+      allInPrice: rate.allInPrice,
       miles: rate.miles,
       timestamp: criteria.timestamp,
+      stars: rate.stars,
+      rating: rate.rating,
+      reviewCount: rate.reviewCount,
+      imageUrl: rate.imageUrl,
+      refundable: rate.refundable,
+      chain,
+      cpm,
+      valueScore,
     };
 
     topMap.set(recordId, newRecord);
@@ -430,12 +451,24 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     nightsStats[n.nights] = n;
   }
 
+  // Ensure every topMpd record has chain, cpm, and valueScore computed
+  for (const r of topMpds) {
+    if (!r.chain) r.chain = identifyHotelChain(r.hotelName);
+    if (r.cpm === undefined) r.cpm = computeCpm(r.price, r.miles);
+    if (r.valueScore === undefined) r.valueScore = computeValueScore(r.mpd, r.rating);
+  }
+
+  const chainStats = computeChainStats(topMpds);
+  const seasonality = computeSeasonalityStats(topMpds);
+
   return {
     topMpds,
     allLocations,
     topLocations,
     lowestLocations,
     nightsStats,
+    chainStats,
+    seasonality,
   };
 }
 

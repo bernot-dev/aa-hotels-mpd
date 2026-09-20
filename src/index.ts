@@ -91,10 +91,19 @@ if (typeof window !== "undefined") {
           hotelId: h.hotelId,
           location: h.location || criteria.location,
           price: effectivePrice,
+          basePrice: h.basePrice,
+          allInPrice: h.allInPrice,
           miles,
           mpd: Number(mpd.toFixed(1)),
           isTotalPrice: true,
           isBonus: includeBonusMiles && h.tieredMiles > h.baseMiles,
+          stars: h.stars,
+          rating: h.rating,
+          reviewCount: h.reviewCount,
+          imageUrl: h.imageUrl,
+          refundable: h.refundable,
+          checkIn: h.checkInDate || criteria.checkIn,
+          checkOut: h.checkOutDate || criteria.checkOut,
         };
       });
 

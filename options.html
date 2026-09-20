@@ -319,6 +319,326 @@
       font-size: 14px;
       min-height: 20px;
     }
+
+    /* Top 3 Visual Property Cards */
+    .top3-cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .property-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .property-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+    }
+
+    .property-card-img-wrap {
+      position: relative;
+      height: 140px;
+      background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+      overflow: hidden;
+    }
+
+    .property-card-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .property-card-rank {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: white;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .rank-1 { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .rank-2 { background: linear-gradient(135deg, #94a3b8, #64748b); }
+    .rank-3 { background: linear-gradient(135deg, #b45309, #78350f); }
+
+    .property-card-body {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+    }
+
+    .property-card-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .property-card-location {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .property-card-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 12px;
+    }
+
+    .pill-badge {
+      font-size: 11px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .pill-badge.rating {
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+
+    .pill-badge.chain {
+      background: #fdf2f8;
+      color: #9d174d;
+    }
+
+    .pill-badge.refundable {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .property-card-metrics {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-top: auto;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .property-card-mpd {
+      font-size: 20px;
+      font-weight: 800;
+      color: #15803d;
+    }
+
+    .property-card-cpm {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .property-card-price {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      text-align: right;
+    }
+
+    /* Filter & Sweet Spot Bar */
+    .filter-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+      padding: 14px 16px;
+      background: #f8fafc;
+      border-radius: var(--radius);
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .filter-group label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .filter-select {
+      padding: 6px 10px;
+      font-size: 13px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: white;
+      color: var(--text);
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .score-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      background: #ede9fe;
+      color: #6d28d9;
+    }
+
+    .cpm-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+
+    .star-rating {
+      color: #f59e0b;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+    }
+
+    /* Chain Leaderboard */
+    .chains-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .chain-card {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .chain-card:hover {
+      border-color: var(--primary);
+      background: #f0f9ff;
+    }
+
+    .chain-card.selected {
+      border-color: var(--primary);
+      background: #e0f2fe;
+    }
+
+    .chain-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .chain-card-name {
+      font-weight: 700;
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .chain-card-count {
+      font-size: 11px;
+      color: var(--text-muted);
+      background: #e2e8f0;
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+
+    .chain-card-mpd {
+      font-size: 17px;
+      font-weight: 700;
+      color: #15803d;
+    }
+
+    .chain-card-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Seasonality Layout */
+    .seasonality-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 20px;
+    }
+
+    .booking-window-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 6px;
+    }
+
+    .weekday-weekend-card {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      text-align: center;
+    }
+
+    .day-type-box {
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+    }
+
+    .day-type-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .day-type-mpd {
+      font-size: 20px;
+      font-weight: 800;
+      color: var(--primary);
+      margin-bottom: 4px;
+    }
+
+    .day-type-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
   </style>
 </head>
 <body>
@@ -337,31 +657,122 @@
 
   <!-- TAB 1: DASHBOARD -->
   <main id="dashboard-tab" class="tab-content active">
-    <!-- Top MPDs Found -->
+    <!-- Top 3 Visual Deals Showcase -->
+    <div id="top3VisualContainer" style="display: none; margin-bottom: 20px;">
+      <div style="font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+        ✨ Featured Top 3 Earning Properties
+      </div>
+      <div id="top3VisualCards" class="top3-cards-grid"></div>
+    </div>
+
+    <!-- Top MPDs & Sweet Spot Finder -->
     <section class="card">
       <div class="card-header">
-        <div class="card-title">🏆 Top MPDs Found</div>
+        <div class="card-title">🏆 Top MPD Deals & Sweet Spot Finder</div>
         <button id="toggleTopMpds" class="btn btn-secondary btn-sm">Show Top 100</button>
       </div>
+
+      <!-- Filter & Sort Toolbar -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label for="filterChain">Brand / Chain</label>
+          <select id="filterChain" class="filter-select">
+            <option value="">All Brands & Chains</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filterMinRating">Min Guest Rating</label>
+          <select id="filterMinRating" class="filter-select">
+            <option value="0">Any Rating</option>
+            <option value="7.0">≥ 7.0 (Good)</option>
+            <option value="8.0">≥ 8.0 (Very Good)</option>
+            <option value="9.0">≥ 9.0 (Exceptional)</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filterMinStars">Min Star Rating</label>
+          <select id="filterMinStars" class="filter-select">
+            <option value="0">Any Stars</option>
+            <option value="3">3★+</option>
+            <option value="4">4★+</option>
+            <option value="5">5★</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label for="filterSortBy">Sort Deals By</label>
+          <select id="filterSortBy" class="filter-select">
+            <option value="mpd">Highest MPD (Miles/$)</option>
+            <option value="value">Best Sweet Spot (Quality × MPD)</option>
+            <option value="cpm">Lowest CPM (Mileage Run)</option>
+            <option value="price">Lowest Total Price</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 14px; align-items: center; padding-bottom: 6px;">
+          <label class="checkbox-label" style="font-size: 13px;">
+            <input type="checkbox" id="filterRefundableOnly"> Refundable Only
+          </label>
+          <label class="checkbox-label" style="font-size: 13px;">
+            <input type="checkbox" id="filterUnder150"> Under $150
+          </label>
+        </div>
+      </div>
+
       <div id="topMpdsContainer">
         <table class="data-table" id="topMpdsTable">
           <thead>
             <tr>
               <th>Rank</th>
               <th>Rate (miles/$)</th>
-              <th>Hotel</th>
+              <th>Sweet Spot</th>
+              <th>Cost/Mile</th>
+              <th>Hotel & Quality</th>
+              <th>Chain</th>
               <th>Location</th>
               <th>Dates</th>
               <th>Nights</th>
               <th>Price</th>
               <th>Miles</th>
-              <th style="width: 32px;"></th>
+              <th style="width: 70px; text-align: right;">Action</th>
             </tr>
           </thead>
           <tbody id="topMpdsBody"></tbody>
         </table>
         <div id="topMpdsEmpty" class="empty-state" style="display: none;">
-          No MPD rates captured yet. Search on <a href="https://www.aadvantagehotels.com" target="_blank">aadvantagehotels.com</a> to start tracking!
+          No MPD rates match the current filters. Search on <a href="https://www.aadvantagehotels.com" target="_blank">aadvantagehotels.com</a> to start tracking!
+        </div>
+      </div>
+    </section>
+
+    <!-- Hotel Brand & Chain Leaderboard -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">🏨 Hotel Brand & Chain Leaderboard</div>
+      </div>
+      <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+        Average miles earned per dollar across hotel loyalty brands. Click any chain to filter deals.
+      </p>
+      <div id="chainsList" class="chains-grid"></div>
+      <div id="chainsEmpty" class="empty-state" style="display: none;">No chain data recorded yet.</div>
+    </section>
+
+    <!-- Booking Window & Seasonality Analytics -->
+    <section class="card">
+      <div class="card-header">
+        <div class="card-title">📅 Booking Window & Seasonality Analytics</div>
+      </div>
+      <div class="seasonality-grid">
+        <div>
+          <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-muted);">
+            Advance Booking Window (Average MPD)
+          </div>
+          <div id="bookingWindowsList"></div>
+          <div id="bookingWindowsEmpty" class="empty-state" style="display: none;">No booking window data.</div>
+        </div>
+        <div>
+          <div style="font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text-muted);">
+            Weekday vs. Weekend Check-In
+          </div>
+          <div id="seasonalityWeekdayBox"></div>
         </div>
       </div>
     </section>

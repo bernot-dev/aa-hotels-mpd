@@ -9,7 +9,18 @@ import {
 import { exportQueriesToCsv } from "./export/csv";
 import { exportQueriesToSql } from "./export/sql";
 import { triggerFileDownload } from "./export/download";
-import { DashboardStats, TopMpdRecord, LocationStatRecord } from "./types";
+import {
+  DashboardStats,
+  TopMpdRecord,
+  LocationStatRecord,
+  ChainStat,
+  SeasonalityStats,
+} from "./types";
+import {
+  identifyHotelChain,
+  computeValueScore,
+  computeCpm,
+} from "./analytics";
 
 export type Config = {
   expandRoomRates: boolean;
@@ -24,6 +35,7 @@ let currentStats: DashboardStats | null = null;
 let showAllTopMpds = false;
 let showAllTopLocs = false;
 let showAllLowestLocs = false;
+let selectedChainFilter = "";
 
 // 1. Tab Navigation
 function setupTabs(): void {
@@ -42,7 +54,233 @@ function setupTabs(): void {
   });
 }
 
-// 2. Render Top MPDs Table
+// 2. Top 3 Visual Property Cards Showcase
+function renderTop3VisualCards(records: TopMpdRecord[]): void {
+  const container = document.getElementById("top3VisualContainer");
+  const cardsGrid = document.getElementById("top3VisualCards");
+  if (!container || !cardsGrid) return;
+
+  const top3 = records.slice(0, 3);
+  if (top3.length === 0) {
+    container.style.display = "none";
+    cardsGrid.innerHTML = "";
+    return;
+  }
+
+  container.style.display = "block";
+  cardsGrid.innerHTML = top3
+    .map((r, index) => {
+      const rank = index + 1;
+      const chain = r.chain || identifyHotelChain(r.hotelName);
+      const cpm = r.cpm ?? computeCpm(r.price, r.miles);
+      const valScore = r.valueScore ?? computeValueScore(r.mpd, r.rating);
+      const bookingUrl = r.hotelId
+        ? `https://www.aadvantagehotels.com/details?id=${encodeURIComponent(r.hotelId)}&checkIn=${encodeURIComponent(r.checkIn)}&checkOut=${encodeURIComponent(r.checkOut)}`
+        : `https://www.aadvantagehotels.com`;
+
+      const imgHtml = r.imageUrl
+        ? `<img class="property-card-img" src="${escapeHtml(r.imageUrl)}" alt="${escapeHtml(r.hotelName)}" onerror="this.parentElement.innerHTML='<div style=\\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:36px;\\\'>🏨</div>'"/>`
+        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:36px;background:linear-gradient(135deg, #1e293b 0%, #334155 100%);">🏨</div>`;
+
+      const starsHtml = r.stars
+        ? `<span class="star-rating" title="${r.stars} Stars">${"★".repeat(Math.min(5, Math.round(r.stars)))}</span>`
+        : "";
+
+      const ratingHtml = typeof r.rating === "number" && r.rating > 0
+        ? `<span class="pill-badge rating">⭐ ${r.rating.toFixed(1)}/10${r.reviewCount ? ` (${r.reviewCount})` : ""}</span>`
+        : "";
+
+      const refundableHtml = r.refundable
+        ? `<span class="pill-badge refundable">✓ Refundable</span>`
+        : "";
+
+      return `
+        <div class="property-card">
+          <div class="property-card-img-wrap">
+            ${imgHtml}
+            <div class="property-card-rank rank-${rank}">Rank #${rank}</div>
+          </div>
+          <div class="property-card-body">
+            <div class="property-card-title" title="${escapeHtml(r.hotelName)}">${escapeHtml(r.hotelName)}</div>
+            <div class="property-card-location">📍 ${escapeHtml(r.location)}</div>
+            <div class="property-card-badges">
+              ${starsHtml}
+              ${ratingHtml}
+              <span class="pill-badge chain">${escapeHtml(chain)}</span>
+              <span class="score-badge" title="Sweet Spot Score (Quality × MPD)">🎯 ${valScore.toFixed(1)}</span>
+              ${refundableHtml}
+            </div>
+            <div class="property-card-metrics">
+              <div>
+                <div class="property-card-mpd">${r.mpd.toFixed(1)} <span style="font-size: 12px; font-weight: 600;">MPD</span></div>
+                <div class="property-card-cpm">${cpm > 0 ? `${cpm.toFixed(1)}¢ / mile` : ""}</div>
+              </div>
+              <div>
+                <div class="property-card-price">$${r.price.toLocaleString()}</div>
+                <div style="font-size: 11px; color: var(--text-muted); text-align: right;">${r.miles.toLocaleString()} miles (${r.nights}n)</div>
+              </div>
+            </div>
+            <a href="${bookingUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm" style="margin-top: 12px; justify-content: center; text-decoration: none;">
+              Book Deal on AA Hotels ↗
+            </a>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+// 3. Hotel Brand & Chain Leaderboard
+function populateChainFilterOptions(chains: ChainStat[] = []): void {
+  const select = document.getElementById("filterChain") as HTMLSelectElement | null;
+  if (!select) return;
+
+  const currentVal = select.value;
+  select.innerHTML = `<option value="">All Brands & Chains</option>`;
+  for (const c of chains) {
+    const opt = document.createElement("option");
+    opt.value = c.chain;
+    opt.textContent = `${c.chain} (${c.count})`;
+    select.appendChild(opt);
+  }
+  select.value = selectedChainFilter || currentVal || "";
+}
+
+function renderChainLeaderboard(chains: ChainStat[] = []): void {
+  const container = document.getElementById("chainsList");
+  const empty = document.getElementById("chainsEmpty");
+  if (!container || !empty) return;
+
+  if (chains.length === 0) {
+    container.innerHTML = "";
+    empty.style.display = "block";
+    return;
+  }
+
+  empty.style.display = "none";
+  container.innerHTML = chains
+    .map(
+      (c) => `
+        <div class="chain-card ${c.chain === selectedChainFilter ? "selected" : ""}" data-chain="${escapeHtml(c.chain)}">
+          <div class="chain-card-header">
+            <span class="chain-card-name">${escapeHtml(c.chain)}</span>
+            <span class="chain-card-count">${c.count} ${c.count === 1 ? "deal" : "deals"}</span>
+          </div>
+          <div class="chain-card-mpd">${c.avgMpd.toFixed(1)} <span style="font-size: 11px; font-weight: 600;">avg MPD</span></div>
+          <div class="chain-card-sub" style="color: var(--text);">Top: ${c.bestMpd.toFixed(1)} MPD${c.avgCpm > 0 ? ` · ${c.avgCpm.toFixed(1)}¢/mi` : ""}</div>
+          <div class="chain-card-sub" style="font-style: italic; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(c.topHotel)}">
+            ${escapeHtml(c.topHotel)}
+          </div>
+        </div>
+      `
+    )
+    .join("");
+}
+
+// 4. Seasonality & Booking Window Analytics
+function renderSeasonality(seasonality?: SeasonalityStats): void {
+  const list = document.getElementById("bookingWindowsList");
+  const empty = document.getElementById("bookingWindowsEmpty");
+  const weekdayBox = document.getElementById("seasonalityWeekdayBox");
+
+  const windows = seasonality?.bookingWindows || [];
+  if (list && empty) {
+    const hasData = windows.some((b) => b.count > 0);
+    if (!hasData) {
+      list.innerHTML = "";
+      empty.style.display = "block";
+    } else {
+      empty.style.display = "none";
+      list.innerHTML = windows
+        .map(
+          (b) => `
+            <div class="booking-window-row">
+              <span style="font-weight: 600;">${escapeHtml(b.label)}</span>
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <span style="font-size: 12px; color: var(--text-muted);">${b.count} ${b.count === 1 ? "rate" : "rates"}</span>
+                <span class="mpd-badge ${b.avgMpd >= 20 ? "high" : ""}">${b.avgMpd > 0 ? `${b.avgMpd.toFixed(1)} m/$` : "—"}</span>
+              </div>
+            </div>
+          `
+        )
+        .join("");
+    }
+  }
+
+  if (weekdayBox) {
+    const weekdayAvg = seasonality?.weekdayAvgMpd || 0;
+    const weekendAvg = seasonality?.weekendAvgMpd || 0;
+    weekdayBox.innerHTML = `
+      <div class="weekday-weekend-card">
+        <div class="day-type-box">
+          <div class="day-type-title">Weekday Check-In</div>
+          <div class="day-type-mpd">${weekdayAvg > 0 ? `${weekdayAvg.toFixed(1)}` : "—"} <span style="font-size: 12px; font-weight: 600;">m/$</span></div>
+          <div class="day-type-sub">Sun – Thu Check-In</div>
+        </div>
+        <div class="day-type-box">
+          <div class="day-type-title">Weekend Check-In</div>
+          <div class="day-type-mpd" style="color: #15803d;">${weekendAvg > 0 ? `${weekendAvg.toFixed(1)}` : "—"} <span style="font-size: 12px; font-weight: 600;">m/$</span></div>
+          <div class="day-type-sub">Fri – Sat Check-In</div>
+        </div>
+      </div>
+    `;
+  }
+}
+
+// 5. Filtering and Sorting for Top MPDs
+function applyFiltersAndSort(records: TopMpdRecord[]): TopMpdRecord[] {
+  const minRatingSelect = document.getElementById("filterMinRating") as HTMLSelectElement | null;
+  const minStarsSelect = document.getElementById("filterMinStars") as HTMLSelectElement | null;
+  const sortBySelect = document.getElementById("filterSortBy") as HTMLSelectElement | null;
+  const refundableCb = document.getElementById("filterRefundableOnly") as HTMLInputElement | null;
+  const under150Cb = document.getElementById("filterUnder150") as HTMLInputElement | null;
+
+  const minRating = parseFloat(minRatingSelect?.value || "0");
+  const minStars = parseFloat(minStarsSelect?.value || "0");
+  const sortBy = sortBySelect?.value || "mpd";
+  const refundableOnly = refundableCb?.checked || false;
+  const under150 = under150Cb?.checked || false;
+
+  const filtered = records.filter((r) => {
+    const chain = r.chain || identifyHotelChain(r.hotelName);
+    if (selectedChainFilter && chain !== selectedChainFilter) return false;
+    if (minRating > 0 && (!r.rating || r.rating < minRating)) return false;
+    if (minStars > 0 && (!r.stars || r.stars < minStars)) return false;
+    if (refundableOnly && !r.refundable) return false;
+    if (under150 && r.price >= 150) return false;
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    if (sortBy === "value") {
+      const valA = a.valueScore ?? computeValueScore(a.mpd, a.rating);
+      const valB = b.valueScore ?? computeValueScore(b.mpd, b.rating);
+      return valB - valA;
+    } else if (sortBy === "cpm") {
+      const cpmA = a.cpm ?? computeCpm(a.price, a.miles);
+      const cpmB = b.cpm ?? computeCpm(b.price, b.miles);
+      // Lowest CPM first; if 0 (missing miles), sort to the bottom
+      if (cpmA <= 0 && cpmB <= 0) return 0;
+      if (cpmA <= 0) return 1;
+      if (cpmB <= 0) return -1;
+      return cpmA - cpmB;
+    } else if (sortBy === "price") {
+      return a.price - b.price;
+    } else {
+      return b.mpd - a.mpd;
+    }
+  });
+
+  return filtered;
+}
+
+function renderFilteredTopMpds(): void {
+  if (!currentStats) return;
+  const filtered = applyFiltersAndSort(currentStats.topMpds);
+  renderTopMpds(filtered, showAllTopMpds);
+}
+
+// 6. Render Top MPDs Table
 function renderTopMpds(records: TopMpdRecord[], showAll: boolean): void {
   const tbody = document.getElementById("topMpdsBody");
   const table = document.getElementById("topMpdsTable");
@@ -62,31 +300,51 @@ function renderTopMpds(records: TopMpdRecord[], showAll: boolean): void {
   empty.style.display = "none";
   if (toggleBtn) {
     toggleBtn.style.display = records.length > 3 ? "inline-flex" : "none";
-    toggleBtn.textContent = showAll ? "Show Top 3" : `Show Top 100 (${records.length})`;
+    toggleBtn.textContent = showAll ? "Show Top 3" : `Show All (${records.length})`;
   }
 
   const displayed = showAll ? records.slice(0, 100) : records.slice(0, 3);
   tbody.innerHTML = displayed
     .map((r, index) => {
       const isHigh = r.mpd >= 20;
+      const chain = r.chain || identifyHotelChain(r.hotelName);
+      const valScore = r.valueScore ?? computeValueScore(r.mpd, r.rating);
+      const cpm = r.cpm ?? computeCpm(r.price, r.miles);
+      const bookingUrl = r.hotelId
+        ? `https://www.aadvantagehotels.com/details?id=${encodeURIComponent(r.hotelId)}&checkIn=${encodeURIComponent(r.checkIn)}&checkOut=${encodeURIComponent(r.checkOut)}`
+        : "";
+
       return `
         <tr>
           <td><b>#${index + 1}</b></td>
           <td><span class="mpd-badge ${isHigh ? "high" : ""}">${r.mpd.toFixed(1)}</span></td>
-          <td>${escapeHtml(r.hotelName)}</td>
+          <td><span class="score-badge" title="Quality × MPD">${valScore.toFixed(1)}</span></td>
+          <td><span class="cpm-badge" title="Cost per mile">${cpm > 0 ? `${cpm.toFixed(1)}¢` : "—"}</span></td>
+          <td>
+            <div style="font-weight: 600; line-height: 1.3;">${escapeHtml(r.hotelName)}</div>
+            <div style="font-size: 11px; color: var(--text-muted); display: flex; gap: 6px; align-items: center; margin-top: 2px;">
+              ${r.stars ? `<span class="star-rating" title="${r.stars} Stars">${"★".repeat(Math.min(5, Math.round(r.stars)))}</span>` : ""}
+              ${typeof r.rating === "number" && r.rating > 0 ? `<span>⭐ ${r.rating.toFixed(1)}</span>` : ""}
+              ${r.refundable ? `<span style="color: #15803d; font-weight: 600;">✓ Ref</span>` : ""}
+            </div>
+          </td>
+          <td><span style="font-size: 12px;">${escapeHtml(chain)}</span></td>
           <td>${escapeHtml(r.location)}</td>
-          <td>${escapeHtml(r.checkIn)} → ${escapeHtml(r.checkOut)}</td>
+          <td><span style="white-space: nowrap;">${escapeHtml(r.checkIn)} → ${escapeHtml(r.checkOut)}</span></td>
           <td>${r.nights}</td>
           <td>$${r.price.toLocaleString()}</td>
           <td>${r.miles.toLocaleString()}</td>
-          <td style="text-align: right;"><button class="btn-delete-item btn-delete-top" data-id="${escapeHtml(r.id)}" title="Delete this rate">✕</button></td>
+          <td style="text-align: right; white-space: nowrap;">
+            ${bookingUrl ? `<a href="${bookingUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; margin-right: 8px; font-size: 13px;" title="View on AA Hotels">↗</a>` : ""}
+            <button class="btn-delete-item btn-delete-top" data-id="${escapeHtml(r.id)}" title="Delete this rate">✕</button>
+          </td>
         </tr>
       `;
     })
     .join("");
 }
 
-// 3. Render Locations Table
+// 7. Render Locations Table
 function renderLocationsTable(
   tbodyId: string,
   emptyId: string,
@@ -129,7 +387,7 @@ function renderLocationsTable(
     .join("");
 }
 
-// 4. Render Nights Breakdown (1-7 nights)
+// 8. Render Nights Breakdown (1-7 nights)
 function renderNightsBreakdown(stats: DashboardStats): void {
   const container = document.getElementById("nightsGrid");
   if (!container) return;
@@ -159,11 +417,15 @@ function renderNightsBreakdown(stats: DashboardStats): void {
   container.innerHTML = html;
 }
 
-// 5. Load and Render Dashboard
+// 9. Load and Render Dashboard
 async function loadDashboard(): Promise<void> {
   try {
     currentStats = await getDashboardStats();
-    renderTopMpds(currentStats.topMpds, showAllTopMpds);
+    renderTop3VisualCards(currentStats.topMpds);
+    populateChainFilterOptions(currentStats.chainStats);
+    renderChainLeaderboard(currentStats.chainStats);
+    renderSeasonality(currentStats.seasonality);
+    renderFilteredTopMpds();
     renderLocationsTable(
       "topLocsBody",
       "topLocsEmpty",
@@ -361,12 +623,53 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("exportSqlBtn")?.addEventListener("click", handleExportSql);
   document.getElementById("deleteHistoryBtn")?.addEventListener("click", handleDeleteHistory);
 
+  // Filter & Sort Toolbar listeners
+  document.getElementById("filterChain")?.addEventListener("change", (e) => {
+    selectedChainFilter = (e.target as HTMLSelectElement).value;
+    document.querySelectorAll(".chain-card").forEach((card) => {
+      const chainAttr = card.getAttribute("data-chain");
+      if (chainAttr === selectedChainFilter) {
+        card.classList.add("selected");
+      } else {
+        card.classList.remove("selected");
+      }
+    });
+    renderFilteredTopMpds();
+  });
+
+  ["filterMinRating", "filterMinStars", "filterSortBy", "filterRefundableOnly", "filterUnder150"].forEach((id) => {
+    document.getElementById(id)?.addEventListener("change", () => {
+      renderFilteredTopMpds();
+    });
+  });
+
+  // Chain Leaderboard card click listener
+  document.getElementById("chainsList")?.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    const card = target.closest<HTMLElement>(".chain-card");
+    if (!card) return;
+    const chain = card.getAttribute("data-chain") || "";
+    if (selectedChainFilter === chain) {
+      selectedChainFilter = "";
+    } else {
+      selectedChainFilter = chain;
+    }
+    const select = document.getElementById("filterChain") as HTMLSelectElement | null;
+    if (select) select.value = selectedChainFilter;
+    document.querySelectorAll(".chain-card").forEach((c) => {
+      if (c.getAttribute("data-chain") === selectedChainFilter) {
+        c.classList.add("selected");
+      } else {
+        c.classList.remove("selected");
+      }
+    });
+    renderFilteredTopMpds();
+  });
+
   // Toggle buttons
   document.getElementById("toggleTopMpds")?.addEventListener("click", () => {
     showAllTopMpds = !showAllTopMpds;
-    if (currentStats) {
-      renderTopMpds(currentStats.topMpds, showAllTopMpds);
-    }
+    renderFilteredTopMpds();
   });
 
   document.getElementById("toggleTopLocs")?.addEventListener("click", () => {
