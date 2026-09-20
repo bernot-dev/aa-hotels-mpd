@@ -37,7 +37,7 @@ export type Config = {
 };
 
 let currentStats: DashboardStats | null = null;
-let showAllTopMpds = true;
+let showAllTopMpds = false;
 const TOP_MPDS_PAGE_SIZE = 100;
 let currentTopMpdsPage = 1;
 let showAllTopLocs = false;
