@@ -243,16 +243,24 @@ export const processSearchPage = async (
 
   let includeBonusMiles = false;
   let expandSearchResults = true;
+  let useAllInPricing = true;
 
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.sync) {
       const result = await chrome.storage.sync.get([
         "includeBonusMiles",
         "expandSearchResults",
+        "pricingCalculationMethod",
+        "useAllInPricing",
       ]);
       includeBonusMiles = Boolean(result.includeBonusMiles);
       if (typeof result.expandSearchResults === "boolean") {
         expandSearchResults = result.expandSearchResults;
+      }
+      if (result.pricingCalculationMethod) {
+        useAllInPricing = result.pricingCalculationMethod === "all_in";
+      } else if (typeof result.useAllInPricing === "boolean") {
+        useAllInPricing = result.useAllInPricing;
       }
     }
   } catch (err) {
@@ -297,6 +305,7 @@ export const processSearchPage = async (
     maxMPDElem,
     cardSelector,
     includeBonusMiles,
+    useAllInPricing,
     onCardsProcessed
   );
 

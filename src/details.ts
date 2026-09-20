@@ -241,6 +241,7 @@ export const processDetailsPage = async (container: Element): Promise<() => void
   let expandRoomRates = false;
   let expandRoomTypes = false;
   let includeBonusMiles = false;
+  let useAllInPricing = true;
 
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.sync) {
@@ -248,10 +249,17 @@ export const processDetailsPage = async (container: Element): Promise<() => void
         "expandRoomRates",
         "expandRoomTypes",
         "includeBonusMiles",
+        "pricingCalculationMethod",
+        "useAllInPricing",
       ]);
       expandRoomRates = Boolean(result.expandRoomRates);
       expandRoomTypes = Boolean(result.expandRoomTypes);
       includeBonusMiles = Boolean(result.includeBonusMiles);
+      if (result.pricingCalculationMethod) {
+        useAllInPricing = result.pricingCalculationMethod === "all_in";
+      } else if (typeof result.useAllInPricing === "boolean") {
+        useAllInPricing = result.useAllInPricing;
+      }
     }
   } catch (err) {
     console.warn("[AA-Hotels-MPD] Failed to read storage options:", err);
@@ -277,6 +285,7 @@ export const processDetailsPage = async (container: Element): Promise<() => void
     maxMPDElem,
     cardSelector,
     includeBonusMiles,
+    useAllInPricing,
     onCardsProcessed
   );
 

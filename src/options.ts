@@ -257,6 +257,10 @@ async function saveOptions(): Promise<void> {
     document.getElementById("keepExhaustiveQueryHistory") as HTMLInputElement
   ).checked;
 
+  const pricingSelect = document.getElementById("pricingCalculationMethod") as HTMLSelectElement | null;
+  const pricingCalculationMethod = pricingSelect?.value === "base" ? "base" : "all_in";
+  const useAllInPricing = pricingCalculationMethod === "all_in";
+
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.sync) {
       await chrome.storage.sync.set({
@@ -266,6 +270,8 @@ async function saveOptions(): Promise<void> {
         includeBonusMiles,
         showDebugButton,
         keepExhaustiveQueryHistory,
+        pricingCalculationMethod,
+        useAllInPricing,
       });
     }
 
@@ -294,10 +300,17 @@ async function restoreOptions(): Promise<void> {
       includeBonusMiles: false,
       showDebugButton: true,
       keepExhaustiveQueryHistory: false,
+      pricingCalculationMethod: "all_in",
+      useAllInPricing: true,
     };
 
     if (typeof chrome !== "undefined" && chrome.storage?.sync) {
       config = (await chrome.storage.sync.get(config)) as typeof config;
+    }
+
+    const pricingSelect = document.getElementById("pricingCalculationMethod") as HTMLSelectElement | null;
+    if (pricingSelect) {
+      pricingSelect.value = config.pricingCalculationMethod === "base" ? "base" : "all_in";
     }
 
     const ratesEl = document.getElementById("expandRoomRates") as HTMLInputElement | null;
@@ -341,6 +354,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Button listeners
   document.getElementById("save")?.addEventListener("click", saveOptions);
+  document.getElementById("pricingCalculationMethod")?.addEventListener("change", saveOptions);
   document.getElementById("keepExhaustiveQueryHistory")?.addEventListener("change", saveOptions);
   document.getElementById("refreshStorageBtn")?.addEventListener("click", updateStorageReadout);
   document.getElementById("exportCsvBtn")?.addEventListener("click", handleExportCsv);

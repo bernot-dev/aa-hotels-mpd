@@ -1,5 +1,10 @@
 import { getNights } from "./nights";
-import { registerHotelMPD, getHotelIdFromCard, hotelMpdRegistry } from "./registry";
+import {
+  registerHotelMPD,
+  getHotelIdFromCard,
+  hotelMpdRegistry,
+  getEnrichedHotel,
+} from "./registry";
 
 export const extractNumber = (e: Element): number | null => {
   // Ignore text inside our own injected badges when extracting original numbers
@@ -19,7 +24,8 @@ export interface CardProcessResult {
 export const processCard = (
   card: Element,
   nights: number,
-  includeBonusMiles: boolean
+  includeBonusMiles: boolean,
+  useAllInPricing: boolean = true
 ): CardProcessResult => {
   const priceSelector = '[data-testid="earn-price"]';
   const priceTypeSelector = '[data-testid="pricing-text"]';
@@ -36,18 +42,33 @@ export const processCard = (
     return { cardMaxMPD: 0, processedTiers: 0 };
   }
 
-  const dollarsElem = card.querySelector(priceSelector);
-  if (!dollarsElem) {
-    return { cardMaxMPD: 0, processedTiers: 0 };
-  }
+  const hotelId = getHotelIdFromCard(card);
+  const enriched = hotelId ? getEnrichedHotel(hotelId) : undefined;
 
-  const dollars = extractNumber(dollarsElem);
-  if (!dollars || dollars <= 0) {
+  const dollarsElem = card.querySelector(priceSelector);
+  const domDollars = dollarsElem ? extractNumber(dollarsElem) : null;
+
+  // If no DOM price and no API price, cannot process
+  if ((!domDollars || domDollars <= 0) && !enriched) {
     return { cardMaxMPD: 0, processedTiers: 0 };
   }
 
   const pricingTextElem = card.querySelector(priceTypeSelector);
   const isTotalPrice = pricingTextElem?.textContent?.trim().startsWith("Total") ?? false;
+
+  // Determine authoritative pricing
+  const effectivePrice = enriched
+    ? (useAllInPricing && enriched.allInPrice > 0
+        ? enriched.allInPrice
+        : (enriched.basePrice > 0 ? enriched.basePrice : (domDollars && domDollars > 0 ? domDollars : enriched.price)))
+    : (domDollars || 0);
+
+  if (effectivePrice <= 0) {
+    return { cardMaxMPD: 0, processedTiers: 0 };
+  }
+
+  // If we have API data with an all-in total or base total, it's inherently total stay price
+  const effectiveIsTotalPrice = enriched ? (enriched.allInPrice > 0 || enriched.basePrice > 0 || isTotalPrice) : isTotalPrice;
 
   const tiers = card.querySelectorAll(tierSelector);
   tiers.forEach((tier) => {
@@ -56,7 +77,7 @@ export const processCard = (
       return;
     }
 
-    const mpd = isTotalPrice ? miles / dollars : miles / dollars / nights;
+    const mpd = effectiveIsTotalPrice ? miles / effectivePrice : miles / effectivePrice / (nights || 1);
     if (isNaN(mpd) || !isFinite(mpd) || mpd <= 0) {
       return;
     }
@@ -71,16 +92,32 @@ export const processCard = (
       badge.setAttribute('data-aa-mpd', 'true');
       badge.dataset.rate = formattedMPD;
       badge.textContent = badgeText;
+      if (enriched) {
+        badge.setAttribute('data-pricing-type', useAllInPricing ? 'all-in' : 'base');
+        if (enriched.allInPrice > 0 && enriched.allInPrice !== enriched.basePrice) {
+          badge.title = `Total with taxes & fees: $${enriched.allInPrice.toFixed(2)} (Base: $${enriched.basePrice.toFixed(2)})`;
+        }
+      } else {
+        badge.setAttribute('data-pending-api', 'true');
+      }
       if (mpd >= 20) {
         badge.style.color = 'green';
         badge.style.fontWeight = 'bold';
       }
       tier.appendChild(badge);
     } else {
-      // Update in place only if rate changed
-      if (badge.dataset.rate !== formattedMPD) {
+      // Update in place only if rate changed or upgraded from pending
+      const isPending = badge.getAttribute('data-pending-api') === 'true';
+      if (badge.dataset.rate !== formattedMPD || (isPending && enriched)) {
         badge.dataset.rate = formattedMPD;
         badge.textContent = badgeText;
+        if (enriched) {
+          badge.removeAttribute('data-pending-api');
+          badge.setAttribute('data-pricing-type', useAllInPricing ? 'all-in' : 'base');
+          if (enriched.allInPrice > 0 && enriched.allInPrice !== enriched.basePrice) {
+            badge.title = `Total with taxes & fees: $${enriched.allInPrice.toFixed(2)} (Base: $${enriched.basePrice.toFixed(2)})`;
+          }
+        }
         if (mpd >= 20) {
           badge.style.color = 'green';
           badge.style.fontWeight = 'bold';
@@ -97,11 +134,8 @@ export const processCard = (
     }
   });
 
-  if (cardMaxMPD > 0) {
-    const hotelId = getHotelIdFromCard(card);
-    if (hotelId) {
-      registerHotelMPD(hotelId, cardMaxMPD);
-    }
+  if (cardMaxMPD > 0 && hotelId) {
+    registerHotelMPD(hotelId, cardMaxMPD);
   }
 
   return { cardMaxMPD, processedTiers };
@@ -112,8 +146,14 @@ export const updateCards = (
   maxMPDElem: HTMLElement,
   cardSelector: string,
   includeBonusMiles: boolean,
+  useAllInPricingOrOnProcessed?: boolean | (() => void),
   onProcessed?: () => void
 ): ((mutationList?: MutationRecord[]) => void) => {
+  const useAllInPricing =
+    typeof useAllInPricingOrOnProcessed === "boolean" ? useAllInPricingOrOnProcessed : true;
+  const actualOnProcessed =
+    typeof useAllInPricingOrOnProcessed === "function" ? useAllInPricingOrOnProcessed : onProcessed;
+
   let isScheduled = false;
 
   const runUpdate = () => {
@@ -124,7 +164,7 @@ export const updateCards = (
     const cards = container.querySelectorAll(cardSelector);
     cards.forEach((card) => {
       try {
-        const { cardMaxMPD } = processCard(card, nights, includeBonusMiles);
+        const { cardMaxMPD } = processCard(card, nights, includeBonusMiles, useAllInPricing);
         if (cardMaxMPD > maxMPD) {
           maxMPD = cardMaxMPD;
         }
@@ -144,9 +184,9 @@ export const updateCards = (
       }
     }
 
-    if (onProcessed) {
+    if (actualOnProcessed) {
       try {
-        onProcessed();
+        actualOnProcessed();
       } catch (err) {
         console.debug('[AA-Hotels-MPD] Error in onProcessed callback:', err);
       }

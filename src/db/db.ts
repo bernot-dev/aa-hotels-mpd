@@ -329,6 +329,13 @@ export async function cleanCorruptedLocations(
       }
     }
 
+    // 3. Known fragmented neighborhood/park strings that are not municipal cities
+    if (!isCorrupted) {
+      if (/^(?:Southside Neighborhood|Black Bill Park|Flagstaff City Center)$/i.test(trimmed)) {
+        isCorrupted = true;
+      }
+    }
+
     if (isCorrupted) {
       locStore.delete(item.location);
       deletedLocations.push(item.location);

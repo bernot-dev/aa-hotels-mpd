@@ -1,6 +1,7 @@
 import { CapturedRate } from "../types";
 import { extractNumber } from "../cards";
 import { isValidLocation } from "./criteria";
+import { getEnrichedHotel, getHotelIdFromCard } from "../registry";
 
 export function extractRatesFromSearchCards(
   container: Element,
@@ -91,12 +92,25 @@ export function extractRatesFromSearchCards(
       parent = parent.parentElement;
     }
 
-    // Determine final card location: link destination > card neighborhood > hotel name city
+    if (!hotelId) {
+      hotelId = getHotelIdFromCard(card) || undefined;
+    }
+
     let finalLocation = cardLocation;
+    const enriched = hotelId ? getEnrichedHotel(hotelId) : undefined;
+    if (enriched) {
+      if (enriched.hotelName && hotelName === "Unknown Hotel") {
+        hotelName = enriched.hotelName;
+      }
+      if (enriched.location && isValidLocation(enriched.location)) {
+        finalLocation = enriched.location;
+      }
+    }
+
+    // Determine final card location if not resolved by enriched data: link destination > card neighborhood > hotel name city
     if (!finalLocation && cardNeighborhood && isValidLocation(cardNeighborhood)) {
       finalLocation = cardNeighborhood;
-    }
-    if (!finalLocation && hotelName !== "Unknown Hotel") {
+    } else if (!finalLocation && hotelName !== "Unknown Hotel") {
       const cityMatch = hotelName.match(/,\s*([^,]+)$/);
       if (cityMatch && isValidLocation(cityMatch[1].trim())) {
         finalLocation = cityMatch[1].trim();

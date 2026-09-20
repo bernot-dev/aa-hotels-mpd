@@ -144,6 +144,74 @@ describe("Network Response Interceptor", () => {
       expect(rates).toHaveLength(1);
       expect(rates[0].baseMiles).toBe(10000);
     });
+
+    it("extracts enriched hotel data with all-in pricing and canonical location from real Rocket Travel API schema", () => {
+      const payload = {
+        id: "529476cd-ae38-4b09-bffa-df7ff02156d0",
+        checkInDate: "2026-11-16",
+        checkOutDate: "2026-11-18",
+        placeResult: {
+          city: "Flagstaff (AZ)",
+          state: "Arizona State",
+          country: "United States",
+          latitude: 35.198067,
+          longitude: -111.651273,
+        },
+        results: [
+          {
+            hotel: {
+              id: 12498,
+              name: "Little America Hotel Flagstaff",
+              stars: 4.0,
+              rating: 9.5,
+              numberOfReviews: 4055,
+              address: {
+                line1: "2515 East Butler Avenue",
+                city: "Flagstaff (AZ)",
+                state: { name: "Arizona", code: "AZ" },
+                country: { name: "United States" },
+                zipcode: "86004",
+                latitude: 35.1873,
+                longitude: -111.6212,
+                neighborhoodName: "Southside Neighborhood",
+              },
+              mainImage: { url: "https://example.com/hotel.jpg" },
+            },
+            totalPrice: { amount: 298.0 },
+            lowestAveragePrice: { amount: 149.0 },
+            grandTotalPublishedPriceInclusive: { amount: 331.94 },
+            fees: 80.04,
+            rewards: 400,
+            roomTypeResultTeaser: { rewards: 4500 },
+            refundability: "REFUNDABLE",
+          },
+        ],
+      };
+
+      const rates = extractHotelRatesFromPayload(payload);
+      expect(rates).toHaveLength(1);
+      const hotel = rates[0];
+
+      expect(hotel.hotelId).toBe("12498");
+      expect(hotel.hotelName).toBe("Little America Hotel Flagstaff");
+      expect(hotel.basePrice).toBe(298.0);
+      expect(hotel.allInPrice).toBe(331.94);
+      expect(hotel.nightlyPrice).toBe(149.0);
+      expect(hotel.fees).toBe(80.04);
+      expect(hotel.baseMiles).toBe(400);
+      expect(hotel.tieredMiles).toBe(4500);
+      expect(hotel.city).toBe("Flagstaff");
+      expect(hotel.state).toBe("AZ");
+      expect(hotel.location).toBe("Flagstaff, AZ");
+      expect(hotel.neighborhood).toBe("Southside Neighborhood");
+      expect(hotel.zipcode).toBe("86004");
+      expect(hotel.stars).toBe(4.0);
+      expect(hotel.rating).toBe(9.5);
+      expect(hotel.reviewCount).toBe(4055);
+      expect(hotel.refundable).toBe(true);
+      expect(hotel.nights).toBe(2);
+      expect(hotel.searchId).toBe("529476cd-ae38-4b09-bffa-df7ff02156d0");
+    });
   });
 
   describe("shouldInspectUrl", () => {

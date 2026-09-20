@@ -1,14 +1,24 @@
 // Shared Hotel MPD Registry and DOM ID extraction helpers
+import { EnrichedHotelRate } from "./interceptor";
+
+export type RawHotelRate = EnrichedHotelRate;
 
 export const hotelMpdRegistry = new Map<string, number>();
-const STORAGE_KEY = "aa_hotels_mpd_registry";
+export const hotelDataRegistry = new Map<string, EnrichedHotelRate>();
+
+const MPD_STORAGE_KEY = "aa_hotels_mpd_registry";
+const DATA_STORAGE_KEY = "aa_hotels_data_registry";
+
+let activeSearchId: string | null = null;
+let activeDates: string | null = null;
 
 // Initialize from sessionStorage if available
 try {
   if (typeof sessionStorage !== "undefined") {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
+    // 1. Restore MPD registry
+    const rawMpd = sessionStorage.getItem(MPD_STORAGE_KEY);
+    if (rawMpd) {
+      const parsed = JSON.parse(rawMpd);
       if (typeof parsed === "object" && parsed !== null) {
         for (const id of Object.keys(parsed)) {
           const mpd = (parsed as Record<string, number>)[id];
@@ -16,6 +26,19 @@ try {
             hotelMpdRegistry.set(id, mpd);
           }
         }
+      }
+    }
+
+    // 2. Restore enriched data registry
+    const rawData = sessionStorage.getItem(DATA_STORAGE_KEY);
+    if (rawData) {
+      const parsed = JSON.parse(rawData);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((item: EnrichedHotelRate) => {
+          if (item?.hotelId) {
+            hotelDataRegistry.set(item.hotelId, item);
+          }
+        });
       }
     }
   }
@@ -30,31 +53,67 @@ function persistToStorage(): void {
       hotelMpdRegistry.forEach((mpd, id) => {
         obj[id] = mpd;
       });
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
+      sessionStorage.setItem(MPD_STORAGE_KEY, JSON.stringify(obj));
+
+      const dataArray = Array.from(hotelDataRegistry.values());
+      sessionStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(dataArray));
     }
   } catch {
     // Ignore storage write errors
   }
 }
 
-export interface RawHotelRate {
-  hotelId: string;
-  price: number;
-  baseMiles: number;
-  tieredMiles: number;
-}
-
+/**
+ * Ingests enriched hotel rates from network interceptor.
+ * Avoids race conditions by checking searchId/dates and invalidating stale queries.
+ * Calculates MPD using All-In Price (Taxes & Fees) by default.
+ */
 export function ingestHotelRates(
-  rates: RawHotelRate[],
-  includeBonusMiles: boolean = false
+  rates: EnrichedHotelRate[],
+  includeBonusMiles: boolean = false,
+  useAllInPricing: boolean = true
 ): number {
+  if (!rates || rates.length === 0) return 0;
+
+  // Search Session Invalidation: If new search ID or dates arrive, clear stale entries
+  const first = rates[0];
+  const thisSearchId = first.searchId;
+  const thisDates = first.checkInDate && first.checkOutDate
+    ? `${first.checkInDate}_${first.checkOutDate}`
+    : null;
+
+  if (
+    (thisSearchId && activeSearchId && thisSearchId !== activeSearchId) ||
+    (thisDates && activeDates && thisDates !== activeDates)
+  ) {
+    hotelMpdRegistry.clear();
+    hotelDataRegistry.clear();
+  }
+
+  if (thisSearchId) activeSearchId = thisSearchId;
+  if (thisDates) activeDates = thisDates;
+
   let updatedCount = 0;
-  rates.forEach(({ hotelId, price, baseMiles, tieredMiles }) => {
-    if (!hotelId || price <= 0) return;
+
+  rates.forEach((rate) => {
+    const { hotelId, baseMiles, tieredMiles } = rate;
+    if (!hotelId) return;
+
+    // Save enriched hotel object
+    hotelDataRegistry.set(hotelId, rate);
+
+    const price = (useAllInPricing && rate.allInPrice > 0)
+      ? rate.allInPrice
+      : (rate.basePrice > 0 ? rate.basePrice : rate.price);
+
+    if (price <= 0) return;
+
     const miles = includeBonusMiles
       ? tieredMiles || baseMiles
       : baseMiles || tieredMiles;
+
     if (miles <= 0) return;
+
     const mpd = miles / price;
     if (isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return;
 
@@ -65,7 +124,7 @@ export function ingestHotelRates(
     }
   });
 
-  if (updatedCount > 0) {
+  if (updatedCount > 0 || hotelDataRegistry.size > 0) {
     persistToStorage();
   }
   return updatedCount;
@@ -84,11 +143,53 @@ export function getHotelMPD(hotelId: string): number | undefined {
   return hotelMpdRegistry.get(hotelId);
 }
 
+export function getEnrichedHotel(hotelId: string): EnrichedHotelRate | undefined {
+  return hotelDataRegistry.get(hotelId);
+}
+
+export function getAllEnrichedHotels(): EnrichedHotelRate[] {
+  return Array.from(hotelDataRegistry.values());
+}
+
+export function getAllInMPD(
+  hotelId: string,
+  includeBonusMiles: boolean = false
+): number | undefined {
+  const hotel = hotelDataRegistry.get(hotelId);
+  if (!hotel) return undefined;
+  const price = hotel.allInPrice > 0 ? hotel.allInPrice : hotel.price;
+  if (price <= 0) return undefined;
+  const miles = includeBonusMiles
+    ? hotel.tieredMiles || hotel.baseMiles
+    : hotel.baseMiles || hotel.tieredMiles;
+  const mpd = miles / price;
+  return mpd > 0 ? mpd : undefined;
+}
+
+export function getBaseMPD(
+  hotelId: string,
+  includeBonusMiles: boolean = false
+): number | undefined {
+  const hotel = hotelDataRegistry.get(hotelId);
+  if (!hotel) return undefined;
+  const price = hotel.basePrice > 0 ? hotel.basePrice : hotel.price;
+  if (price <= 0) return undefined;
+  const miles = includeBonusMiles
+    ? hotel.tieredMiles || hotel.baseMiles
+    : hotel.baseMiles || hotel.tieredMiles;
+  const mpd = miles / price;
+  return mpd > 0 ? mpd : undefined;
+}
+
 export function clearHotelMpdRegistry(): void {
   hotelMpdRegistry.clear();
+  hotelDataRegistry.clear();
+  activeSearchId = null;
+  activeDates = null;
   try {
     if (typeof sessionStorage !== "undefined") {
-      sessionStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(MPD_STORAGE_KEY);
+      sessionStorage.removeItem(DATA_STORAGE_KEY);
     }
   } catch {
     // Ignore storage errors
