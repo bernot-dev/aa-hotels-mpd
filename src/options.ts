@@ -2,7 +2,7 @@ import {
   getDashboardStats,
   getStorageEstimate,
   getExhaustiveQueries,
-  clearExhaustiveHistory,
+  clearAllData,
   deleteLocationStat,
   deleteTopMpdRecord,
 } from "./db/db";
@@ -232,16 +232,17 @@ async function handleExportSql(): Promise<void> {
 
 async function handleDeleteHistory(): Promise<void> {
   const confirmed = confirm(
-    "Are you sure you want to permanently delete all stored query history?\nThis action cannot be undone."
+    "Are you sure you want to permanently delete all stored query history and dashboard data?\nThis action cannot be undone."
   );
   if (!confirmed) return;
 
   try {
-    await clearExhaustiveHistory();
+    await clearAllData();
+    await loadDashboard();
     await updateStorageReadout();
-    alert("Query history cleared successfully.");
+    alert("All stored history and dashboard data have been deleted successfully.");
   } catch (err) {
-    alert(`Failed to clear history: ${err}`);
+    alert(`Failed to clear data: ${err}`);
   }
 }
 

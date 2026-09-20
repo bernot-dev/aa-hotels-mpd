@@ -318,4 +318,28 @@ describe("IndexedDB Storage Layer", () => {
     expect(stats.allLocations.map((l) => l.location)).not.toContain("Chicago, IL");
     expect(stats.topMpds.map((t) => t.location)).not.toContain("Chicago, IL");
   });
+
+  it("clearAllData deletes all data across dashboards and exhaustive history", async () => {
+    await recordRates(
+      { ...sampleCriteria, location: "Miami, FL" },
+      [createRate("Miami Resort", 30.0)],
+      true
+    );
+
+    let stats = await getDashboardStats();
+    let queries = await getExhaustiveQueries();
+    expect(stats.topMpds.length).toBeGreaterThan(0);
+    expect(stats.allLocations.length).toBeGreaterThan(0);
+    expect(queries.length).toBeGreaterThan(0);
+
+    // Call clearAllData
+    await clearAllData();
+
+    stats = await getDashboardStats();
+    queries = await getExhaustiveQueries();
+    expect(stats.topMpds.length).toBe(0);
+    expect(stats.allLocations.length).toBe(0);
+    expect(Object.keys(stats.nightsStats).length).toBe(0);
+    expect(queries.length).toBe(0);
+  });
 });
