@@ -104,6 +104,7 @@ if (typeof window !== "undefined") {
           reviewCount: h.reviewCount,
           imageUrl: h.imageUrl,
           refundable: h.refundable,
+          neighborhood: h.neighborhood,
           checkIn: h.checkInDate || criteria.checkIn,
           checkOut: h.checkOutDate || criteria.checkOut,
         };

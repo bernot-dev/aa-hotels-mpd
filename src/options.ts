@@ -21,6 +21,8 @@ import {
   computeValueScore,
   computeCpm,
   deduplicateRecordsByHotel,
+  buildLocationHierarchy,
+  LocationHierarchyState,
 } from "./analytics";
 
 export type Config = {
@@ -36,8 +38,10 @@ let currentStats: DashboardStats | null = null;
 let showAllTopMpds = false;
 let showAllTopLocs = false;
 let showAllLowestLocs = false;
-let selectedChainFilter = "";
-let selectedLocationFilter = "";
+const selectedChains = new Set<string>();
+const selectedLocations = new Set<string>();
+let selectedDateFrom = "";
+let selectedDateTo = "";
 
 // 1. Tab Navigation
 function setupTabs(): void {
@@ -77,9 +81,6 @@ function renderTop3VisualCards(records: TopMpdRecord[]): void {
       const chain = r.chain || identifyHotelChain(r.hotelName);
       const cpm = r.cpm ?? computeCpm(r.price, r.miles);
       const valScore = r.valueScore ?? computeValueScore(r.mpd, r.rating);
-      const bookingUrl = r.hotelId
-        ? `https://www.aadvantagehotels.com/details?id=${encodeURIComponent(r.hotelId)}&checkIn=${encodeURIComponent(r.checkIn)}&checkOut=${encodeURIComponent(r.checkOut)}`
-        : `https://www.aadvantagehotels.com`;
 
       const imgHtml = r.imageUrl
         ? `<img class="property-card-img" src="${escapeHtml(r.imageUrl)}" alt="${escapeHtml(r.hotelName)}" onerror="this.parentElement.innerHTML='<div style=\\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:36px;\\\'>🏨</div>'"/>`
@@ -105,7 +106,9 @@ function renderTop3VisualCards(records: TopMpdRecord[]): void {
           </div>
           <div class="property-card-body">
             <div class="property-card-title" title="${escapeHtml(r.hotelName)}">${escapeHtml(r.hotelName)}</div>
-            <div class="property-card-location">📍 ${escapeHtml(r.location)}</div>
+            <div class="property-card-location">
+              📍 ${r.neighborhood ? `<b>${escapeHtml(r.neighborhood)}</b> · <span style="font-size: 12px; color: var(--text-muted);">${escapeHtml(r.location)}</span>` : escapeHtml(r.location)}
+            </div>
             <div class="property-card-badges">
               ${starsHtml}
               ${ratingHtml}
@@ -123,9 +126,16 @@ function renderTop3VisualCards(records: TopMpdRecord[]): void {
                 <div style="font-size: 11px; color: var(--text-muted); text-align: right;">${r.miles.toLocaleString()} miles (${r.nights}n)</div>
               </div>
             </div>
-            <a href="${bookingUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm" style="margin-top: 12px; justify-content: center; text-decoration: none;">
-              Book Deal on AA Hotels ↗
-            </a>
+            <div class="property-card-stay-info">
+              <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text);">
+                <span>📅 <b>Quoted Stay:</b></span>
+                <span style="font-weight: 600; color: var(--primary);">${escapeHtml(r.checkIn)} → ${escapeHtml(r.checkOut)}</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                <span>Duration: ${r.nights} night${r.nights > 1 ? "s" : ""}${r.rooms ? ` · ${r.rooms} rm` : ""}${r.guests ? ` · ${r.guests} gst` : ""}</span>
+                ${r.neighborhood ? `<span title="Quoted Neighborhood">🏡 ${escapeHtml(r.neighborhood)}</span>` : ""}
+              </div>
+            </div>
           </div>
         </div>
       `;
@@ -133,20 +143,43 @@ function renderTop3VisualCards(records: TopMpdRecord[]): void {
     .join("");
 }
 
-// 3. Hotel Brand & Chain Leaderboard
-function populateChainFilterOptions(chains: ChainStat[] = []): void {
-  const select = document.getElementById("filterChain") as HTMLSelectElement | null;
-  if (!select) return;
+// 3. Hotel Brand & Chain Multi-select Filter
+function updateChainDropdownText(): void {
+  const textSpan = document.getElementById("chainDropdownText");
+  if (!textSpan) return;
 
-  const currentVal = select.value;
-  select.innerHTML = `<option value="">All Brands & Chains</option>`;
-  for (const c of chains) {
-    const opt = document.createElement("option");
-    opt.value = c.chain;
-    opt.textContent = `${c.chain} (${c.count})`;
-    select.appendChild(opt);
+  if (selectedChains.size === 0) {
+    textSpan.textContent = "All Brands & Chains";
+  } else if (selectedChains.size === 1) {
+    textSpan.textContent = Array.from(selectedChains)[0];
+  } else {
+    textSpan.textContent = `${selectedChains.size} Brands Selected`;
   }
-  select.value = selectedChainFilter || currentVal || "";
+}
+
+function populateChainFilterOptions(chains: ChainStat[] = []): void {
+  const listContainer = document.getElementById("chainCheckboxList");
+  if (!listContainer) return;
+
+  if (chains.length === 0) {
+    listContainer.innerHTML = `<div style="padding: 8px 12px; font-size: 12px; color: var(--text-muted);">No brands recorded yet</div>`;
+    updateChainDropdownText();
+    return;
+  }
+
+  listContainer.innerHTML = chains
+    .map(
+      (c) => `
+        <label class="multiselect-item-label">
+          <input type="checkbox" class="chain-cb" value="${escapeHtml(c.chain)}" ${selectedChains.has(c.chain) ? "checked" : ""}>
+          <span>${escapeHtml(c.chain)}</span>
+          <span class="count-badge">${c.count}</span>
+        </label>
+      `
+    )
+    .join("");
+
+  updateChainDropdownText();
 }
 
 function renderChainLeaderboard(chains: ChainStat[] = []): void {
@@ -164,7 +197,7 @@ function renderChainLeaderboard(chains: ChainStat[] = []): void {
   container.innerHTML = chains
     .map(
       (c) => `
-        <div class="chain-card ${c.chain === selectedChainFilter ? "selected" : ""}" data-chain="${escapeHtml(c.chain)}">
+        <div class="chain-card ${selectedChains.has(c.chain) ? "selected" : ""}" data-chain="${escapeHtml(c.chain)}">
           <div class="chain-card-header">
             <span class="chain-card-name">${escapeHtml(c.chain)}</span>
             <span class="chain-card-count">${c.count} ${c.count === 1 ? "deal" : "deals"}</span>
@@ -230,54 +263,158 @@ function renderSeasonality(seasonality?: SeasonalityStats): void {
   }
 }
 
-// 5. Filtering and Sorting for Top MPDs
+// 5. Hierarchical Location Multi-select Filter (State -> Cities)
+function updateLocationDropdownText(hierarchy?: LocationHierarchyState[]): void {
+  const textSpan = document.getElementById("locationDropdownText");
+  if (!textSpan) return;
+
+  if (selectedLocations.size === 0) {
+    textSpan.textContent = "All Locations";
+    return;
+  }
+
+  const h = hierarchy || (currentStats ? buildLocationHierarchy(currentStats.topMpds) : []);
+  // Check if exactly one state is fully selected
+  const fullySelectedStates = h.filter(
+    (s) => s.cities.length > 0 && s.cities.every((c) => selectedLocations.has(c.cityLocation))
+  );
+  const partiallySelectedStates = h.filter(
+    (s) =>
+      s.cities.some((c) => selectedLocations.has(c.cityLocation)) &&
+      !s.cities.every((c) => selectedLocations.has(c.cityLocation))
+  );
+
+  if (
+    fullySelectedStates.length === 1 &&
+    partiallySelectedStates.length === 0 &&
+    selectedLocations.size === fullySelectedStates[0].cities.length
+  ) {
+    textSpan.textContent = `${fullySelectedStates[0].stateName} (All)`;
+  } else if (selectedLocations.size === 1) {
+    textSpan.textContent = Array.from(selectedLocations)[0];
+  } else {
+    textSpan.textContent = `${selectedLocations.size} Locations Selected`;
+  }
+}
+
 function populateLocationFilterOptions(records: TopMpdRecord[]): void {
-  const select = document.getElementById("filterLocation") as HTMLSelectElement | null;
-  if (!select) return;
+  const listContainer = document.getElementById("locationCheckboxList");
+  if (!listContainer) return;
 
-  const currentVal = select.value;
-  const locCounts = new Map<string, number>();
-  for (const r of records) {
-    const loc = (r.location || "").trim();
-    if (loc && loc !== "Unknown Location") {
-      locCounts.set(loc, (locCounts.get(loc) || 0) + 1);
+  const hierarchy = buildLocationHierarchy(records);
+  if (hierarchy.length === 0) {
+    listContainer.innerHTML = `<div style="padding: 8px 12px; font-size: 12px; color: var(--text-muted);">No locations recorded yet</div>`;
+    updateLocationDropdownText(hierarchy);
+    return;
+  }
+
+  listContainer.innerHTML = hierarchy
+    .map((state) => {
+      const allCitiesChecked = state.cities.every((c) => selectedLocations.has(c.cityLocation));
+      return `
+        <div class="multiselect-state-group" data-state="${escapeHtml(state.stateKey)}">
+          <label class="multiselect-state-label">
+            <input type="checkbox" class="state-cb" data-state="${escapeHtml(state.stateKey)}" ${allCitiesChecked ? "checked" : ""}>
+            <span>${escapeHtml(state.displayLabel)}</span>
+            <span class="count-badge">${state.totalDeals}</span>
+          </label>
+          <div class="multiselect-city-list">
+            ${state.cities
+              .map(
+                (city) => `
+                  <label class="multiselect-city-label">
+                    <input type="checkbox" class="city-cb" data-state="${escapeHtml(state.stateKey)}" data-location="${escapeHtml(city.cityLocation)}" ${selectedLocations.has(city.cityLocation) ? "checked" : ""}>
+                    <span>${escapeHtml(city.cityLocation)}</span>
+                    <span class="count-badge">${city.count}</span>
+                  </label>
+                `
+              )
+              .join("")}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  // Sync indeterminate state for states where some but not all cities are selected
+  hierarchy.forEach((state) => {
+    const stateCb = listContainer.querySelector<HTMLInputElement>(`.state-cb[data-state="${state.stateKey}"]`);
+    if (stateCb) {
+      const allChecked = state.cities.length > 0 && state.cities.every((c) => selectedLocations.has(c.cityLocation));
+      const someChecked = !allChecked && state.cities.some((c) => selectedLocations.has(c.cityLocation));
+      stateCb.checked = allChecked;
+      stateCb.indeterminate = someChecked;
     }
-  }
+  });
 
-  const sortedLocs = Array.from(locCounts.keys()).sort((a, b) => a.localeCompare(b));
-  select.innerHTML = `<option value="">All Locations</option>`;
-  for (const loc of sortedLocs) {
-    const opt = document.createElement("option");
-    opt.value = loc;
-    opt.textContent = `${loc} (${locCounts.get(loc)})`;
-    select.appendChild(opt);
+  updateLocationDropdownText(hierarchy);
+}
+
+function parseDateMs(dateStr: string | undefined): number {
+  if (!dateStr) return 0;
+  const trimmed = String(dateStr).trim();
+  const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) {
+    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getTime();
   }
-  select.value = selectedLocationFilter || currentVal || "";
+  const mSlash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (mSlash) {
+    return new Date(Date.UTC(Number(mSlash[3]), Number(mSlash[1]) - 1, Number(mSlash[2]))).getTime();
+  }
+  const ms = Date.parse(trimmed);
+  return isNaN(ms) ? 0 : ms;
 }
 
 function applyFiltersAndSort(records: TopMpdRecord[]): TopMpdRecord[] {
-  const locationSelect = document.getElementById("filterLocation") as HTMLSelectElement | null;
   const minRatingSelect = document.getElementById("filterMinRating") as HTMLSelectElement | null;
   const minStarsSelect = document.getElementById("filterMinStars") as HTMLSelectElement | null;
   const sortBySelect = document.getElementById("filterSortBy") as HTMLSelectElement | null;
   const refundableCb = document.getElementById("filterRefundableOnly") as HTMLInputElement | null;
   const under150Cb = document.getElementById("filterUnder150") as HTMLInputElement | null;
+  const dateFromInput = document.getElementById("filterDateFrom") as HTMLInputElement | null;
+  const dateToInput = document.getElementById("filterDateTo") as HTMLInputElement | null;
 
-  const selectedLoc = locationSelect?.value || selectedLocationFilter || "";
   const minRating = parseFloat(minRatingSelect?.value || "0");
   const minStars = parseFloat(minStarsSelect?.value || "0");
   const sortBy = sortBySelect?.value || "mpd";
   const refundableOnly = refundableCb?.checked || false;
   const under150 = under150Cb?.checked || false;
 
+  const dateFromStr = dateFromInput?.value || selectedDateFrom || "";
+  const dateToStr = dateToInput?.value || selectedDateTo || "";
+  const fromMs = dateFromStr ? parseDateMs(dateFromStr) : 0;
+  const toMs = dateToStr ? parseDateMs(dateToStr) : 0;
+
   const filtered = records.filter((r) => {
-    if (selectedLoc && r.location !== selectedLoc) return false;
+    // 1. Location multi-select filter
+    if (selectedLocations.size > 0 && !selectedLocations.has(r.location)) {
+      return false;
+    }
+
+    // 2. Brand / Chain multi-select filter
     const chain = r.chain || identifyHotelChain(r.hotelName);
-    if (selectedChainFilter && chain !== selectedChainFilter) return false;
+    if (selectedChains.size > 0 && !selectedChains.has(chain)) {
+      return false;
+    }
+
+    // 3. Date boundaries (not exact matches)
+    if (fromMs > 0) {
+      const checkInMs = parseDateMs(r.checkIn);
+      if (checkInMs > 0 && checkInMs < fromMs) return false;
+    }
+    if (toMs > 0) {
+      const checkOutMs = parseDateMs(r.checkOut);
+      if (checkOutMs > 0 && checkOutMs > toMs) return false;
+    }
+
+    // 4. Rating & Stars
     if (minRating > 0 && (!r.rating || r.rating < minRating)) return false;
     if (minStars > 0 && (!r.stars || r.stars < minStars)) return false;
+
+    // 5. Refundable & Under $150
     if (refundableOnly && !r.refundable) return false;
     if (under150 && r.price >= 150) return false;
+
     return true;
   });
 
@@ -655,17 +792,120 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("exportSqlBtn")?.addEventListener("click", handleExportSql);
   document.getElementById("deleteHistoryBtn")?.addEventListener("click", handleDeleteHistory);
 
-  // Filter & Sort Toolbar listeners
-  document.getElementById("filterLocation")?.addEventListener("change", (e) => {
-    selectedLocationFilter = (e.target as HTMLSelectElement).value;
+  // Dropdown button open/close toggles
+  document.getElementById("locationDropdownBtn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const panel = document.getElementById("locationDropdownPanel");
+    const btn = document.getElementById("locationDropdownBtn");
+    const otherPanel = document.getElementById("chainDropdownPanel");
+    const otherBtn = document.getElementById("chainDropdownBtn");
+    if (otherPanel) otherPanel.style.display = "none";
+    otherBtn?.classList.remove("open");
+
+    if (panel) {
+      const isOpen = panel.style.display === "block";
+      panel.style.display = isOpen ? "none" : "block";
+      btn?.classList.toggle("open", !isOpen);
+    }
+  });
+
+  document.getElementById("chainDropdownBtn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const panel = document.getElementById("chainDropdownPanel");
+    const btn = document.getElementById("chainDropdownBtn");
+    const otherPanel = document.getElementById("locationDropdownPanel");
+    const otherBtn = document.getElementById("locationDropdownBtn");
+    if (otherPanel) otherPanel.style.display = "none";
+    otherBtn?.classList.remove("open");
+
+    if (panel) {
+      const isOpen = panel.style.display === "block";
+      panel.style.display = isOpen ? "none" : "block";
+      btn?.classList.toggle("open", !isOpen);
+    }
+  });
+
+  // Location multi-select list events
+  document.getElementById("locationCheckboxList")?.addEventListener("change", (e) => {
+    const target = e.target as HTMLInputElement;
+    if (!target) return;
+
+    if (target.classList.contains("state-cb")) {
+      const stateKey = target.dataset.state;
+      const isChecked = target.checked;
+      const cityCbs = document.querySelectorAll<HTMLInputElement>(`.city-cb[data-state="${stateKey}"]`);
+      cityCbs.forEach((cb) => {
+        cb.checked = isChecked;
+        const loc = cb.dataset.location;
+        if (loc) {
+          if (isChecked) selectedLocations.add(loc);
+          else selectedLocations.delete(loc);
+        }
+      });
+      target.indeterminate = false;
+      updateLocationDropdownText();
+      renderFilteredTopMpds();
+    } else if (target.classList.contains("city-cb")) {
+      const loc = target.dataset.location;
+      const stateKey = target.dataset.state;
+      if (loc) {
+        if (target.checked) selectedLocations.add(loc);
+        else selectedLocations.delete(loc);
+      }
+      // Update parent state checkbox state
+      const cityCbs = Array.from(document.querySelectorAll<HTMLInputElement>(`.city-cb[data-state="${stateKey}"]`));
+      const stateCb = document.querySelector<HTMLInputElement>(`.state-cb[data-state="${stateKey}"]`);
+      if (stateCb && cityCbs.length > 0) {
+        const allChecked = cityCbs.every((cb) => cb.checked);
+        const someChecked = !allChecked && cityCbs.some((cb) => cb.checked);
+        stateCb.checked = allChecked;
+        stateCb.indeterminate = someChecked;
+      }
+      updateLocationDropdownText();
+      renderFilteredTopMpds();
+    }
+  });
+
+  document.getElementById("locSelectAllBtn")?.addEventListener("click", () => {
+    selectedLocations.clear();
+    document.querySelectorAll<HTMLInputElement>(".city-cb").forEach((cb) => {
+      cb.checked = true;
+    });
+    document.querySelectorAll<HTMLInputElement>(".state-cb").forEach((scb) => {
+      scb.checked = true;
+      scb.indeterminate = false;
+    });
+    updateLocationDropdownText();
     renderFilteredTopMpds();
   });
 
-  document.getElementById("filterChain")?.addEventListener("change", (e) => {
-    selectedChainFilter = (e.target as HTMLSelectElement).value;
+  document.getElementById("locClearAllBtn")?.addEventListener("click", () => {
+    selectedLocations.clear();
+    document.querySelectorAll<HTMLInputElement>(".city-cb").forEach((cb) => {
+      cb.checked = false;
+    });
+    document.querySelectorAll<HTMLInputElement>(".state-cb").forEach((scb) => {
+      scb.checked = false;
+      scb.indeterminate = false;
+    });
+    updateLocationDropdownText();
+    renderFilteredTopMpds();
+  });
+
+  // Chain multi-select list events
+  document.getElementById("chainCheckboxList")?.addEventListener("change", (e) => {
+    const target = e.target as HTMLInputElement;
+    if (!target || !target.classList.contains("chain-cb")) return;
+    const chain = target.value;
+    if (target.checked) {
+      selectedChains.add(chain);
+    } else {
+      selectedChains.delete(chain);
+    }
+    updateChainDropdownText();
     document.querySelectorAll(".chain-card").forEach((card) => {
-      const chainAttr = card.getAttribute("data-chain");
-      if (chainAttr === selectedChainFilter) {
+      const cAttr = card.getAttribute("data-chain");
+      if (cAttr && selectedChains.has(cAttr)) {
         card.classList.add("selected");
       } else {
         card.classList.remove("selected");
@@ -674,6 +914,58 @@ document.addEventListener("DOMContentLoaded", () => {
     renderFilteredTopMpds();
   });
 
+  document.getElementById("chainSelectAllBtn")?.addEventListener("click", () => {
+    selectedChains.clear();
+    document.querySelectorAll<HTMLInputElement>(".chain-cb").forEach((cb) => {
+      cb.checked = true;
+    });
+    document.querySelectorAll(".chain-card").forEach((card) => card.classList.remove("selected"));
+    updateChainDropdownText();
+    renderFilteredTopMpds();
+  });
+
+  document.getElementById("chainClearAllBtn")?.addEventListener("click", () => {
+    selectedChains.clear();
+    document.querySelectorAll<HTMLInputElement>(".chain-cb").forEach((cb) => {
+      cb.checked = false;
+    });
+    document.querySelectorAll(".chain-card").forEach((card) => card.classList.remove("selected"));
+    updateChainDropdownText();
+    renderFilteredTopMpds();
+  });
+
+  // Date boundary inputs
+  document.getElementById("filterDateFrom")?.addEventListener("change", (e) => {
+    selectedDateFrom = (e.target as HTMLInputElement).value;
+    renderFilteredTopMpds();
+  });
+
+  document.getElementById("filterDateTo")?.addEventListener("change", (e) => {
+    selectedDateTo = (e.target as HTMLInputElement).value;
+    renderFilteredTopMpds();
+  });
+
+  // Close dropdowns on outside click
+  document.addEventListener("click", (e) => {
+    const target = e.target as HTMLElement;
+    const locDropdown = document.getElementById("locationDropdown");
+    const chainDropdown = document.getElementById("chainDropdown");
+    const locPanel = document.getElementById("locationDropdownPanel");
+    const chainPanel = document.getElementById("chainDropdownPanel");
+    const locBtn = document.getElementById("locationDropdownBtn");
+    const chainBtn = document.getElementById("chainDropdownBtn");
+
+    if (locDropdown && !locDropdown.contains(target)) {
+      if (locPanel) locPanel.style.display = "none";
+      locBtn?.classList.remove("open");
+    }
+    if (chainDropdown && !chainDropdown.contains(target)) {
+      if (chainPanel) chainPanel.style.display = "none";
+      chainBtn?.classList.remove("open");
+    }
+  });
+
+  // Rating, Stars, Sort, Refundable, Under $150
   ["filterMinRating", "filterMinStars", "filterSortBy", "filterRefundableOnly", "filterUnder150"].forEach((id) => {
     document.getElementById(id)?.addEventListener("change", () => {
       renderFilteredTopMpds();
@@ -686,20 +978,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const card = target.closest<HTMLElement>(".chain-card");
     if (!card) return;
     const chain = card.getAttribute("data-chain") || "";
-    if (selectedChainFilter === chain) {
-      selectedChainFilter = "";
+    if (!chain) return;
+
+    if (selectedChains.has(chain)) {
+      selectedChains.delete(chain);
+      card.classList.remove("selected");
     } else {
-      selectedChainFilter = chain;
+      selectedChains.add(chain);
+      card.classList.add("selected");
     }
-    const select = document.getElementById("filterChain") as HTMLSelectElement | null;
-    if (select) select.value = selectedChainFilter;
-    document.querySelectorAll(".chain-card").forEach((c) => {
-      if (c.getAttribute("data-chain") === selectedChainFilter) {
-        c.classList.add("selected");
-      } else {
-        c.classList.remove("selected");
-      }
-    });
+
+    const cb = document.querySelector<HTMLInputElement>(`.chain-cb[value="${chain}"]`);
+    if (cb) cb.checked = selectedChains.has(chain);
+
+    updateChainDropdownText();
     renderFilteredTopMpds();
   });
 

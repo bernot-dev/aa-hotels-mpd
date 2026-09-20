@@ -5,6 +5,7 @@ import {
   computeValueScore,
   computeCpm,
   deduplicateRecordsByHotel,
+  buildLocationHierarchy,
 } from "../src/analytics";
 
 describe("Options Dashboard Filtering & Sorting Logic", () => {
@@ -138,11 +139,26 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
 
   const sampleRecordsWithVegas = [...sampleRecords, ...vegasRecords];
 
+  function parseDateMs(dateStr: string | undefined): number {
+    if (!dateStr) return 0;
+    const trimmed = String(dateStr).trim();
+    const m = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))).getTime();
+    }
+    const ms = Date.parse(trimmed);
+    return isNaN(ms) ? 0 : ms;
+  }
+
   function filterAndSort(
     records: TopMpdRecord[],
     options: {
       location?: string;
+      locations?: string[] | Set<string>;
       chain?: string;
+      chains?: string[] | Set<string>;
+      dateFrom?: string;
+      dateTo?: string;
       minRating?: number;
       minStars?: number;
       refundableOnly?: boolean;
@@ -153,7 +169,11 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
   ): TopMpdRecord[] {
     const {
       location = "",
+      locations,
       chain = "",
+      chains,
+      dateFrom = "",
+      dateTo = "",
       minRating = 0,
       minStars = 0,
       refundableOnly = false,
@@ -162,10 +182,33 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
       deduplicate = false,
     } = options;
 
+    const locSet = locations
+      ? new Set(locations)
+      : location
+      ? new Set([location])
+      : new Set<string>();
+
+    const chainSet = chains
+      ? new Set(chains)
+      : chain
+      ? new Set([chain])
+      : new Set<string>();
+
+    const fromMs = dateFrom ? parseDateMs(dateFrom) : 0;
+    const toMs = dateTo ? parseDateMs(dateTo) : 0;
+
     const filtered = records.filter((r) => {
-      if (location && r.location !== location) return false;
+      if (locSet.size > 0 && !locSet.has(r.location)) return false;
       const c = r.chain || identifyHotelChain(r.hotelName);
-      if (chain && c !== chain) return false;
+      if (chainSet.size > 0 && !chainSet.has(c)) return false;
+      if (fromMs > 0) {
+        const checkInMs = parseDateMs(r.checkIn);
+        if (checkInMs > 0 && checkInMs < fromMs) return false;
+      }
+      if (toMs > 0) {
+        const checkOutMs = parseDateMs(r.checkOut);
+        if (checkOutMs > 0 && checkOutMs > toMs) return false;
+      }
       if (minRating > 0 && (!r.rating || r.rating < minRating)) return false;
       if (minStars > 0 && (!r.stars || r.stars < minStars)) return false;
       if (refundableOnly && !r.refundable) return false;
@@ -287,5 +330,95 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
 
     // Total distinct hotels = 5 (Courtyard, Motel Cheap, Ritz-Carlton, Hampton Inn, Horseshoe)
     expect(results.length).toBe(5);
+  });
+
+  it("builds a 2-level hierarchical location tree (State -> Cities)", () => {
+    const oregonRecords: TopMpdRecord[] = [
+      { id: "101", hotelName: "Courtyard Corvallis", location: "Corvallis, OR", checkIn: "2026-11-10", checkOut: "2026-11-12", nights: 2, rooms: 1, guests: 2, price: 458, miles: 3800, mpd: 8.3, timestamp: "2026-09-20" },
+      { id: "102", hotelName: "Comfort Suites Corvallis", location: "Corvallis, OR", checkIn: "2026-11-10", checkOut: "2026-11-12", nights: 2, rooms: 1, guests: 2, price: 300, miles: 3480, mpd: 11.6, timestamp: "2026-09-20" },
+      { id: "103", hotelName: "Phoenix Inn Albany", location: "Albany, OR", checkIn: "2026-11-10", checkOut: "2026-11-12", nights: 2, rooms: 1, guests: 2, price: 280, miles: 2800, mpd: 10.0, timestamp: "2026-09-20" },
+      ...sampleRecords, // Dallas, TX (4)
+    ];
+
+    const hierarchy = buildLocationHierarchy(oregonRecords);
+    expect(hierarchy.length).toBe(2); // Oregon and Texas
+
+    const oregon = hierarchy.find((h) => h.stateKey === "OR");
+    expect(oregon).toBeDefined();
+    expect(oregon?.stateName).toBe("Oregon");
+    expect(oregon?.displayLabel).toBe("Oregon (OR)");
+    expect(oregon?.totalDeals).toBe(3);
+    expect(oregon?.cities.length).toBe(2);
+
+    expect(oregon?.cities[0].cityName).toBe("Albany");
+    expect(oregon?.cities[0].cityLocation).toBe("Albany, OR");
+    expect(oregon?.cities[0].count).toBe(1);
+
+    expect(oregon?.cities[1].cityName).toBe("Corvallis");
+    expect(oregon?.cities[1].cityLocation).toBe("Corvallis, OR");
+    expect(oregon?.cities[1].count).toBe(2);
+
+    const texas = hierarchy.find((h) => h.stateKey === "TX");
+    expect(texas).toBeDefined();
+    expect(texas?.totalDeals).toBe(4);
+    expect(texas?.cities[0].cityName).toBe("Dallas");
+  });
+
+  it("filters by multi-selected locations (e.g. selecting multiple cities across states)", () => {
+    const results = filterAndSort(sampleRecordsWithVegas, {
+      locations: ["Dallas, TX", "Las Vegas, NV"],
+    });
+    expect(results.length).toBe(6);
+  });
+
+  it("filters by state selection (selecting Oregon selects all cities in Oregon: Corvallis + Albany)", () => {
+    const mixedRecords: TopMpdRecord[] = [
+      { id: "101", hotelName: "Courtyard Corvallis", location: "Corvallis, OR", checkIn: "2026-11-10", checkOut: "2026-11-12", nights: 2, rooms: 1, guests: 2, price: 458, miles: 3800, mpd: 8.3, timestamp: "2026-09-20" },
+      { id: "102", hotelName: "Phoenix Inn Albany", location: "Albany, OR", checkIn: "2026-11-10", checkOut: "2026-11-12", nights: 2, rooms: 1, guests: 2, price: 280, miles: 2800, mpd: 10.0, timestamp: "2026-09-20" },
+      ...sampleRecords, // Dallas, TX (4)
+    ];
+
+    const hierarchy = buildLocationHierarchy(mixedRecords);
+    const oregon = hierarchy.find((h) => h.stateKey === "OR")!;
+    // Selecting Oregon selects all cities in Oregon
+    const oregonCities = oregon.cities.map((c) => c.cityLocation);
+
+    const results = filterAndSort(mixedRecords, {
+      locations: oregonCities,
+    });
+    expect(results.length).toBe(2);
+    expect(results.map((r) => r.hotelName)).toContain("Courtyard Corvallis");
+    expect(results.map((r) => r.hotelName)).toContain("Phoenix Inn Albany");
+  });
+
+  it("filters by multi-selected chains (e.g. Marriott + Hilton)", () => {
+    const results = filterAndSort(sampleRecords, {
+      chains: ["Marriott", "Hilton"],
+    });
+    expect(results.length).toBe(3); // 2 Marriott, 1 Hilton
+    expect(results.every((r) => r.chain === "Marriott" || r.chain === "Hilton")).toBe(true);
+  });
+
+  it("filters by date boundaries (Check-in on/after and Check-out on/before)", () => {
+    const octDeals = filterAndSort(sampleRecordsWithVegas, {
+      dateFrom: "2026-10-01",
+      dateTo: "2026-10-02",
+    });
+    expect(octDeals.length).toBe(4); // Only the Oct 1-2 Dallas records
+    expect(octDeals.every((r) => r.location === "Dallas, TX")).toBe(true);
+
+    const novDeals = filterAndSort(sampleRecordsWithVegas, {
+      dateFrom: "2026-11-01",
+      dateTo: "2026-11-30",
+    });
+    expect(novDeals.length).toBe(2); // Only the Nov 16-18 Vegas records
+    expect(novDeals.every((r) => r.location === "Las Vegas, NV")).toBe(true);
+
+    // Boundary with no upper bound (everything on or after Nov 1)
+    const afterNov1 = filterAndSort(sampleRecordsWithVegas, {
+      dateFrom: "2026-11-01",
+    });
+    expect(afterNov1.length).toBe(2);
+    expect(afterNov1.every((r) => r.checkIn >= "2026-11-01")).toBe(true);
   });
 });

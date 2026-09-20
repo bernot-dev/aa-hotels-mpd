@@ -145,6 +145,7 @@ export async function recordRates(
       reviewCount: rate.reviewCount,
       imageUrl: rate.imageUrl,
       refundable: rate.refundable,
+      neighborhood: rate.neighborhood,
       chain,
       cpm,
       valueScore,

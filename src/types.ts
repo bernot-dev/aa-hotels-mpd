@@ -28,6 +28,7 @@ export interface CapturedRate {
   reviewCount?: number;
   imageUrl?: string;
   refundable?: boolean;
+  neighborhood?: string;
   chain?: string;
   checkIn?: string;
   checkOut?: string;
@@ -39,6 +40,7 @@ export interface TopMpdRecord {
   hotelName: string;
   hotelId?: string;
   location: string;
+  neighborhood?: string;
   checkIn: string;
   checkOut: string;
   nights: number;

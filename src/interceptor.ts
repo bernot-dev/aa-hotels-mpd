@@ -177,13 +177,13 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
   const processHotelItem = (item: any) => {
     if (!item || typeof item !== "object") return;
 
-    const rawId = item.hotel?.id ?? item.id ?? item.hotelId ?? item.propertyId;
+    const rawId = item.hotel?.id ?? item.id ?? item.hotelId ?? item.propertyId ?? item.hotel?.propertyId;
     if (rawId === null || rawId === undefined) return;
     const hotelId = String(rawId).trim();
-    if (!hotelId || !/^\d+$/.test(hotelId)) return;
+    if (!hotelId) return;
 
     const hotelName = item.hotel?.name || item.name || "Unknown Hotel";
-    const economics = item.economics;
+    const economics = item.economics || item.roomTypeResultTeaser?.economics || item.rates?.[0]?.economics;
 
     let basePrice = 0;
     if (item.totalPrice?.amount) {
@@ -228,8 +228,8 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
     let tieredMiles = 0;
 
     if (economics) {
-      baseMiles = Number(economics.rewardAmount || 0);
-      tieredMiles = Number(economics.rewardAmountTiered || baseMiles);
+      baseMiles = Number(economics.rewardAmount || economics.baseRewardAmount || 0);
+      tieredMiles = Number(economics.rewardAmountTiered || economics.tieredRewardAmount || baseMiles);
     } else {
       baseMiles = Number(item.rewards ?? item.rewardAmount ?? item.rewardMiles ?? item.totalRewards ?? 0);
       tieredMiles = Number(item.roomTypeResultTeaser?.rewards ?? item.rewardAmountTiered ?? baseMiles);
@@ -248,7 +248,13 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
     const city = normalizeCityName(address.city || searchCity);
     const state = normalizeState(address.state || searchState);
     const location = getCanonicalLocation(city, state);
-    const neighborhood = address.neighborhoodName || item.neighborhoodName || "";
+    const neighborhood =
+      address.neighborhoodName ||
+      item.neighborhoodName ||
+      item.hotel?.neighborhood ||
+      item.hotel?.neighborhoodName ||
+      item.neighborhood ||
+      "";
     const zipcode = address.zipcode || "";
     const latitude = address.latitude ?? item.latitude ?? searchPlace.latitude;
     const longitude = address.longitude ?? item.longitude ?? searchPlace.longitude;

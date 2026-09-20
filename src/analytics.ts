@@ -236,3 +236,113 @@ export function deduplicateRecordsByHotel(records: TopMpdRecord[]): TopMpdRecord
 
   return deduplicated;
 }
+
+export interface LocationHierarchyCity {
+  cityLocation: string; // e.g. "Corvallis, OR"
+  cityName: string; // e.g. "Corvallis"
+  count: number;
+}
+
+export interface LocationHierarchyState {
+  stateKey: string; // e.g. "OR"
+  stateName: string; // e.g. "Oregon"
+  displayLabel: string; // e.g. "Oregon (OR)"
+  totalDeals: number;
+  cities: LocationHierarchyCity[];
+}
+
+export const US_STATE_CODE_TO_NAME: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota",
+  OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island",
+  SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah",
+  VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin",
+  WY: "Wyoming", DC: "District of Columbia",
+};
+
+/**
+ * Builds a 2-level hierarchical location tree (State -> Cities) from records.
+ * Enables selecting a whole state (e.g. Oregon) to select all cities in that state (e.g. Corvallis + Albany).
+ */
+export function buildLocationHierarchy(records: TopMpdRecord[]): LocationHierarchyState[] {
+  const stateMap = new Map<
+    string,
+    {
+      stateKey: string;
+      stateName: string;
+      displayLabel: string;
+      cityCounts: Map<string, { cityName: string; count: number }>;
+    }
+  >();
+
+  for (const r of records) {
+    const rawLoc = (r.location || "").trim();
+    if (!rawLoc || rawLoc.toLowerCase() === "unknown location") continue;
+
+    const parts = rawLoc.split(",").map((s) => s.trim());
+    let stateKey = "";
+    let stateName = "";
+    let displayLabel = "";
+    let cityName = parts[0] || rawLoc;
+
+    if (parts.length >= 2) {
+      const statePart = parts[parts.length - 1].toUpperCase();
+      if (US_STATE_CODE_TO_NAME[statePart]) {
+        stateKey = statePart;
+        stateName = US_STATE_CODE_TO_NAME[statePart];
+        displayLabel = `${stateName} (${stateKey})`;
+      } else {
+        stateKey = parts[parts.length - 1];
+        stateName = stateKey;
+        displayLabel = stateKey;
+      }
+    } else {
+      stateKey = "Other";
+      stateName = "Other";
+      displayLabel = "Other Locations";
+    }
+
+    let stateEntry = stateMap.get(stateKey);
+    if (!stateEntry) {
+      stateEntry = {
+        stateKey,
+        stateName,
+        displayLabel,
+        cityCounts: new Map(),
+      };
+      stateMap.set(stateKey, stateEntry);
+    }
+
+    const cityEntry = stateEntry.cityCounts.get(rawLoc) || { cityName, count: 0 };
+    cityEntry.count++;
+    stateEntry.cityCounts.set(rawLoc, cityEntry);
+  }
+
+  const result: LocationHierarchyState[] = [];
+  stateMap.forEach((entry) => {
+    const cities: LocationHierarchyCity[] = Array.from(entry.cityCounts.entries())
+      .map(([cityLocation, { cityName, count }]) => ({
+        cityLocation,
+        cityName,
+        count,
+      }))
+      .sort((a, b) => a.cityName.localeCompare(b.cityName));
+
+    const totalDeals = cities.reduce((sum, c) => sum + c.count, 0);
+    result.push({
+      stateKey: entry.stateKey,
+      stateName: entry.stateName,
+      displayLabel: entry.displayLabel,
+      totalDeals,
+      cities,
+    });
+  });
+
+  return result.sort((a, b) => a.stateName.localeCompare(b.stateName));
+}
+
