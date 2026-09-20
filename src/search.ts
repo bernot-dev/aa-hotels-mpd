@@ -1,7 +1,7 @@
 import { updateCards } from "./cards";
 import { getNights } from "./nights";
 import { processMapPreviewCards, updateMapPins } from "./map";
-import { extractSearchCriteria } from "./capture/criteria";
+import { extractSearchCriteria, isValidLocation } from "./capture/criteria";
 import { extractRatesFromSearchCards } from "./capture/rates";
 import { queueRatesForDispatch, resetRateCollector } from "./capture/collector";
 
@@ -279,6 +279,12 @@ export const processSearchPage = async (
       const criteria = extractSearchCriteria();
       const rates = extractRatesFromSearchCards(document.body, nights, includeBonusMiles);
       if (rates.length > 0) {
+        if (!isValidLocation(criteria.location)) {
+          const firstValidLoc = rates.find((r) => isValidLocation(r.location))?.location;
+          if (firstValidLoc) {
+            criteria.location = firstValidLoc;
+          }
+        }
         queueRatesForDispatch(criteria, rates);
       }
     } catch (err) {

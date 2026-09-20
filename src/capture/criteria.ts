@@ -23,7 +23,13 @@ export function extractSearchCriteria(
   if (currentUrl) {
     try {
       const url = new URL(currentUrl, "https://www.aadvantagehotels.com");
-      const destParam = url.searchParams.get("destination");
+      const destParam =
+        url.searchParams.get("destination") ||
+        url.searchParams.get("city") ||
+        url.searchParams.get("location") ||
+        url.searchParams.get("dest") ||
+        url.searchParams.get("q") ||
+        url.searchParams.get("place");
       if (destParam && destParam.trim()) {
         const decoded = decodeURIComponent(destParam.trim().replace(/\+/g, " "));
         if (isValidLocation(decoded)) {
@@ -58,16 +64,23 @@ export function extractSearchCriteria(
     }
   }
 
-  // 2. DOM extraction: card details links (authoritative source for currently displayed cards on search page)
+  // 2. DOM extraction: card details links across the entire document
+  // (authoritative source for currently displayed cards on search page)
   if (doc) {
-    const cardLink = doc.querySelector<HTMLAnchorElement>(
-      'a[href*="/details"][href*="destination="], a[href*="destination="], a[href*="/details"]'
+    const cardLinks = doc.querySelectorAll<HTMLAnchorElement>(
+      'a[href*="/details"], a[href*="destination="], [data-testid^="hotel-card-"] a, a[href*="id="]'
     );
-    if (cardLink && cardLink.href) {
+    for (const link of Array.from(cardLinks)) {
+      if (!link.href) continue;
       try {
-        const cardUrl = new URL(cardLink.href, "https://www.aadvantagehotels.com");
+        const cardUrl = new URL(link.href, "https://www.aadvantagehotels.com");
         if (location === "Unknown Location") {
-          const dest = cardUrl.searchParams.get("destination");
+          const dest =
+            cardUrl.searchParams.get("destination") ||
+            cardUrl.searchParams.get("city") ||
+            cardUrl.searchParams.get("location") ||
+            cardUrl.searchParams.get("dest") ||
+            cardUrl.searchParams.get("q");
           if (dest && dest.trim()) {
             const decoded = decodeURIComponent(dest.trim().replace(/\+/g, " "));
             if (isValidLocation(decoded)) {
@@ -98,11 +111,65 @@ export function extractSearchCriteria(
             guests = totalAdults + totalChildren;
           }
         }
+        if (location !== "Unknown Location" && checkIn && checkOut) {
+          break;
+        }
       } catch {}
     }
   }
 
-  // 3. DOM extraction: hotel address on details page
+  // 3. Search page DOM extraction: neighborhood filter container
+  if (location === "Unknown Location" && doc) {
+    const nFilter = doc.querySelector('[data-testid="neighborhood-filter-container"]');
+    if (nFilter) {
+      const nLabels = Array.from(
+        nFilter.querySelectorAll('.chakra-checkbox__label p, label p, span p')
+      )
+        .map((el) => el.textContent?.trim() || "")
+        .filter(isValidLocation);
+      if (nLabels.length > 0) {
+        location = nLabels[0];
+      }
+    }
+  }
+
+  // 4. Search page DOM extraction: hotel card neighborhoods
+  if (location === "Unknown Location" && doc) {
+    const cardNeighborhoods = Array.from(
+      doc.querySelectorAll('[data-testid="hotel-neighborhood"]')
+    )
+      .map((el) => el.textContent?.trim() || "")
+      .filter(isValidLocation);
+    if (cardNeighborhoods.length > 0) {
+      location = cardNeighborhoods[0];
+    }
+  }
+
+  // 5. Document title (e.g. "Hotels in Dallas, TX" or "Dallas Hotels")
+  if (location === "Unknown Location" && doc && doc.title) {
+    const titleMatch =
+      doc.title.match(/Hotels\s+in\s+([^|\-]+)/i) ||
+      doc.title.match(/^([^|\-]+?)\s+Hotels/i);
+    if (titleMatch && isValidLocation(titleMatch[1].trim())) {
+      location = titleMatch[1].trim();
+    }
+  }
+
+  // 6. Search page DOM extraction: hotel name city pattern (e.g. "Hilton Anatole, Dallas" -> "Dallas")
+  if (location === "Unknown Location" && doc) {
+    const hotelNames = Array.from(
+      doc.querySelectorAll('[data-testid="hotel-name"]')
+    ).map((el) => el.textContent?.trim() || "");
+    for (const name of hotelNames) {
+      const cityMatch = name.match(/,\s*([^,]+)$/);
+      if (cityMatch && isValidLocation(cityMatch[1].trim())) {
+        location = cityMatch[1].trim();
+        break;
+      }
+    }
+  }
+
+  // 7. DOM extraction: hotel address on details page
   if (location === "Unknown Location" && doc) {
     const cityEl = doc.querySelector('[data-testid="address-city"]');
     const countryEl = doc.querySelector('[data-testid="address-country"]');
@@ -116,7 +183,8 @@ export function extractSearchCriteria(
     }
   }
 
-  // NOTE: Destination input box is NEVER read. The details URL is the sole authoritative source.
+  // NOTE: Destination input box is NEVER read under any circumstances.
+  // Location is sourced strictly from encoded links, neighborhood filters, or page elements.
 
   if (doc) {
     if (!checkIn) {

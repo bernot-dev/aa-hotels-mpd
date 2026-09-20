@@ -82,6 +82,69 @@ describe("Rate and Criteria Capture Pipeline", () => {
       expect(criteria.location).toBe("San Diego, CA");
     });
 
+    it("extracts destination from neighborhood filter container on search page when links lack destination", () => {
+      const dom = new JSDOM(`
+        <div>
+          <div data-testid="neighborhood-filter-container">
+            <label class="chakra-checkbox">
+              <span class="chakra-checkbox__label"><p>Dallas City Center</p></span>
+            </label>
+            <label class="chakra-checkbox">
+              <span class="chakra-checkbox__label"><p>Stemmons Corridor</p></span>
+            </label>
+          </div>
+          <a href="/details?id=12345&checkIn=2026-10-05&checkOut=2026-10-07">
+            <div data-testid="hotel-card-pricing">Card</div>
+          </a>
+        </div>
+      `);
+      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      expect(criteria.location).toBe("Dallas City Center");
+    });
+
+    it("extracts destination from hotel card neighborhood when filter container and links lack destination", () => {
+      const dom = new JSDOM(`
+        <div>
+          <div>
+            <h4 data-testid="hotel-neighborhood">Back Bay</h4>
+            <a href="/details?id=12345&checkIn=2026-10-05&checkOut=2026-10-07">
+              <div data-testid="hotel-card-pricing">Card</div>
+            </a>
+          </div>
+        </div>
+      `);
+      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      expect(criteria.location).toBe("Back Bay");
+    });
+
+    it("extracts destination from document title when DOM has no neighborhood tags", () => {
+      const dom = new JSDOM(`
+        <html>
+          <head><title>Hotels in Seattle, WA | AAdvantage Hotels</title></head>
+          <body>
+            <a href="/details?id=12345&checkIn=2026-10-05&checkOut=2026-10-07">
+              <div data-testid="hotel-card-pricing">Card</div>
+            </a>
+          </body>
+        </html>
+      `);
+      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      expect(criteria.location).toBe("Seattle, WA");
+    });
+
+    it("extracts destination from hotel name city suffix pattern when no other location tag exists", () => {
+      const dom = new JSDOM(`
+        <div>
+          <div>
+            <h3 data-testid="hotel-name">Hilton Anatole, Dallas</h3>
+            <div data-testid="hotel-card-pricing">Card</div>
+          </div>
+        </div>
+      `);
+      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      expect(criteria.location).toBe("Dallas");
+    });
+
     it("provides clean defaults when both URL and DOM are empty", () => {
       const criteria = extractSearchCriteria("");
       expect(criteria.location).toBe("Unknown Location");
@@ -142,6 +205,30 @@ describe("Rate and Criteria Capture Pipeline", () => {
       const standardOnly = extractRatesFromSearchCards(dom.window.document.body, 1, false);
       expect(standardOnly.length).toBe(1);
       expect(standardOnly[0].hotelName).toBe("Normal Hotel");
+    });
+
+    it("falls back to hotel card neighborhood when details link does not encode destination", () => {
+      const dom = new JSDOM(`
+        <div>
+          <div>
+            <h4 data-testid="hotel-neighborhood">French Quarter</h4>
+            <h3 data-testid="hotel-name">Bourbon Orleans Hotel</h3>
+            <a href="/details?id=9999&checkIn=2026-10-05&checkOut=2026-10-07">
+              <div data-testid="hotel-card-pricing">
+                <div data-testid="pricing-text">Total</div>
+                <div data-testid="earn-price">$300</div>
+                <div data-testid="tier-earn-rewards">Earn 6,000 miles</div>
+              </div>
+            </a>
+          </div>
+        </div>
+      `);
+
+      const rates = extractRatesFromSearchCards(dom.window.document.body, 1, true);
+      expect(rates.length).toBe(1);
+      expect(rates[0].hotelName).toBe("Bourbon Orleans Hotel");
+      expect(rates[0].location).toBe("French Quarter");
+      expect(rates[0].mpd).toBe(20);
     });
   });
 

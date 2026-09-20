@@ -1,5 +1,6 @@
 import { CapturedRate } from "../types";
 import { extractNumber } from "../cards";
+import { isValidLocation } from "./criteria";
 
 export function extractRatesFromSearchCards(
   container: Element,
@@ -33,38 +34,73 @@ export function extractRatesFromSearchCards(
     let hotelName = "Unknown Hotel";
     let hotelId: string | undefined = undefined;
     let cardLocation: string | undefined = undefined;
+    let cardNeighborhood: string | undefined = undefined;
 
     let parent: Element | null = card;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 8; i++) {
       if (!parent) break;
-      const nameEl = parent.querySelector('[data-testid="hotel-name"]');
-      if (nameEl && nameEl.textContent) {
-        hotelName = nameEl.textContent.trim();
+      if (hotelName === "Unknown Hotel") {
+        const nameEl = parent.querySelector('[data-testid="hotel-name"]');
+        if (nameEl && nameEl.textContent) {
+          hotelName = nameEl.textContent.trim();
+        }
       }
 
-      const linkEl =
-        parent.querySelector('a[href*="id="], a[href*="destination="]') ||
-        (parent.tagName === "A" && (parent.getAttribute("href")?.includes("id=") || parent.getAttribute("href")?.includes("destination="))
-          ? parent
-          : null);
-      if (linkEl) {
-        const href = linkEl.getAttribute("href");
-        if (href) {
+      if (!cardNeighborhood) {
+        const neighborhoodEl = parent.querySelector('[data-testid="hotel-neighborhood"]');
+        if (neighborhoodEl && neighborhoodEl.textContent) {
+          cardNeighborhood = neighborhoodEl.textContent.trim();
+        }
+      }
+
+      const allLinks = Array.from(
+        parent.querySelectorAll<HTMLAnchorElement>(
+          'a[href*="id="], a[href*="destination="], a[href*="/details"]'
+        )
+      );
+      if (parent.tagName === "A") {
+        allLinks.unshift(parent as HTMLAnchorElement);
+      }
+
+      for (const linkEl of allLinks) {
+        const href = linkEl.getAttribute("href") || "";
+        if (!hotelId) {
           const idMatch = href.match(/[?&]id=([^&]+)/);
-          if (idMatch && !hotelId) {
+          if (idMatch) {
             hotelId = idMatch[1];
           }
-          const destMatch = href.match(/[?&]destination=([^&]+)/);
-          if (destMatch && !cardLocation) {
+        }
+        if (!cardLocation) {
+          const destMatch =
+            href.match(/[?&]destination=([^&]+)/) ||
+            href.match(/[?&]city=([^&]+)/) ||
+            href.match(/[?&]location=([^&]+)/);
+          if (destMatch) {
             try {
-              cardLocation = decodeURIComponent(destMatch[1].replace(/\+/g, " ").trim());
+              const decoded = decodeURIComponent(destMatch[1].replace(/\+/g, " ").trim());
+              if (isValidLocation(decoded)) {
+                cardLocation = decoded;
+              }
             } catch {}
           }
         }
+        if (hotelId && cardLocation) break;
       }
 
       if (hotelName !== "Unknown Hotel" && hotelId && cardLocation) break;
       parent = parent.parentElement;
+    }
+
+    // Determine final card location: link destination > card neighborhood > hotel name city
+    let finalLocation = cardLocation;
+    if (!finalLocation && cardNeighborhood && isValidLocation(cardNeighborhood)) {
+      finalLocation = cardNeighborhood;
+    }
+    if (!finalLocation && hotelName !== "Unknown Hotel") {
+      const cityMatch = hotelName.match(/,\s*([^,]+)$/);
+      if (cityMatch && isValidLocation(cityMatch[1].trim())) {
+        finalLocation = cityMatch[1].trim();
+      }
     }
 
     const tiers = card.querySelectorAll(tierSelector);
@@ -78,7 +114,7 @@ export function extractRatesFromSearchCards(
       captured.push({
         hotelName,
         hotelId,
-        location: cardLocation,
+        location: finalLocation,
         price: dollars,
         miles,
         mpd: Number(mpd.toFixed(1)),
