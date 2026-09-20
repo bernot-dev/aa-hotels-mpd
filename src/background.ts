@@ -2,6 +2,15 @@
 import { recordRates } from "./db/db";
 import { SearchCriteria, CapturedRate } from "./types";
 
+// Open options.html when the extension toolbar icon is clicked
+chrome.action?.onClicked?.addListener(() => {
+  if (chrome.runtime.openOptionsPage) {
+    chrome.runtime.openOptionsPage();
+  } else {
+    chrome.tabs.create({ url: chrome.runtime.getURL("options.html") });
+  }
+});
+
 // SPA Navigation listener
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (!tab.url || !tab.url.includes("aadvantagehotels.com")) {
