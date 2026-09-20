@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { TopMpdRecord } from "../src/types";
-import { identifyHotelChain, computeValueScore, computeCpm } from "../src/analytics";
+import {
+  identifyHotelChain,
+  computeValueScore,
+  computeCpm,
+  deduplicateRecordsByHotel,
+} from "../src/analytics";
 
 describe("Options Dashboard Filtering & Sorting Logic", () => {
   const sampleRecords: TopMpdRecord[] = [
@@ -86,27 +91,79 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
     },
   ];
 
+  const vegasRecords: TopMpdRecord[] = [
+    {
+      id: "5",
+      hotelName: "Horseshoe Las Vegas",
+      hotelId: "h-horseshoe",
+      location: "Las Vegas, NV",
+      checkIn: "2026-11-16",
+      checkOut: "2026-11-18",
+      nights: 2,
+      rooms: 1,
+      guests: 2,
+      price: 436,
+      miles: 15000,
+      mpd: 34.4,
+      timestamp: "2026-09-01T00:00:00.000Z",
+      stars: 4,
+      rating: 8.0,
+      refundable: true,
+      chain: "Independent / Other",
+      cpm: 2.9,
+      valueScore: 27.5,
+    },
+    {
+      id: "6",
+      hotelName: "Horseshoe Las Vegas",
+      hotelId: "h-horseshoe",
+      location: "Las Vegas, NV",
+      checkIn: "2026-11-16",
+      checkOut: "2026-11-18",
+      nights: 2,
+      rooms: 1,
+      guests: 2,
+      price: 412,
+      miles: 14000,
+      mpd: 34.0,
+      timestamp: "2026-09-01T00:00:00.000Z",
+      stars: 4,
+      rating: 8.0,
+      refundable: true,
+      chain: "Independent / Other",
+      cpm: 2.9,
+      valueScore: 27.2,
+    },
+  ];
+
+  const sampleRecordsWithVegas = [...sampleRecords, ...vegasRecords];
+
   function filterAndSort(
     records: TopMpdRecord[],
     options: {
+      location?: string;
       chain?: string;
       minRating?: number;
       minStars?: number;
       refundableOnly?: boolean;
       under150?: boolean;
       sortBy?: "mpd" | "value" | "cpm" | "price";
+      deduplicate?: boolean;
     }
   ): TopMpdRecord[] {
     const {
+      location = "",
       chain = "",
       minRating = 0,
       minStars = 0,
       refundableOnly = false,
       under150 = false,
       sortBy = "mpd",
+      deduplicate = false,
     } = options;
 
     const filtered = records.filter((r) => {
+      if (location && r.location !== location) return false;
       const c = r.chain || identifyHotelChain(r.hotelName);
       if (chain && c !== chain) return false;
       if (minRating > 0 && (!r.rating || r.rating < minRating)) return false;
@@ -135,7 +192,7 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
       }
     });
 
-    return filtered;
+    return deduplicate ? deduplicateRecordsByHotel(filtered) : filtered;
   }
 
   it("filters by chain", () => {
@@ -195,14 +252,40 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
   });
 
   it("combines multiple filters (Sweet Spot Finder: 8.0+ rating, 3+ stars, sorted by Sweet Spot)", () => {
-    const results = filterAndSort(sampleRecords, {
+    const results = filterAndSort(sampleRecordsWithVegas, {
       minRating: 8.0,
       minStars: 3,
       sortBy: "value",
     });
-    expect(results.length).toBe(3);
-    expect(results[0].hotelName).toBe("Hampton Inn Dallas Market Center");
-    expect(results[1].hotelName).toBe("Courtyard Dallas Downtown");
-    expect(results[2].hotelName).toBe("Ritz-Carlton Dallas");
+    expect(results.length).toBe(5);
+    expect(results[0].hotelName).toBe("Horseshoe Las Vegas");
+    expect(results[1].hotelName).toBe("Horseshoe Las Vegas");
+    expect(results[2].hotelName).toBe("Hampton Inn Dallas Market Center");
+  });
+
+  it("filters deals by location (City, State)", () => {
+    const dallasResults = filterAndSort(sampleRecordsWithVegas, { location: "Dallas, TX" });
+    expect(dallasResults.length).toBe(4);
+    expect(dallasResults.every((r) => r.location === "Dallas, TX")).toBe(true);
+
+    const vegasResults = filterAndSort(sampleRecordsWithVegas, { location: "Las Vegas, NV" });
+    expect(vegasResults.length).toBe(2);
+    expect(vegasResults.every((r) => r.location === "Las Vegas, NV")).toBe(true);
+  });
+
+  it("deduplicates multiple rates for the same hotel (features each hotel at most once)", () => {
+    const results = filterAndSort(sampleRecordsWithVegas, {
+      sortBy: "mpd",
+      deduplicate: true,
+    });
+    // Without deduplication, Horseshoe Las Vegas appeared twice (34.4 and 34.0)
+    // With deduplication, Horseshoe Las Vegas should only appear once with its highest MPD (34.4)
+    const horseshoeEntries = results.filter((r) => r.hotelName === "Horseshoe Las Vegas");
+    expect(horseshoeEntries.length).toBe(1);
+    expect(horseshoeEntries[0].mpd).toBe(34.4);
+    expect(horseshoeEntries[0].price).toBe(436);
+
+    // Total distinct hotels = 5 (Courtyard, Motel Cheap, Ritz-Carlton, Hampton Inn, Horseshoe)
+    expect(results.length).toBe(5);
   });
 });

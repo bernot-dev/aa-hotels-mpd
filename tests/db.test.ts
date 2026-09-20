@@ -119,18 +119,18 @@ describe("IndexedDB Storage Layer", () => {
 
     // Top 3 locations with highest MPD
     expect(stats.topLocations.map((l) => l.location)).toEqual([
-      "Miami, FL, USA",
-      "Chicago, IL, USA",
-      "Denver, CO, USA",
+      "Miami, FL",
+      "Chicago, IL",
+      "Denver, CO",
     ]);
     expect(stats.topLocations[0].topMpd).toBe(40.0);
 
     // 3 locations with lowest MPD (lowest MPD locations)
     // Seattle (5), Denver (15), Chicago (25)
     expect(stats.lowestLocations.map((l) => l.location)).toEqual([
-      "Seattle, WA, USA",
-      "Denver, CO, USA",
-      "Chicago, IL, USA",
+      "Seattle, WA",
+      "Denver, CO",
+      "Chicago, IL",
     ]);
     expect(stats.lowestLocations[0].topMpd).toBe(5.0);
   });
@@ -288,12 +288,12 @@ describe("IndexedDB Storage Layer", () => {
     expect(result.deletedLocations).toContain("New");
     expect(result.deletedLocations).toContain("New Orlea");
 
-    // "Boston (MA), United States", "New Orleans", and "San Diego (CA), United States" should remain
+    // "Boston, MA", "New Orleans", and "San Diego, CA" should remain
     const stats = await getDashboardStats();
     const remainingLocs = stats.allLocations.map((l) => l.location);
-    expect(remainingLocs).toContain("Boston (MA), United States");
+    expect(remainingLocs).toContain("Boston, MA");
     expect(remainingLocs).toContain("New Orleans");
-    expect(remainingLocs).toContain("San Diego (CA), United States");
+    expect(remainingLocs).toContain("San Diego, CA");
     expect(remainingLocs).not.toContain("B");
     expect(remainingLocs).not.toContain("Bo");
     expect(remainingLocs).not.toContain("Boston");

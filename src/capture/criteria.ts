@@ -1,11 +1,74 @@
 import { SearchCriteria } from "../types";
 import { getNights } from "../nights";
 
+const US_STATES_MAP: Record<string, string> = {
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA",
+  colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA",
+  hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA",
+  kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD",
+  massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO",
+  montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ",
+  "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND",
+  ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI",
+  "south carolina": "SC", "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT",
+  vermont: "VT", virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI",
+  wyoming: "WY", "district of columbia": "DC",
+};
+
+export function normalizeLocation(raw: string | undefined | null): string {
+  if (!raw) return "";
+  let loc = raw.trim();
+  if (loc.length < 3 || loc.toLowerCase() === "unknown location") return "";
+
+  // 1. Match paren state pattern e.g. "Las Vegas (NV), US", "Flagstaff (AZ)", "Las Vegas (NV)"
+  const parenMatch = loc.match(
+    /^([^(]+?)\s*\(([A-Za-z]{2})\)(?:,\s*(?:US|USA|United States|[A-Za-z\s]+))?$/i
+  );
+  if (parenMatch) {
+    const city = parenMatch[1].trim();
+    const st = parenMatch[2].toUpperCase();
+    return `${city}, ${st}`;
+  }
+
+  // 2. Strip trailing country e.g. ", US", ", USA", ", United States"
+  loc = loc.replace(/,\s*(?:US|USA|United States)$/i, "").trim();
+
+  // 3. Known neighborhood aliases mapped to canonical city/state
+  if (/^The Strip$/i.test(loc) || /^Lake Las Vegas$/i.test(loc)) {
+    return "Las Vegas, NV";
+  }
+  if (/^Boulder City$/i.test(loc)) {
+    return "Boulder City, NV";
+  }
+
+  // 4. "City, State" e.g. "Dallas, Texas" -> "Dallas, TX"
+  const commaParts = loc.split(",").map((s) => s.trim());
+  if (commaParts.length === 2) {
+    const city = commaParts[0];
+    const stateRaw = commaParts[1].toLowerCase().replace(/\s+state$/i, "").trim();
+    if (stateRaw.length === 2 && /^[a-z]{2}$/i.test(stateRaw)) {
+      return `${city}, ${stateRaw.toUpperCase()}`;
+    }
+    if (US_STATES_MAP[stateRaw]) {
+      return `${city}, ${US_STATES_MAP[stateRaw]}`;
+    }
+  }
+
+  return loc;
+}
+
 export function isValidLocation(location: string | undefined | null): boolean {
   if (!location) return false;
   const trimmed = location.trim();
   if (trimmed.length < 3) return false;
   if (trimmed.toLowerCase() === "unknown location") return false;
+  if (
+    /^(?:Southside Neighborhood|Black Bill Park|Flagstaff City Center)$/i.test(
+      trimmed
+    )
+  ) {
+    return false;
+  }
   return true;
 }
 

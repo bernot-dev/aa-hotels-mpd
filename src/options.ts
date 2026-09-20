@@ -20,6 +20,7 @@ import {
   identifyHotelChain,
   computeValueScore,
   computeCpm,
+  deduplicateRecordsByHotel,
 } from "./analytics";
 
 export type Config = {
@@ -36,6 +37,7 @@ let showAllTopMpds = false;
 let showAllTopLocs = false;
 let showAllLowestLocs = false;
 let selectedChainFilter = "";
+let selectedLocationFilter = "";
 
 // 1. Tab Navigation
 function setupTabs(): void {
@@ -60,7 +62,8 @@ function renderTop3VisualCards(records: TopMpdRecord[]): void {
   const cardsGrid = document.getElementById("top3VisualCards");
   if (!container || !cardsGrid) return;
 
-  const top3 = records.slice(0, 3);
+  const distinctTop = deduplicateRecordsByHotel(records);
+  const top3 = distinctTop.slice(0, 3);
   if (top3.length === 0) {
     container.style.display = "none";
     cardsGrid.innerHTML = "";
@@ -228,13 +231,39 @@ function renderSeasonality(seasonality?: SeasonalityStats): void {
 }
 
 // 5. Filtering and Sorting for Top MPDs
+function populateLocationFilterOptions(records: TopMpdRecord[]): void {
+  const select = document.getElementById("filterLocation") as HTMLSelectElement | null;
+  if (!select) return;
+
+  const currentVal = select.value;
+  const locCounts = new Map<string, number>();
+  for (const r of records) {
+    const loc = (r.location || "").trim();
+    if (loc && loc !== "Unknown Location") {
+      locCounts.set(loc, (locCounts.get(loc) || 0) + 1);
+    }
+  }
+
+  const sortedLocs = Array.from(locCounts.keys()).sort((a, b) => a.localeCompare(b));
+  select.innerHTML = `<option value="">All Locations</option>`;
+  for (const loc of sortedLocs) {
+    const opt = document.createElement("option");
+    opt.value = loc;
+    opt.textContent = `${loc} (${locCounts.get(loc)})`;
+    select.appendChild(opt);
+  }
+  select.value = selectedLocationFilter || currentVal || "";
+}
+
 function applyFiltersAndSort(records: TopMpdRecord[]): TopMpdRecord[] {
+  const locationSelect = document.getElementById("filterLocation") as HTMLSelectElement | null;
   const minRatingSelect = document.getElementById("filterMinRating") as HTMLSelectElement | null;
   const minStarsSelect = document.getElementById("filterMinStars") as HTMLSelectElement | null;
   const sortBySelect = document.getElementById("filterSortBy") as HTMLSelectElement | null;
   const refundableCb = document.getElementById("filterRefundableOnly") as HTMLInputElement | null;
   const under150Cb = document.getElementById("filterUnder150") as HTMLInputElement | null;
 
+  const selectedLoc = locationSelect?.value || selectedLocationFilter || "";
   const minRating = parseFloat(minRatingSelect?.value || "0");
   const minStars = parseFloat(minStarsSelect?.value || "0");
   const sortBy = sortBySelect?.value || "mpd";
@@ -242,6 +271,7 @@ function applyFiltersAndSort(records: TopMpdRecord[]): TopMpdRecord[] {
   const under150 = under150Cb?.checked || false;
 
   const filtered = records.filter((r) => {
+    if (selectedLoc && r.location !== selectedLoc) return false;
     const chain = r.chain || identifyHotelChain(r.hotelName);
     if (selectedChainFilter && chain !== selectedChainFilter) return false;
     if (minRating > 0 && (!r.rating || r.rating < minRating)) return false;
@@ -271,7 +301,8 @@ function applyFiltersAndSort(records: TopMpdRecord[]): TopMpdRecord[] {
     }
   });
 
-  return filtered;
+  // Deduplicate so each hotel is featured at most once with its best rate under current sort
+  return deduplicateRecordsByHotel(filtered);
 }
 
 function renderFilteredTopMpds(): void {
@@ -422,6 +453,7 @@ async function loadDashboard(): Promise<void> {
   try {
     currentStats = await getDashboardStats();
     renderTop3VisualCards(currentStats.topMpds);
+    populateLocationFilterOptions(currentStats.topMpds);
     populateChainFilterOptions(currentStats.chainStats);
     renderChainLeaderboard(currentStats.chainStats);
     renderSeasonality(currentStats.seasonality);
@@ -624,6 +656,11 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("deleteHistoryBtn")?.addEventListener("click", handleDeleteHistory);
 
   // Filter & Sort Toolbar listeners
+  document.getElementById("filterLocation")?.addEventListener("change", (e) => {
+    selectedLocationFilter = (e.target as HTMLSelectElement).value;
+    renderFilteredTopMpds();
+  });
+
   document.getElementById("filterChain")?.addEventListener("change", (e) => {
     selectedChainFilter = (e.target as HTMLSelectElement).value;
     document.querySelectorAll(".chain-card").forEach((card) => {

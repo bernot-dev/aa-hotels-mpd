@@ -110,6 +110,7 @@
       padding: 20px;
       margin-bottom: 20px;
       box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
     }
 
     .card-header {
@@ -127,11 +128,44 @@
       gap: 8px;
     }
 
-    /* Tables */
+    /* Tables & Responsive Containers */
+    #topMpdsContainer {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-sizing: border-box;
+      margin-top: 6px;
+    }
+
+    #topMpdsContainer::-webkit-scrollbar {
+      height: 8px;
+    }
+
+    #topMpdsContainer::-webkit-scrollbar-track {
+      background: #f8fafc;
+      border-radius: 4px;
+    }
+
+    #topMpdsContainer::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+
+    #topMpdsContainer::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
     .data-table {
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
+    }
+
+    #topMpdsTable {
+      min-width: 950px;
     }
 
     .data-table th,
@@ -674,6 +708,12 @@
 
       <!-- Filter & Sort Toolbar -->
       <div class="filter-bar">
+        <div class="filter-group">
+          <label for="filterLocation">Location (City, State)</label>
+          <select id="filterLocation" class="filter-select">
+            <option value="">All Locations</option>
+          </select>
+        </div>
         <div class="filter-group">
           <label for="filterChain">Brand / Chain</label>
           <select id="filterChain" class="filter-select">

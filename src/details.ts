@@ -1,7 +1,5 @@
 import { updateCards } from "./cards";
-import { extractSearchCriteria } from "./capture/criteria";
-import { extractRatesFromDetailsCards } from "./capture/rates";
-import { queueRatesForDispatch, resetRateCollector } from "./capture/collector";
+import { resetRateCollector } from "./capture/collector";
 import { getNights } from "./nights";
 
 export interface RoomExpansionOptions {
@@ -267,26 +265,12 @@ export const processDetailsPage = async (container: Element): Promise<() => void
 
   const cardSelector = '[data-testid="room-card"]';
 
-  const onCardsProcessed = () => {
-    try {
-      const nights = getNights();
-      const criteria = extractSearchCriteria();
-      const rates = extractRatesFromDetailsCards(targetContainer, nights, includeBonusMiles);
-      if (rates.length > 0) {
-        queueRatesForDispatch(criteria, rates);
-      }
-    } catch (err) {
-      console.debug("[AA-Hotels-MPD] Error capturing details rates:", err);
-    }
-  };
-
   const callback = updateCards(
     targetContainer,
     maxMPDElem,
     cardSelector,
     includeBonusMiles,
-    useAllInPricing,
-    onCardsProcessed
+    useAllInPricing
   );
 
   const roomExpansion = setupRoomExpansion({

@@ -7,7 +7,7 @@ import {
   ExhaustiveQueryRecord,
   DashboardStats,
 } from "../types";
-import { isValidLocation } from "../capture/criteria";
+import { isValidLocation, normalizeLocation } from "../capture/criteria";
 import {
   identifyHotelChain,
   computeCpm,
@@ -16,7 +16,7 @@ import {
   computeSeasonalityStats,
 } from "../analytics";
 
-export { isValidLocation };
+export { isValidLocation, normalizeLocation };
 
 export const DB_NAME = "AAHotelsMPD";
 export const DB_VERSION = 1;
@@ -115,7 +115,8 @@ export async function recordRates(
   for (const rate of rates) {
     if (!rate.mpd || rate.mpd <= 0) continue;
 
-    const rateLoc = (rate.location || criteria.location || "").trim();
+    const rawLoc = (rate.location || criteria.location || "").trim();
+    const rateLoc = normalizeLocation(rawLoc);
     if (!isValidLocation(rateLoc)) continue;
 
     const cpm = computeCpm(rate.price, rate.miles);
@@ -173,10 +174,11 @@ export async function recordRates(
   // Group rates by their validated location
   const ratesByLoc = new Map<string, CapturedRate[]>();
   for (const rate of rates) {
-    const rateLoc = (rate.location || criteria.location || "").trim();
+    const rawLoc = (rate.location || criteria.location || "").trim();
+    const rateLoc = normalizeLocation(rawLoc);
     if (!isValidLocation(rateLoc)) continue;
     const existingList = ratesByLoc.get(rateLoc) || [];
-    existingList.push(rate);
+    existingList.push({ ...rate, location: rateLoc });
     ratesByLoc.set(rateLoc, existingList);
   }
 
@@ -326,10 +328,11 @@ export async function cleanCorruptedLocations(
 
   for (const item of sorted) {
     const trimmed = item.location.trim();
+    const normalized = normalizeLocation(trimmed);
     let isCorrupted = false;
 
-    // 1. Length < 3 or Unknown Location
-    if (!isValidLocation(trimmed)) {
+    // 1. Length < 3 or Unknown Location or invalid
+    if (!isValidLocation(trimmed) || !isValidLocation(normalized)) {
       isCorrupted = true;
     }
 
@@ -352,8 +355,37 @@ export async function cleanCorruptedLocations(
 
     // 3. Known fragmented neighborhood/park strings that are not municipal cities
     if (!isCorrupted) {
-      if (/^(?:Southside Neighborhood|Black Bill Park|Flagstaff City Center)$/i.test(trimmed)) {
+      if (
+        /^(?:Southside Neighborhood|Black Bill Park|Flagstaff City Center|The Strip|Lake Las Vegas)$/i.test(
+          trimmed
+        )
+      ) {
         isCorrupted = true;
+      }
+    }
+
+    // 4. If normalized location differs from stored location (e.g. "Las Vegas (NV), US" -> "Las Vegas, NV" or "Boulder City" -> "Boulder City, NV")
+    if (normalized && normalized.toLowerCase() !== trimmed.toLowerCase() && isValidLocation(normalized)) {
+      isCorrupted = true;
+      const existingCanon = locs.find(
+        (l) => l.location.toLowerCase() === normalized.toLowerCase()
+      );
+      if (existingCanon) {
+        if (item.topMpd > existingCanon.topMpd) {
+          existingCanon.topMpd = item.topMpd;
+          existingCanon.hotelName = item.hotelName;
+          existingCanon.price = item.price;
+          existingCanon.miles = item.miles;
+          existingCanon.checkIn = item.checkIn;
+          existingCanon.checkOut = item.checkOut;
+          existingCanon.nights = item.nights;
+          locStore.put(existingCanon);
+        }
+      } else {
+        locStore.put({
+          ...item,
+          location: normalized,
+        });
       }
     }
 
@@ -363,18 +395,22 @@ export async function cleanCorruptedLocations(
     }
   }
 
-  // Also clean up top_mpds with deleted or invalid locations
-  if (deletedLocations.length > 0) {
-    const deletedSet = new Set(deletedLocations.map((l) => l.toLowerCase()));
-    const topRecords = await getAllFromStore<TopMpdRecord>(topStore);
-    for (const top of topRecords) {
-      if (
-        !top.location ||
-        !isValidLocation(top.location) ||
-        deletedSet.has(top.location.trim().toLowerCase())
-      ) {
+  // Also clean and normalize top_mpds
+  const topRecords = await getAllFromStore<TopMpdRecord>(topStore);
+  const deletedSet = new Set(deletedLocations.map((l) => l.toLowerCase()));
+  for (const top of topRecords) {
+    const normLoc = normalizeLocation(top.location);
+    if (!normLoc || !isValidLocation(normLoc) || deletedSet.has(top.location.trim().toLowerCase())) {
+      // If it can be salvaged by normalizing to a valid canonical location
+      if (normLoc && isValidLocation(normLoc)) {
+        top.location = normLoc;
+        topStore.put(top);
+      } else {
         topStore.delete(top.id);
       }
+    } else if (normLoc !== top.location) {
+      top.location = normLoc;
+      topStore.put(top);
     }
   }
 

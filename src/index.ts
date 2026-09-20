@@ -12,7 +12,7 @@ const DETAILS_SELECTOR = 'div[data-testid="room-group"]';
 
 import { processCard } from "./cards";
 import { getNights } from "./nights";
-import { extractSearchCriteria, isValidLocation } from "./capture/criteria";
+import { extractSearchCriteria, isValidLocation, normalizeLocation } from "./capture/criteria";
 import { queueRatesForDispatch } from "./capture/collector";
 import { CapturedRate } from "./types";
 
@@ -71,8 +71,9 @@ if (typeof window !== "undefined") {
     try {
       const criteria = extractSearchCriteria();
       const firstHotel = hotels[0];
-      if (firstHotel?.location && (!isValidLocation(criteria.location) || criteria.location === "Unknown Location")) {
-        criteria.location = firstHotel.location;
+      const canonicalSearchLoc = normalizeLocation(firstHotel?.location || criteria.location);
+      if (canonicalSearchLoc) {
+        criteria.location = canonicalSearchLoc;
       }
       if (firstHotel?.checkInDate && !criteria.checkIn) criteria.checkIn = firstHotel.checkInDate;
       if (firstHotel?.checkOutDate && !criteria.checkOut) criteria.checkOut = firstHotel.checkOutDate;
@@ -86,10 +87,11 @@ if (typeof window !== "undefined") {
           ? (h.tieredMiles || h.baseMiles)
           : (h.baseMiles || h.tieredMiles);
         const mpd = effectivePrice > 0 ? miles / effectivePrice : 0;
+        const hotelLoc = normalizeLocation(h.location || criteria.location) || criteria.location;
         return {
           hotelName: h.hotelName,
           hotelId: h.hotelId,
-          location: h.location || criteria.location,
+          location: hotelLoc,
           price: effectivePrice,
           basePrice: h.basePrice,
           allInPrice: h.allInPrice,

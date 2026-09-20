@@ -1,9 +1,7 @@
 import { updateCards } from "./cards";
 import { getNights } from "./nights";
 import { processMapPreviewCards, updateMapPins } from "./map";
-import { extractSearchCriteria, isValidLocation } from "./capture/criteria";
-import { extractRatesFromSearchCards } from "./capture/rates";
-import { queueRatesForDispatch, resetRateCollector } from "./capture/collector";
+import { resetRateCollector } from "./capture/collector";
 
 export interface SearchExpansionOptions {
   expandSearchResults: boolean;
@@ -281,32 +279,12 @@ export const processSearchPage = async (
   const cardSelector = '[data-testid="hotel-card-pricing"]';
   const observeRoot = document.body;
 
-  const onCardsProcessed = () => {
-    try {
-      const nights = getNights();
-      const criteria = extractSearchCriteria();
-      const rates = extractRatesFromSearchCards(document.body, nights, includeBonusMiles);
-      if (rates.length > 0) {
-        if (!isValidLocation(criteria.location)) {
-          const firstValidLoc = rates.find((r) => isValidLocation(r.location))?.location;
-          if (firstValidLoc) {
-            criteria.location = firstValidLoc;
-          }
-        }
-        queueRatesForDispatch(criteria, rates);
-      }
-    } catch (err) {
-      console.debug("[AA-Hotels-MPD] Error capturing search rates:", err);
-    }
-  };
-
   const callback = updateCards(
     observeRoot,
     maxMPDElem,
     cardSelector,
     includeBonusMiles,
-    useAllInPricing,
-    onCardsProcessed
+    useAllInPricing
   );
 
   const searchExpansion = setupSearchExpansion({

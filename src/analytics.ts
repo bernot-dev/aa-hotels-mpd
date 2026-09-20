@@ -208,3 +208,31 @@ export function computeSeasonalityStats(records: TopMpdRecord[]): SeasonalitySta
     weekendAvgMpd: weekendCount > 0 ? Number((weekendTotalMpd / weekendCount).toFixed(1)) : 0,
   };
 }
+
+/**
+ * Deduplicates top MPD records so each unique hotel is featured at most once.
+ * Retains the first (best-ranked under current sorting) record for each hotel.
+ */
+export function deduplicateRecordsByHotel(records: TopMpdRecord[]): TopMpdRecord[] {
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
+  const deduplicated: TopMpdRecord[] = [];
+
+  for (const r of records) {
+    const id = r.hotelId ? String(r.hotelId).trim() : "";
+    const name = (r.hotelName || "").trim().toLowerCase();
+
+    if (id && seenIds.has(id)) {
+      continue;
+    }
+    if (name && seenNames.has(name)) {
+      continue;
+    }
+
+    if (id) seenIds.add(id);
+    if (name) seenNames.add(name);
+    deduplicated.push(r);
+  }
+
+  return deduplicated;
+}
