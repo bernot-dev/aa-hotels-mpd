@@ -4,7 +4,8 @@
     "build": "webpack build",
     "watch": "webpack --watch --mode development",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "package": "npm run build && python3 scripts/package-extension.py extension.zip"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
