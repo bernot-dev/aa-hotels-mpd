@@ -13,6 +13,8 @@ import {
   deleteLocationStat,
   deleteTopMpdRecord,
   isValidLocation,
+  MAX_TOP_RECORDS,
+  MAX_LOCATION_RECORDS,
 } from "../src/db/db";
 import { SearchCriteria, CapturedRate } from "../src/types";
 
@@ -74,7 +76,12 @@ describe("IndexedDB Storage Layer", () => {
     expect(stats.topMpds[2].mpd).toBe(10.5);
   });
 
-  it("bounds top_mpds to 100 all-time highest rates", async () => {
+  it("has default MAX_TOP_RECORDS and MAX_LOCATION_RECORDS set to 100,000", () => {
+    expect(MAX_TOP_RECORDS).toBe(100000);
+    expect(MAX_LOCATION_RECORDS).toBe(100000);
+  });
+
+  it("retains rates up to 100K capacity without dropping valid rates (no data loss)", async () => {
     // Generate 120 rates with varying MPDs
     const rates: CapturedRate[] = [];
     for (let i = 1; i <= 120; i++) {
@@ -82,6 +89,24 @@ describe("IndexedDB Storage Layer", () => {
     }
 
     await recordRates(sampleCriteria, rates, false);
+
+    const stats = await getDashboardStats();
+    expect(stats.topMpds.length).toBe(120);
+    // Highest should be 120
+    expect(stats.topMpds[0].mpd).toBe(120);
+    // Lowest should be 1 (not pruned)
+    expect(stats.topMpds[119].mpd).toBe(1);
+  });
+
+  it("bounds top_mpds when maxTopRecords cap is exceeded", async () => {
+    // Generate 120 rates with varying MPDs
+    const rates: CapturedRate[] = [];
+    for (let i = 1; i <= 120; i++) {
+      rates.push(createRate(`Hotel ${i}`, i, 100, i * 100));
+    }
+
+    // Set custom limit to 100 to test pruning
+    await recordRates(sampleCriteria, rates, false, 100);
 
     const stats = await getDashboardStats();
     expect(stats.topMpds.length).toBe(100);

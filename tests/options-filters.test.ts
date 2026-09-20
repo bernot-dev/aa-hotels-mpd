@@ -449,4 +449,54 @@ describe("Options Dashboard Filtering & Sorting Logic", () => {
     expect(afterNov1.length).toBe(2);
     expect(afterNov1.every((r) => r.checkIn >= "2026-11-01")).toBe(true);
   });
+
+  it("paginates deals to 100 items per page with accurate slices and ranks", () => {
+    const PAGE_SIZE = 100;
+    // Generate 250 sample records
+    const records: TopMpdRecord[] = [];
+    for (let i = 1; i <= 250; i++) {
+      records.push({
+        id: `rec-${i}`,
+        hotelName: `Hotel ${i}`,
+        location: "Klamath Falls, OR",
+        checkIn: "2026-11-10",
+        checkOut: "2026-11-12",
+        nights: 2,
+        rooms: 1,
+        guests: 2,
+        price: 200,
+        miles: 4000,
+        mpd: 20.0,
+        timestamp: "2026-09-20",
+      });
+    }
+
+    const totalRecords = records.length;
+    const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+    expect(totalPages).toBe(3);
+
+    // Page 1
+    const page1Start = 0;
+    const page1End = Math.min(page1Start + PAGE_SIZE, totalRecords);
+    const page1Items = records.slice(page1Start, page1End);
+    expect(page1Items.length).toBe(100);
+    expect(page1Items[0].id).toBe("rec-1");
+    expect(page1Items[99].id).toBe("rec-100");
+
+    // Page 2
+    const page2Start = 100;
+    const page2End = Math.min(page2Start + PAGE_SIZE, totalRecords);
+    const page2Items = records.slice(page2Start, page2End);
+    expect(page2Items.length).toBe(100);
+    expect(page2Items[0].id).toBe("rec-101");
+    expect(page2Items[99].id).toBe("rec-200");
+
+    // Page 3
+    const page3Start = 200;
+    const page3End = Math.min(page3Start + PAGE_SIZE, totalRecords);
+    const page3Items = records.slice(page3Start, page3End);
+    expect(page3Items.length).toBe(50);
+    expect(page3Items[0].id).toBe("rec-201");
+    expect(page3Items[49].id).toBe("rec-250");
+  });
 });

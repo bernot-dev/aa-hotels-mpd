@@ -37,7 +37,9 @@ export type Config = {
 };
 
 let currentStats: DashboardStats | null = null;
-let showAllTopMpds = false;
+let showAllTopMpds = true;
+const TOP_MPDS_PAGE_SIZE = 100;
+let currentTopMpdsPage = 1;
 let showAllTopLocs = false;
 let showAllLowestLocs = false;
 const selectedChains = new Set<string>();
@@ -523,24 +525,33 @@ function applyFiltersAndSort(records: TopMpdRecord[]): TopMpdRecord[] {
   return deduplicateRecordsByHotel(filtered);
 }
 
-function renderFilteredTopMpds(): void {
+function renderFilteredTopMpds(resetPage = true): void {
   if (!currentStats) return;
+  if (resetPage) {
+    currentTopMpdsPage = 1;
+  }
   const filtered = applyFiltersAndSort(currentStats.topMpds);
   renderTopMpds(filtered, showAllTopMpds);
 }
 
-// 6. Render Top MPDs Table
+// 6. Render Top MPDs Table with 100-per-page pagination
 function renderTopMpds(records: TopMpdRecord[], showAll: boolean): void {
   const tbody = document.getElementById("topMpdsBody");
   const table = document.getElementById("topMpdsTable");
   const empty = document.getElementById("topMpdsEmpty");
   const toggleBtn = document.getElementById("toggleTopMpds") as HTMLButtonElement | null;
+  const pagination = document.getElementById("topMpdsPagination");
+  const paginationInfo = document.getElementById("topMpdsPaginationInfo");
+  const pageIndicator = document.getElementById("topMpdsPageIndicator");
+  const prevBtn = document.getElementById("topMpdsPrevBtn") as HTMLButtonElement | null;
+  const nextBtn = document.getElementById("topMpdsNextBtn") as HTMLButtonElement | null;
 
   if (!tbody || !table || !empty) return;
 
   if (records.length === 0) {
     table.style.display = "none";
     empty.style.display = "block";
+    if (pagination) pagination.style.display = "none";
     if (toggleBtn) toggleBtn.style.display = "none";
     return;
   }
@@ -549,23 +560,53 @@ function renderTopMpds(records: TopMpdRecord[], showAll: boolean): void {
   empty.style.display = "none";
   if (toggleBtn) {
     toggleBtn.style.display = records.length > 3 ? "inline-flex" : "none";
-    toggleBtn.textContent = showAll ? "Show Top 3" : `Show All (${records.length})`;
+    toggleBtn.textContent = showAll ? "Show Top 3" : `Show All (${records.length.toLocaleString()})`;
   }
 
-  const displayed = showAll ? records.slice(0, 100) : records.slice(0, 3);
+  let displayed: TopMpdRecord[] = [];
+  let startIndex = 0;
+
+  if (!showAll) {
+    // Compact view: show top 3 only
+    displayed = records.slice(0, 3);
+    if (pagination) pagination.style.display = "none";
+  } else {
+    // Paginated view: 100 records per page
+    const totalPages = Math.max(1, Math.ceil(records.length / TOP_MPDS_PAGE_SIZE));
+    if (currentTopMpdsPage > totalPages) currentTopMpdsPage = totalPages;
+    if (currentTopMpdsPage < 1) currentTopMpdsPage = 1;
+
+    startIndex = (currentTopMpdsPage - 1) * TOP_MPDS_PAGE_SIZE;
+    const endIndex = Math.min(startIndex + TOP_MPDS_PAGE_SIZE, records.length);
+    displayed = records.slice(startIndex, endIndex);
+
+    if (pagination) {
+      pagination.style.display = "flex";
+      if (paginationInfo) {
+        paginationInfo.textContent = `Showing ${(startIndex + 1).toLocaleString()}–${endIndex.toLocaleString()} of ${records.length.toLocaleString()} deals`;
+      }
+      if (pageIndicator) {
+        pageIndicator.textContent = `Page ${currentTopMpdsPage} of ${totalPages}`;
+      }
+      if (prevBtn) {
+        prevBtn.disabled = currentTopMpdsPage <= 1;
+      }
+      if (nextBtn) {
+        nextBtn.disabled = currentTopMpdsPage >= totalPages;
+      }
+    }
+  }
+
   tbody.innerHTML = displayed
     .map((r, index) => {
       const isHigh = r.mpd >= 20;
       const chain = r.chain || identifyHotelChain(r.hotelName);
       const valScore = r.valueScore ?? computeValueScore(r.mpd, r.rating);
       const cpm = r.cpm ?? computeCpm(r.price, r.miles);
-      const bookingUrl = r.hotelId
-        ? `https://www.aadvantagehotels.com/details?id=${encodeURIComponent(r.hotelId)}&checkIn=${encodeURIComponent(r.checkIn)}&checkOut=${encodeURIComponent(r.checkOut)}`
-        : "";
 
       return `
         <tr>
-          <td><b>#${index + 1}</b></td>
+          <td><b>#${startIndex + index + 1}</b></td>
           <td><span class="mpd-badge ${isHigh ? "high" : ""}">${r.mpd.toFixed(1)}</span></td>
           <td><span class="score-badge" title="Quality × MPD">${valScore.toFixed(1)}</span></td>
           <td><span class="cpm-badge" title="Cost per mile">${cpm > 0 ? `${cpm.toFixed(1)}¢` : "—"}</span></td>
@@ -584,7 +625,6 @@ function renderTopMpds(records: TopMpdRecord[], showAll: boolean): void {
           <td>$${r.price.toLocaleString()}</td>
           <td>${r.miles.toLocaleString()}</td>
           <td style="text-align: right; white-space: nowrap;">
-            ${bookingUrl ? `<a href="${bookingUrl}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; margin-right: 8px; font-size: 13px;" title="View on AA Hotels">↗</a>` : ""}
             <button class="btn-delete-item btn-delete-top" data-id="${escapeHtml(r.id)}" title="Delete this rate">✕</button>
           </td>
         </tr>
@@ -1102,7 +1142,21 @@ document.addEventListener("DOMContentLoaded", () => {
   // Toggle buttons
   document.getElementById("toggleTopMpds")?.addEventListener("click", () => {
     showAllTopMpds = !showAllTopMpds;
-    renderFilteredTopMpds();
+    renderFilteredTopMpds(true);
+  });
+
+  document.getElementById("topMpdsPrevBtn")?.addEventListener("click", () => {
+    if (currentTopMpdsPage > 1) {
+      currentTopMpdsPage--;
+      renderFilteredTopMpds(false);
+      document.getElementById("topMpdsTable")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+
+  document.getElementById("topMpdsNextBtn")?.addEventListener("click", () => {
+    currentTopMpdsPage++;
+    renderFilteredTopMpds(false);
+    document.getElementById("topMpdsTable")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   document.getElementById("toggleTopLocs")?.addEventListener("click", () => {

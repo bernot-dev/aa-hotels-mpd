@@ -35,14 +35,14 @@ export function openDatabase(): Promise<IDBDatabase> {
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
 
-      // 1. Top MPDs (top 100 all-time)
+      // 1. Top MPDs (up to 100K records)
       if (!db.objectStoreNames.contains(STORES.TOP_MPDS)) {
         const topStore = db.createObjectStore(STORES.TOP_MPDS, { keyPath: "id" });
         topStore.createIndex("mpd", "mpd", { unique: false });
         topStore.createIndex("timestamp", "timestamp", { unique: false });
       }
 
-      // 2. Location Stats (up to 100 locations)
+      // 2. Location Stats (up to 100K locations)
       if (!db.objectStoreNames.contains(STORES.LOCATION_STATS)) {
         const locStore = db.createObjectStore(STORES.LOCATION_STATS, { keyPath: "location" });
         locStore.createIndex("topMpd", "topMpd", { unique: false });
@@ -85,10 +85,15 @@ function countStore(store: IDBObjectStore): Promise<number> {
   });
 }
 
+export const MAX_TOP_RECORDS = 100000;
+export const MAX_LOCATION_RECORDS = 100000;
+
 export async function recordRates(
   criteria: SearchCriteria,
   rates: CapturedRate[],
-  keepExhaustive: boolean
+  keepExhaustive = false,
+  maxTopRecords = MAX_TOP_RECORDS,
+  maxLocRecords = MAX_LOCATION_RECORDS
 ): Promise<void> {
   if (!rates || rates.length === 0) {
     return;
@@ -105,13 +110,7 @@ export async function recordRates(
   const locStore = tx.objectStore(STORES.LOCATION_STATS);
   const nightsStore = tx.objectStore(STORES.NIGHTS_STATS);
 
-  // 1. Process Top MPDs (maintain top 100 all-time)
-  const existingTop = await getAllFromStore<TopMpdRecord>(topStore);
-  const topMap = new Map<string, TopMpdRecord>();
-  for (const item of existingTop) {
-    topMap.set(item.id, item);
-  }
-
+  // 1. Process Top MPDs (maintain up to 100K all-time records)
   for (const rate of rates) {
     if (!rate.mpd || rate.mpd <= 0) continue;
 
@@ -152,24 +151,31 @@ export async function recordRates(
       valueScore,
     };
 
-    topMap.set(recordId, newRecord);
+    topStore.put(newRecord);
   }
 
-  // Sort descending by mpd
-  const sortedTop = Array.from(topMap.values()).sort((a, b) => b.mpd - a.mpd);
-  const top100 = sortedTop.slice(0, 100);
-  const keepIds = new Set(top100.map((r) => r.id));
-
-  // Save top 100
-  for (const record of top100) {
-    topStore.put(record);
-  }
-
-  // Delete records dropped below rank 100
-  for (const item of existingTop) {
-    if (!keepIds.has(item.id)) {
-      topStore.delete(item.id);
-    }
+  // Enforce maxTopRecords (100K cap): prune lowest MPD records if count exceeds limit
+  const currentTopCount = await countStore(topStore);
+  if (currentTopCount > maxTopRecords) {
+    const excess = currentTopCount - maxTopRecords;
+    const mpdIndex = topStore.index("mpd");
+    await new Promise<void>((resolve, reject) => {
+      const keysToDelete: IDBValidKey[] = [];
+      const req = mpdIndex.openCursor(); // ascending order: lowest MPDs first
+      req.onsuccess = (e) => {
+        const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
+        if (cursor && keysToDelete.length < excess) {
+          keysToDelete.push(cursor.primaryKey);
+          cursor.continue();
+        } else {
+          for (const key of keysToDelete) {
+            topStore.delete(key);
+          }
+          resolve();
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
   }
 
   // 2. Process Location Stats (maintain up to 100 locations)
@@ -228,11 +234,11 @@ export async function recordRates(
             observationCount: locRates.length,
           };
 
-          if (locMap.size < 100) {
+          if (locMap.size < maxLocRecords) {
             locMap.set(normalizedLoc.toLowerCase(), newLocRecord);
             locStore.put(newLocRecord);
           } else {
-            // If already 100 locations, check if this new location has higher topMpd than the lowest existing
+            // If already at max locations, check if this new location has higher topMpd than the lowest existing
             const sortedLocs = Array.from(locMap.values()).sort((a, b) => a.topMpd - b.topMpd);
             const lowestLoc = sortedLocs[0];
             if (lowestLoc && bestMpd > lowestLoc.topMpd) {
