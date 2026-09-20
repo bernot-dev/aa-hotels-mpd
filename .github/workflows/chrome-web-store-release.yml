@@ -13,6 +13,10 @@ on:
         description: 'Dry run: build and validate package without uploading to Chrome Web Store'
         type: boolean
         default: false
+      check_status_only:
+        description: 'Check current CWS item status only without uploading'
+        type: boolean
+        default: false
 
 jobs:
   build-and-release:
@@ -44,37 +48,27 @@ jobs:
           echo "================================================="
           FAILED=0
 
-          # Check Extension ID (variable)
           if [ -z "$EXTENSION_ID" ]; then
             echo "❌ Missing repository variable: CHROME_EXTENSION_ID (or EXTENSION_ID)"
             FAILED=1
           else
             echo "✅ Extension ID variable is set (${#EXTENSION_ID} chars)"
-            if [[ ! "$EXTENSION_ID" =~ ^[a-z]{32}$ ]]; then
-              echo "   ⚠️ Warning: Chrome Extension IDs are typically 32 lowercase letters (a-p)."
-            fi
           fi
 
-          # Check Publisher ID (required by mnao305/chrome-extension-upload v7)
           if [ -z "$PUBLISHER_ID" ]; then
             echo "❌ Missing variable/secret: CHROME_PUBLISHER_ID (or PUBLISHER_ID)"
-            echo "   ℹ️ Note: mnao305/chrome-extension-upload@v7 uses Chrome Web Store API v2 and requires a Publisher ID."
-            echo "   Find your Publisher ID in the Chrome Developer Dashboard under 'Publisher > Settings',"
-            echo "   and add it to your repo as a variable (CHROME_PUBLISHER_ID) or secret."
             FAILED=1
           else
             echo "✅ Publisher ID is set"
           fi
 
-          # Check Client ID (secret)
           if [ -z "$CLIENT_ID" ]; then
             echo "❌ Missing secret: CHROME_CLIENT_ID (or CLIENT_ID)"
             FAILED=1
           else
-            echo "✅ Client ID secret is set (${#CLIENT_ID} chars)"
+            echo "✅ Client ID secret is set"
           fi
 
-          # Check Client Secret (secret)
           if [ -z "$CLIENT_SECRET" ]; then
             echo "❌ Missing secret: CHROME_CLIENT_SECRET (or CLIENT_SECRET)"
             FAILED=1
@@ -82,7 +76,6 @@ jobs:
             echo "✅ Client Secret secret is set"
           fi
 
-          # Check Refresh Token (secret)
           if [ -z "$REFRESH_TOKEN" ]; then
             echo "❌ Missing secret: CHROME_REFRESH_TOKEN (or REFRESH_TOKEN)"
             FAILED=1
@@ -91,27 +84,35 @@ jobs:
           fi
 
           if [ "$FAILED" -ne 0 ] && [ "$DRY_RUN" != "true" ]; then
-            echo "-------------------------------------------------"
-            echo "❌ One or more required credentials are missing."
-            echo "Configure them in GitHub -> Settings -> Secrets and variables -> Actions."
+            echo "❌ Pre-flight checks failed."
             exit 1
-          elif [ "$FAILED" -ne 0 ] && [ "$DRY_RUN" == "true" ]; then
-            echo "⚠️ Dry-run mode: continuing despite missing credentials for build validation."
-          else
-            echo "✅ All credentials and variables verified."
           fi
           echo "================================================="
 
+      - name: Check Current Chrome Web Store Status
+        env:
+          EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID || vars.EXTENSION_ID }}
+          PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID || vars.PUBLISHER_ID || secrets.CHROME_PUBLISHER_ID || secrets.PUBLISHER_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID || secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET || secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN || secrets.REFRESH_TOKEN }}
+        run: |
+          node scripts/cws-tool.mjs status
+
       - name: Install dependencies
+        if: ${{ inputs.check_status_only != true }}
         run: npm ci
 
       - name: Run test suite
+        if: ${{ inputs.check_status_only != true }}
         run: npm test
 
       - name: Build extension
+        if: ${{ inputs.check_status_only != true }}
         run: npm run build
 
       - name: Validate manifest and build outputs
+        if: ${{ inputs.check_status_only != true }}
         id: validate
         run: |
           echo "Validating manifest.json..."
@@ -121,19 +122,6 @@ jobs:
           echo "Manifest Version: $MANIFEST_VER"
           echo "manifest_version=$MANIFEST_VER" >> "$GITHUB_OUTPUT"
 
-          # If triggered by a release tag, compare with tag name
-          if [ "${{ github.event_name }}" = "release" ]; then
-            TAG_NAME="${{ github.event.release.tag_name }}"
-            CLEAN_TAG="${TAG_NAME#v}"
-            echo "Release tag: $TAG_NAME (normalized: $CLEAN_TAG)"
-            if [ "$MANIFEST_VER" != "$CLEAN_TAG" ]; then
-              echo "⚠️ Warning: Manifest version ($MANIFEST_VER) does not match release tag ($CLEAN_TAG)!"
-            else
-              echo "✅ Manifest version matches release tag."
-            fi
-          fi
-
-          # Verify expected bundle files
           for f in dist/background.js dist/content.js dist/interceptor.js dist/options.js options.html; do
             if [ ! -f "$f" ]; then
               echo "❌ Expected output file '$f' is missing!"
@@ -143,6 +131,7 @@ jobs:
           echo "✅ All required bundle files exist."
 
       - name: Package extension bundle
+        if: ${{ inputs.check_status_only != true }}
         run: |
           python3 scripts/package-extension.py extension.zip
           echo "================ Package Diagnostics ================"
@@ -151,52 +140,43 @@ jobs:
           echo "====================================================="
 
       - name: Upload bundle as workflow artifact
+        if: ${{ inputs.check_status_only != true }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
         with:
           name: extension-v${{ steps.validate.outputs.manifest_version || 'build' }}
           path: extension.zip
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload & Publish to Chrome Web Store
-        if: ${{ inputs.dry_run != true }}
-        uses: mnao305/chrome-extension-upload@f549d5d654694a7722d6abfa64c97409ad5e64c1 # v7.0.0
-        with:
-          file-path: extension.zip
-          extension-id: ${{ vars.CHROME_EXTENSION_ID || vars.EXTENSION_ID }}
-          publisher-id: ${{ vars.CHROME_PUBLISHER_ID || vars.PUBLISHER_ID || secrets.CHROME_PUBLISHER_ID || secrets.PUBLISHER_ID }}
-          client-id: ${{ secrets.CHROME_CLIENT_ID || secrets.CLIENT_ID }}
-          client-secret: ${{ secrets.CHROME_CLIENT_SECRET || secrets.CLIENT_SECRET }}
-          refresh-token: ${{ secrets.CHROME_REFRESH_TOKEN || secrets.REFRESH_TOKEN }}
-          publish: ${{ github.event_name == 'release' || inputs.publish == true }}
-
-      - name: Troubleshooting advice on failure
-        if: failure()
+      - name: Upload Package via CWS API v2 Direct
+        if: ${{ inputs.dry_run != true && inputs.check_status_only != true }}
+        env:
+          EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID || vars.EXTENSION_ID }}
+          PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID || vars.PUBLISHER_ID || secrets.CHROME_PUBLISHER_ID || secrets.PUBLISHER_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID || secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET || secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN || secrets.REFRESH_TOKEN }}
         run: |
-          echo "=========================================================================="
-          echo "                       TROUBLESHOOTING GUIDE                              "
-          echo "=========================================================================="
-          echo "If the 'Upload & Publish to Chrome Web Store' step failed, check the following:"
-          echo ""
-          echo "1. First-time item setup:"
-          echo "   The Chrome Web Store API cannot create an item. You must upload the initial"
-          echo "   ZIP package once manually at https://chrome.google.com/webstore/devconsole"
-          echo ""
-          echo "2. Version collision:"
-          echo "   The version in manifest.json (${{ steps.validate.outputs.manifest_version }}) must be higher"
-          echo "   than the currently published/draft version in the Developer Dashboard."
-          echo ""
-          echo "3. Publisher ID requirement (v7):"
-          echo "   Chrome Web Store API v2 requires Publisher ID. Find it under"
-          echo "   'Publisher > Settings' in the Developer Dashboard, and set variable CHROME_PUBLISHER_ID."
-          echo ""
-          echo "4. OAuth Token Expiry / Consent Screen:"
-          echo "   If your Google Cloud OAuth Consent Screen is in 'Testing' mode, refresh tokens"
-          echo "   expire after 7 days. Move the Consent Screen to 'In production' (or Internal) to get"
-          echo "   a permanent refresh token."
-          echo ""
-          echo "5. Artifact Inspection:"
-          echo "   The packaged extension.zip was saved as a workflow artifact above. You can"
-          echo "   download and manually inspect or upload it to test in the Developer Dashboard."
-          echo "=========================================================================="
+          node scripts/cws-tool.mjs upload extension.zip
+
+      - name: Publish / Submit for Review (if enabled)
+        if: ${{ inputs.dry_run != true && inputs.check_status_only != true && (github.event_name == 'release' || inputs.publish == true) }}
+        env:
+          EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID || vars.EXTENSION_ID }}
+          PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID || vars.PUBLISHER_ID || secrets.CHROME_PUBLISHER_ID || secrets.PUBLISHER_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID || secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET || secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN || secrets.REFRESH_TOKEN }}
+        run: |
+          node scripts/cws-tool.mjs publish
+
+      - name: Verify Final Chrome Web Store Status
+        if: always() && inputs.dry_run != true
+        env:
+          EXTENSION_ID: ${{ vars.CHROME_EXTENSION_ID || vars.EXTENSION_ID }}
+          PUBLISHER_ID: ${{ vars.CHROME_PUBLISHER_ID || vars.PUBLISHER_ID || secrets.CHROME_PUBLISHER_ID || secrets.PUBLISHER_ID }}
+          CLIENT_ID: ${{ secrets.CHROME_CLIENT_ID || secrets.CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CHROME_CLIENT_SECRET || secrets.CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CHROME_REFRESH_TOKEN || secrets.REFRESH_TOKEN }}
+        run: |
+          node scripts/cws-tool.mjs status
