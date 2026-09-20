@@ -61,6 +61,49 @@ describe("Rate and Criteria Capture Pipeline", () => {
       expect(criteria.guests).toBe(2);
     });
 
+    it("rejects partial typing fragments and active autocomplete in destination input", () => {
+      // 1. Partial length < 3
+      const dom1 = new JSDOM(`
+        <div>
+          <input id="downshift-0-input" value="Bo" />
+        </div>
+      `);
+      const criteria1 = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom1.window.document);
+      expect(criteria1.location).toBe("Unknown Location");
+
+      // 2. Active autocomplete dropdown open
+      const dom2 = new JSDOM(`
+        <div>
+          <input id="downshift-0-input" value="Boston" aria-expanded="true" />
+        </div>
+      `);
+      const criteria2 = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom2.window.document);
+      expect(criteria2.location).toBe("Unknown Location");
+
+      // 3. Actively focused input (user is typing)
+      const dom3 = new JSDOM(`
+        <div>
+          <input id="downshift-0-input" value="New Orlea" />
+        </div>
+      `);
+      const input = dom3.window.document.getElementById("downshift-0-input") as HTMLInputElement;
+      input.focus();
+      const criteria3 = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom3.window.document);
+      expect(criteria3.location).toBe("Unknown Location");
+    });
+
+    it("extracts destination from hotel card details links when URL parameter is missing", () => {
+      const dom = new JSDOM(`
+        <div>
+          <a href="/details?destination=San%20Diego%2C%20CA&checkIn=2026-10-05&checkOut=2026-10-07">
+            <div data-testid="hotel-card-pricing">Card</div>
+          </a>
+        </div>
+      `);
+      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      expect(criteria.location).toBe("San Diego, CA");
+    });
+
     it("provides clean defaults when both URL and DOM are empty", () => {
       const criteria = extractSearchCriteria("");
       expect(criteria.location).toBe("Unknown Location");
@@ -89,6 +132,7 @@ describe("Rate and Criteria Capture Pipeline", () => {
       const firstRate = rates[0];
       expect(firstRate.hotelName).toBe("Hilton Anatole, Dallas");
       expect(firstRate.hotelId).toBe("2687");
+      expect(firstRate.location).toBe("Dallas, TX, USA");
       expect(firstRate.price).toBe(557);
       expect(firstRate.miles).toBe(300);
       expect(firstRate.mpd).toBe(0.5);

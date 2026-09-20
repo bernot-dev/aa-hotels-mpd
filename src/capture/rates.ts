@@ -29,9 +29,10 @@ export function extractRatesFromSearchCards(
     const pricingTextElem = card.querySelector(priceTypeSelector);
     const isTotalPrice = pricingTextElem?.textContent?.trim().startsWith("Total") ?? false;
 
-    // Extract hotel name and hotel ID by walking up container
+    // Extract hotel name, hotel ID, and destination by walking up container
     let hotelName = "Unknown Hotel";
     let hotelId: string | undefined = undefined;
+    let cardLocation: string | undefined = undefined;
 
     let parent: Element | null = card;
     for (let i = 0; i < 6; i++) {
@@ -42,18 +43,27 @@ export function extractRatesFromSearchCards(
       }
 
       const linkEl =
-        parent.querySelector('a[href*="id="]') ||
-        (parent.tagName === "A" && parent.getAttribute("href")?.includes("id=")
+        parent.querySelector('a[href*="id="], a[href*="destination="]') ||
+        (parent.tagName === "A" && (parent.getAttribute("href")?.includes("id=") || parent.getAttribute("href")?.includes("destination="))
           ? parent
           : null);
       if (linkEl) {
-        const match = linkEl.getAttribute("href")?.match(/[?&]id=([^&]+)/);
-        if (match) {
-          hotelId = match[1];
+        const href = linkEl.getAttribute("href");
+        if (href) {
+          const idMatch = href.match(/[?&]id=([^&]+)/);
+          if (idMatch && !hotelId) {
+            hotelId = idMatch[1];
+          }
+          const destMatch = href.match(/[?&]destination=([^&]+)/);
+          if (destMatch && !cardLocation) {
+            try {
+              cardLocation = decodeURIComponent(destMatch[1].replace(/\+/g, " ").trim());
+            } catch {}
+          }
         }
       }
 
-      if (hotelName !== "Unknown Hotel" && hotelId) break;
+      if (hotelName !== "Unknown Hotel" && hotelId && cardLocation) break;
       parent = parent.parentElement;
     }
 
@@ -68,6 +78,7 @@ export function extractRatesFromSearchCards(
       captured.push({
         hotelName,
         hotelId,
+        location: cardLocation,
         price: dollars,
         miles,
         mpd: Number(mpd.toFixed(1)),
@@ -99,11 +110,28 @@ export function extractRatesFromDetailsCards(
     hotelName = heading.textContent.trim();
   }
 
-  // Try extracting hotel ID from URL
+  // Try extracting hotel ID and destination from URL or document
   let hotelId: string | undefined;
+  let detailsLocation: string | undefined;
   if (typeof window !== "undefined") {
-    const url = new URL(window.location.href);
-    hotelId = url.searchParams.get("id") || undefined;
+    try {
+      const url = new URL(window.location.href);
+      hotelId = url.searchParams.get("id") || undefined;
+      const destParam = url.searchParams.get("destination");
+      if (destParam && destParam.trim()) {
+        detailsLocation = decodeURIComponent(destParam.trim().replace(/\+/g, " "));
+      }
+    } catch {}
+  }
+
+  if (!detailsLocation && doc) {
+    const cityEl = doc.querySelector('[data-testid="address-city"]');
+    const countryEl = doc.querySelector('[data-testid="address-country"]');
+    if (cityEl && cityEl.textContent?.trim()) {
+      const city = cityEl.textContent.trim();
+      const country = countryEl?.textContent?.trim();
+      detailsLocation = country ? `${city}, ${country}` : city;
+    }
   }
 
   const cards = container.querySelectorAll(cardSelector);
@@ -135,6 +163,7 @@ export function extractRatesFromDetailsCards(
       captured.push({
         hotelName,
         hotelId,
+        location: detailsLocation,
         price: dollars,
         miles,
         mpd: Number(mpd.toFixed(1)),

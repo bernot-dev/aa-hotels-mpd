@@ -1,4 +1,5 @@
 import { SearchCriteria, CapturedRate } from "../types";
+import { isValidLocation } from "./criteria";
 
 // In-memory set to prevent dispatching identical rate observations repeatedly
 const dispatchedRateKeys = new Set<string>();
@@ -23,6 +24,9 @@ function flushRates(): void {
 
   const ratesToSend = [...pendingRates];
   const criteriaToSend = { ...latestCriteria };
+  if (!isValidLocation(criteriaToSend.location) && ratesToSend[0]?.location) {
+    criteriaToSend.location = ratesToSend[0].location;
+  }
   pendingRates = [];
 
   if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
@@ -46,10 +50,17 @@ export function queueRatesForDispatch(
   latestCriteria = criteria;
 
   for (const rate of rates) {
-    const key = `${criteria.location}|${rate.hotelName}|${criteria.checkIn}|${criteria.checkOut}|${rate.price}|${rate.miles}|${rate.mpd}`;
+    const loc = (rate.location || criteria.location || "").trim();
+    if (!isValidLocation(loc)) {
+      continue;
+    }
+    const key = `${loc}|${rate.hotelName}|${criteria.checkIn}|${criteria.checkOut}|${rate.price}|${rate.miles}|${rate.mpd}`;
     if (!dispatchedRateKeys.has(key)) {
       dispatchedRateKeys.add(key);
-      pendingRates.push(rate);
+      pendingRates.push({
+        ...rate,
+        location: loc,
+      });
     }
   }
 

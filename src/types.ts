@@ -14,6 +14,7 @@ export interface SearchCriteria {
 export interface CapturedRate {
   hotelName: string;
   hotelId?: string;
+  location?: string;
   price: number;
   miles: number;
   mpd: number;

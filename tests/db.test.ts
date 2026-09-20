@@ -9,6 +9,10 @@ import {
   clearExhaustiveHistory,
   clearAllData,
   formatBytes,
+  cleanCorruptedLocations,
+  deleteLocationStat,
+  deleteTopMpdRecord,
+  isValidLocation,
 } from "../src/db/db";
 import { SearchCriteria, CapturedRate } from "../src/types";
 
@@ -199,5 +203,119 @@ describe("IndexedDB Storage Layer", () => {
     estimate = await getStorageEstimate();
     expect(estimate.count).toBe(0);
     expect(estimate.humanized).toBe("0 queries (0 B)");
+  });
+
+  it("isValidLocation correctly validates location strings", () => {
+    expect(isValidLocation(undefined)).toBe(false);
+    expect(isValidLocation(null)).toBe(false);
+    expect(isValidLocation("")).toBe(false);
+    expect(isValidLocation("  ")).toBe(false);
+    expect(isValidLocation("B")).toBe(false);
+    expect(isValidLocation("Bo")).toBe(false);
+    expect(isValidLocation("Unknown Location")).toBe(false);
+    expect(isValidLocation("unknown location")).toBe(false);
+
+    expect(isValidLocation("Boston")).toBe(true);
+    expect(isValidLocation("Boston (MA), United States")).toBe(true);
+    expect(isValidLocation("Dallas, TX, USA")).toBe(true);
+  });
+
+  it("recordRates ignores rates with invalid partial locations", async () => {
+    // Attempt to record rates with "B", "Bo", "Unknown Location"
+    await recordRates({ ...sampleCriteria, location: "B" }, [createRate("Hotel B", 24.7)], false);
+    await recordRates({ ...sampleCriteria, location: "Bo" }, [createRate("Hotel Bo", 24.7)], false);
+    await recordRates({ ...sampleCriteria, location: "Unknown Location" }, [createRate("Hotel Unknown", 24.7)], false);
+
+    const stats = await getDashboardStats();
+    expect(stats.topMpds.length).toBe(0);
+    expect(stats.allLocations.length).toBe(0);
+  });
+
+  it("cleanCorruptedLocations purges partials and prefix duplicates sharing the same hotel", async () => {
+    const db = await openDatabase();
+    // Directly insert corrupted records into LOCATION_STATS and TOP_MPDS
+    const tx = db.transaction(["location_stats", "top_mpds"], "readwrite");
+    const locStore = tx.objectStore("location_stats");
+    const topStore = tx.objectStore("top_mpds");
+
+    const hotel = "La Quinta Inn & Suites by Wyndham Dallas Grand Prairie North";
+    const baseRecord = {
+      topMpd: 24.7,
+      hotelName: hotel,
+      checkIn: "2026-10-05",
+      checkOut: "2026-10-07",
+      nights: 2,
+      price: 150,
+      miles: 3705,
+      timestamp: new Date().toISOString(),
+      observationCount: 1,
+    };
+
+    // Insert partials
+    locStore.put({ ...baseRecord, location: "B" });
+    locStore.put({ ...baseRecord, location: "Bo" });
+    locStore.put({ ...baseRecord, location: "Boston" });
+    locStore.put({ ...baseRecord, location: "Boston (MA), United States" });
+    locStore.put({ ...baseRecord, location: "New" });
+    locStore.put({ ...baseRecord, location: "New Orlea" });
+    locStore.put({ ...baseRecord, location: "New Orleans" });
+    locStore.put({ ...baseRecord, location: "San Diego (CA), United States", hotelName: "Best Western" });
+
+    topStore.put({
+      id: "b_rec",
+      mpd: 24.7,
+      hotelName: hotel,
+      location: "B",
+      checkIn: "2026-10-05",
+      checkOut: "2026-10-07",
+      nights: 2,
+      rooms: 1,
+      guests: 2,
+      price: 150,
+      miles: 3705,
+      timestamp: new Date().toISOString(),
+    });
+
+    await new Promise<void>((resolve) => {
+      tx.oncomplete = () => resolve();
+    });
+
+    // Run cleanCorruptedLocations
+    const result = await cleanCorruptedLocations(db);
+    expect(result.deletedLocations).toContain("B");
+    expect(result.deletedLocations).toContain("Bo");
+    expect(result.deletedLocations).toContain("Boston");
+    expect(result.deletedLocations).toContain("New");
+    expect(result.deletedLocations).toContain("New Orlea");
+
+    // "Boston (MA), United States", "New Orleans", and "San Diego (CA), United States" should remain
+    const stats = await getDashboardStats();
+    const remainingLocs = stats.allLocations.map((l) => l.location);
+    expect(remainingLocs).toContain("Boston (MA), United States");
+    expect(remainingLocs).toContain("New Orleans");
+    expect(remainingLocs).toContain("San Diego (CA), United States");
+    expect(remainingLocs).not.toContain("B");
+    expect(remainingLocs).not.toContain("Bo");
+    expect(remainingLocs).not.toContain("Boston");
+    expect(remainingLocs).not.toContain("New");
+    expect(remainingLocs).not.toContain("New Orlea");
+  });
+
+  it("allows deleting specific locations and top rates via deleteLocationStat and deleteTopMpdRecord", async () => {
+    await recordRates(
+      { ...sampleCriteria, location: "Chicago, IL" },
+      [createRate("The McCormick Scottsdale", 28.2)],
+      false
+    );
+
+    let stats = await getDashboardStats();
+    expect(stats.allLocations.map((l) => l.location)).toContain("Chicago, IL");
+
+    // Delete Chicago, IL
+    await deleteLocationStat("Chicago, IL");
+
+    stats = await getDashboardStats();
+    expect(stats.allLocations.map((l) => l.location)).not.toContain("Chicago, IL");
+    expect(stats.topMpds.map((t) => t.location)).not.toContain("Chicago, IL");
   });
 });

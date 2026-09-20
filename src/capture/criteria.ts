@@ -1,6 +1,14 @@
 import { SearchCriteria } from "../types";
 import { getNights } from "../nights";
 
+export function isValidLocation(location: string | undefined | null): boolean {
+  if (!location) return false;
+  const trimmed = location.trim();
+  if (trimmed.length < 3) return false;
+  if (trimmed.toLowerCase() === "unknown location") return false;
+  return true;
+}
+
 export function extractSearchCriteria(
   currentUrl: string = typeof window !== "undefined" ? window.location.href : "",
   doc: Document = typeof document !== "undefined" ? document : (null as unknown as Document)
@@ -17,7 +25,10 @@ export function extractSearchCriteria(
       const url = new URL(currentUrl, "https://www.aadvantagehotels.com");
       const destParam = url.searchParams.get("destination");
       if (destParam && destParam.trim()) {
-        location = decodeURIComponent(destParam.trim());
+        const decoded = decodeURIComponent(destParam.trim().replace(/\+/g, " "));
+        if (isValidLocation(decoded)) {
+          location = decoded;
+        }
       }
 
       const inParam = url.searchParams.get("checkIn") || url.searchParams.get("checkin");
@@ -47,17 +58,59 @@ export function extractSearchCriteria(
     }
   }
 
-  // 2. DOM fallbacks
-  if (doc) {
-    if (location === "Unknown Location") {
-      const destInput = doc.querySelector<HTMLInputElement>(
-        '[data-testid="search-destination"], #downshift-0-input'
-      );
-      if (destInput && destInput.value && destInput.value.trim()) {
-        location = destInput.value.trim();
+  // 2. DOM extraction: card links (ground truth for currently displayed cards on search page)
+  if (location === "Unknown Location" && doc) {
+    const cardLink = doc.querySelector<HTMLAnchorElement>(
+      'a[href*="/details"][href*="destination="], a[href*="destination="]'
+    );
+    if (cardLink && cardLink.href) {
+      try {
+        const cardUrl = new URL(cardLink.href, "https://www.aadvantagehotels.com");
+        const dest = cardUrl.searchParams.get("destination");
+        if (dest && dest.trim()) {
+          const decoded = decodeURIComponent(dest.trim().replace(/\+/g, " "));
+          if (isValidLocation(decoded)) {
+            location = decoded;
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // 3. DOM extraction: hotel address on details page
+  if (location === "Unknown Location" && doc) {
+    const cityEl = doc.querySelector('[data-testid="address-city"]');
+    const countryEl = doc.querySelector('[data-testid="address-country"]');
+    if (cityEl && cityEl.textContent?.trim()) {
+      const city = cityEl.textContent.trim();
+      const country = countryEl?.textContent?.trim();
+      const addrLoc = country ? `${city}, ${country}` : city;
+      if (isValidLocation(addrLoc)) {
+        location = addrLoc;
       }
     }
+  }
 
+  // 4. Safe input fallback ONLY when:
+  // - location is still Unknown Location
+  // - user is NOT currently focusing or typing in the input
+  // - autocomplete dropdown menu is NOT open (aria-expanded !== "true")
+  // - value is a valid, non-partial location (isValidLocation(val))
+  if (location === "Unknown Location" && doc) {
+    const destInput = doc.querySelector<HTMLInputElement>(
+      '[data-testid="search-destination"], #downshift-0-input'
+    );
+    if (destInput && destInput.value) {
+      const val = destInput.value.trim();
+      const isFocused = doc.activeElement === destInput;
+      const isExpanded = destInput.getAttribute("aria-expanded") === "true";
+      if (!isFocused && !isExpanded && isValidLocation(val)) {
+        location = val;
+      }
+    }
+  }
+
+  if (doc) {
     if (!checkIn) {
       const inInput = doc.querySelector<HTMLInputElement>("#check-in-date");
       if (inInput && inInput.value) {

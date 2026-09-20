@@ -162,8 +162,25 @@
     }
 
     .mpd-badge.high {
-      background: var(--green-bg);
-      color: var(--green);
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .btn-delete-item {
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+
+    .btn-delete-item:hover {
+      color: var(--danger);
+      background: #fee2e2;
     }
 
     .empty-state {
@@ -338,6 +355,7 @@
               <th>Nights</th>
               <th>Price</th>
               <th>Miles</th>
+              <th style="width: 32px;"></th>
             </tr>
           </thead>
           <tbody id="topMpdsBody"></tbody>
@@ -363,6 +381,7 @@
                 <th>Location</th>
                 <th>Best MPD</th>
                 <th>Hotel</th>
+                <th style="width: 32px;"></th>
               </tr>
             </thead>
             <tbody id="topLocsBody"></tbody>
@@ -384,6 +403,7 @@
                 <th>Location</th>
                 <th>Best MPD</th>
                 <th>Hotel</th>
+                <th style="width: 32px;"></th>
               </tr>
             </thead>
             <tbody id="lowestLocsBody"></tbody>

@@ -3,6 +3,8 @@ import {
   getStorageEstimate,
   getExhaustiveQueries,
   clearExhaustiveHistory,
+  deleteLocationStat,
+  deleteTopMpdRecord,
 } from "./db/db";
 import { exportQueriesToCsv } from "./export/csv";
 import { exportQueriesToSql } from "./export/sql";
@@ -77,6 +79,7 @@ function renderTopMpds(records: TopMpdRecord[], showAll: boolean): void {
           <td>${r.nights}</td>
           <td>$${r.price.toLocaleString()}</td>
           <td>${r.miles.toLocaleString()}</td>
+          <td style="text-align: right;"><button class="btn-delete-item btn-delete-top" data-id="${escapeHtml(r.id)}" title="Delete this rate">✕</button></td>
         </tr>
       `;
     })
@@ -119,6 +122,7 @@ function renderLocationsTable(
           <td><b>${escapeHtml(loc.location)}</b></td>
           <td><span class="mpd-badge ${isHigh ? "high" : ""}">${loc.topMpd.toFixed(1)}</span></td>
           <td>${escapeHtml(loc.hotelName)}</td>
+          <td style="text-align: right;"><button class="btn-delete-item btn-delete-loc" data-location="${escapeHtml(loc.location)}" title="Delete this location">✕</button></td>
         </tr>
       `;
     })
@@ -375,4 +379,28 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     }
   });
+
+  // Table item deletion listeners
+  document.getElementById("topMpdsBody")?.addEventListener("click", async (e) => {
+    const target = e.target as HTMLElement;
+    const btn = target.closest<HTMLButtonElement>(".btn-delete-top");
+    if (!btn || !btn.dataset.id) return;
+    if (confirm("Delete this top MPD rate?")) {
+      await deleteTopMpdRecord(btn.dataset.id);
+      await loadDashboard();
+    }
+  });
+
+  const handleLocationDelete = async (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const btn = target.closest<HTMLButtonElement>(".btn-delete-loc");
+    if (!btn || !btn.dataset.location) return;
+    if (confirm(`Delete stats for location "${btn.dataset.location}"?`)) {
+      await deleteLocationStat(btn.dataset.location);
+      await loadDashboard();
+    }
+  };
+
+  document.getElementById("topLocsBody")?.addEventListener("click", handleLocationDelete);
+  document.getElementById("lowestLocsBody")?.addEventListener("click", handleLocationDelete);
 });

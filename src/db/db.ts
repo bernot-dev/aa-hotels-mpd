@@ -7,6 +7,9 @@ import {
   ExhaustiveQueryRecord,
   DashboardStats,
 } from "../types";
+import { isValidLocation } from "../capture/criteria";
+
+export { isValidLocation };
 
 export const DB_NAME = "AAHotelsMPD";
 export const DB_VERSION = 1;
@@ -105,13 +108,16 @@ export async function recordRates(
   for (const rate of rates) {
     if (!rate.mpd || rate.mpd <= 0) continue;
 
-    const recordId = `${criteria.location}_${rate.hotelName}_${criteria.checkIn}_${criteria.checkOut}_${rate.price}_${rate.miles}`;
+    const rateLoc = (rate.location || criteria.location || "").trim();
+    if (!isValidLocation(rateLoc)) continue;
+
+    const recordId = `${rateLoc}_${rate.hotelName}_${criteria.checkIn}_${criteria.checkOut}_${rate.price}_${rate.miles}`;
     const newRecord: TopMpdRecord = {
       id: recordId,
       mpd: Number(rate.mpd.toFixed(1)),
       hotelName: rate.hotelName,
       hotelId: rate.hotelId,
-      location: criteria.location,
+      location: rateLoc,
       checkIn: criteria.checkIn,
       checkOut: criteria.checkOut,
       nights: criteria.nights,
@@ -143,59 +149,73 @@ export async function recordRates(
   }
 
   // 2. Process Location Stats (maintain up to 100 locations)
-  const normalizedLoc = criteria.location.trim();
-  if (normalizedLoc) {
+  // Group rates by their validated location
+  const ratesByLoc = new Map<string, CapturedRate[]>();
+  for (const rate of rates) {
+    const rateLoc = (rate.location || criteria.location || "").trim();
+    if (!isValidLocation(rateLoc)) continue;
+    const existingList = ratesByLoc.get(rateLoc) || [];
+    existingList.push(rate);
+    ratesByLoc.set(rateLoc, existingList);
+  }
+
+  if (ratesByLoc.size > 0) {
     const existingLocs = await getAllFromStore<LocationStatRecord>(locStore);
     const locMap = new Map<string, LocationStatRecord>();
     for (const l of existingLocs) {
       locMap.set(l.location.toLowerCase(), l);
     }
 
-    const currentLocRecord = locMap.get(normalizedLoc.toLowerCase());
-    const bestRateInBatch = rates.reduce(
-      (best, cur) => (cur.mpd > (best?.mpd || 0) ? cur : best),
-      null as CapturedRate | null
-    );
+    for (const [normalizedLoc, locRates] of ratesByLoc.entries()) {
+      const currentLocRecord = locMap.get(normalizedLoc.toLowerCase());
+      const bestRateInBatch = locRates.reduce(
+        (best, cur) => (cur.mpd > (best?.mpd || 0) ? cur : best),
+        null as CapturedRate | null
+      );
 
-    if (bestRateInBatch) {
-      const bestMpd = Number(bestRateInBatch.mpd.toFixed(1));
+      if (bestRateInBatch) {
+        const bestMpd = Number(bestRateInBatch.mpd.toFixed(1));
 
-      if (currentLocRecord) {
-        currentLocRecord.observationCount += rates.length;
-        if (bestMpd > currentLocRecord.topMpd) {
-          currentLocRecord.topMpd = bestMpd;
-          currentLocRecord.hotelName = bestRateInBatch.hotelName;
-          currentLocRecord.checkIn = criteria.checkIn;
-          currentLocRecord.checkOut = criteria.checkOut;
-          currentLocRecord.nights = criteria.nights;
-          currentLocRecord.price = bestRateInBatch.price;
-          currentLocRecord.miles = bestRateInBatch.miles;
-          currentLocRecord.timestamp = criteria.timestamp;
-        }
-        locStore.put(currentLocRecord);
-      } else {
-        const newLocRecord: LocationStatRecord = {
-          location: normalizedLoc,
-          topMpd: bestMpd,
-          hotelName: bestRateInBatch.hotelName,
-          checkIn: criteria.checkIn,
-          checkOut: criteria.checkOut,
-          nights: criteria.nights,
-          price: bestRateInBatch.price,
-          miles: bestRateInBatch.miles,
-          timestamp: criteria.timestamp,
-          observationCount: rates.length,
-        };
-
-        if (locMap.size < 100) {
-          locStore.put(newLocRecord);
+        if (currentLocRecord) {
+          currentLocRecord.observationCount += locRates.length;
+          if (bestMpd > currentLocRecord.topMpd) {
+            currentLocRecord.topMpd = bestMpd;
+            currentLocRecord.hotelName = bestRateInBatch.hotelName;
+            currentLocRecord.checkIn = criteria.checkIn;
+            currentLocRecord.checkOut = criteria.checkOut;
+            currentLocRecord.nights = criteria.nights;
+            currentLocRecord.price = bestRateInBatch.price;
+            currentLocRecord.miles = bestRateInBatch.miles;
+            currentLocRecord.timestamp = criteria.timestamp;
+          }
+          locStore.put(currentLocRecord);
         } else {
-          // If already 100 locations, check if this new location has higher topMpd than the lowest existing
-          const sortedLocs = Array.from(locMap.values()).sort((a, b) => a.topMpd - b.topMpd);
-          const lowestLoc = sortedLocs[0];
-          if (lowestLoc && bestMpd > lowestLoc.topMpd) {
-            locStore.delete(lowestLoc.location);
+          const newLocRecord: LocationStatRecord = {
+            location: normalizedLoc,
+            topMpd: bestMpd,
+            hotelName: bestRateInBatch.hotelName,
+            checkIn: criteria.checkIn,
+            checkOut: criteria.checkOut,
+            nights: criteria.nights,
+            price: bestRateInBatch.price,
+            miles: bestRateInBatch.miles,
+            timestamp: criteria.timestamp,
+            observationCount: locRates.length,
+          };
+
+          if (locMap.size < 100) {
+            locMap.set(normalizedLoc.toLowerCase(), newLocRecord);
             locStore.put(newLocRecord);
+          } else {
+            // If already 100 locations, check if this new location has higher topMpd than the lowest existing
+            const sortedLocs = Array.from(locMap.values()).sort((a, b) => a.topMpd - b.topMpd);
+            const lowestLoc = sortedLocs[0];
+            if (lowestLoc && bestMpd > lowestLoc.topMpd) {
+              locStore.delete(lowestLoc.location);
+              locMap.delete(lowestLoc.location.toLowerCase());
+              locMap.set(normalizedLoc.toLowerCase(), newLocRecord);
+              locStore.put(newLocRecord);
+            }
           }
         }
       }
@@ -218,11 +238,12 @@ export async function recordRates(
     if (bestRateInBatch) {
       const bestMpd = Number(bestRateInBatch.mpd.toFixed(1));
       if (!existingNight || bestMpd > existingNight.topMpd) {
+        const nightLoc = (bestRateInBatch.location || criteria.location || "").trim();
         const newNightRecord: NightStatRecord = {
           nights: criteria.nights,
           topMpd: bestMpd,
           hotelName: bestRateInBatch.hotelName,
-          location: criteria.location,
+          location: isValidLocation(nightLoc) ? nightLoc : criteria.location,
           checkIn: criteria.checkIn,
           checkOut: criteria.checkOut,
           price: bestRateInBatch.price,
@@ -237,9 +258,11 @@ export async function recordRates(
   // 4. Record to exhaustive history if enabled
   if (keepExhaustive) {
     const queryStore = tx.objectStore(STORES.EXHAUSTIVE_QUERIES);
+    const validRateLoc = rates.find((r) => r.location && isValidLocation(r.location))?.location;
+    const finalLocation = validRateLoc || (isValidLocation(criteria.location) ? criteria.location : "Unknown Location");
     const exhaustiveRecord: ExhaustiveQueryRecord = {
       queryTimestamp: criteria.timestamp,
-      location: criteria.location,
+      location: finalLocation,
       checkIn: criteria.checkIn,
       checkOut: criteria.checkOut,
       nights: criteria.nights,
@@ -267,8 +290,113 @@ export async function recordRates(
   });
 }
 
+export async function cleanCorruptedLocations(
+  db: IDBDatabase
+): Promise<{ deletedLocations: string[] }> {
+  const tx = db.transaction([STORES.LOCATION_STATS, STORES.TOP_MPDS], "readwrite");
+  const locStore = tx.objectStore(STORES.LOCATION_STATS);
+  const topStore = tx.objectStore(STORES.TOP_MPDS);
+
+  const locs = await getAllFromStore<LocationStatRecord>(locStore);
+  const deletedLocations: string[] = [];
+
+  // Sort locations by length ascending so shorter strings are evaluated first
+  const sorted = [...locs].sort((a, b) => a.location.length - b.location.length);
+
+  for (const item of sorted) {
+    const trimmed = item.location.trim();
+    let isCorrupted = false;
+
+    // 1. Length < 3 or Unknown Location
+    if (!isValidLocation(trimmed)) {
+      isCorrupted = true;
+    }
+
+    // 2. Prefix collision: another longer location in the database starts with this location
+    // AND has the exact same hotelName (e.g. "B", "Bo", "Boston" with same hotel as "Boston (MA), United States"; "New", "New Orlea" with same hotel as "New Orleans")
+    if (!isCorrupted) {
+      const hasLongerVariant = locs.some((other) => {
+        if (other.location === item.location) return false;
+        const otherTrimmed = other.location.trim();
+        return (
+          otherTrimmed.length > trimmed.length &&
+          otherTrimmed.toLowerCase().startsWith(trimmed.toLowerCase()) &&
+          other.hotelName === item.hotelName
+        );
+      });
+      if (hasLongerVariant) {
+        isCorrupted = true;
+      }
+    }
+
+    if (isCorrupted) {
+      locStore.delete(item.location);
+      deletedLocations.push(item.location);
+    }
+  }
+
+  // Also clean up top_mpds with deleted or invalid locations
+  if (deletedLocations.length > 0) {
+    const deletedSet = new Set(deletedLocations.map((l) => l.toLowerCase()));
+    const topRecords = await getAllFromStore<TopMpdRecord>(topStore);
+    for (const top of topRecords) {
+      if (
+        !top.location ||
+        !isValidLocation(top.location) ||
+        deletedSet.has(top.location.trim().toLowerCase())
+      ) {
+        topStore.delete(top.id);
+      }
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve({ deletedLocations });
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error("Transaction aborted"));
+  });
+}
+
+export async function deleteLocationStat(locationName: string): Promise<void> {
+  const db = await openDatabase();
+  const tx = db.transaction([STORES.LOCATION_STATS, STORES.TOP_MPDS], "readwrite");
+  tx.objectStore(STORES.LOCATION_STATS).delete(locationName);
+
+  const topStore = tx.objectStore(STORES.TOP_MPDS);
+  const topRecords = await getAllFromStore<TopMpdRecord>(topStore);
+  for (const r of topRecords) {
+    if (r.location.toLowerCase() === locationName.toLowerCase()) {
+      topStore.delete(r.id);
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error("Transaction aborted"));
+  });
+}
+
+export async function deleteTopMpdRecord(recordId: string): Promise<void> {
+  const db = await openDatabase();
+  const tx = db.transaction(STORES.TOP_MPDS, "readwrite");
+  tx.objectStore(STORES.TOP_MPDS).delete(recordId);
+
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error("Transaction aborted"));
+  });
+}
+
 export async function getDashboardStats(): Promise<DashboardStats> {
   const db = await openDatabase();
+  try {
+    await cleanCorruptedLocations(db);
+  } catch (err) {
+    console.debug("[AA-Hotels-MPD] Clean corrupted locations skipped:", err);
+  }
+
   const tx = db.transaction([STORES.TOP_MPDS, STORES.LOCATION_STATS, STORES.NIGHTS_STATS], "readonly");
 
   const [topMpdsRaw, locationsRaw, nightsRaw] = await Promise.all([

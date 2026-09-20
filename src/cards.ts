@@ -158,12 +158,26 @@ export const updateCards = (
     if (mutationList && mutationList.length > 0) {
       const hasExternalMutations = mutationList.some((mutation) => {
         const target = mutation.target as HTMLElement;
-        if (target.classList?.contains('aa-mpd-badge') || target.dataset?.aaMpd === 'true') {
+        if (
+          target.classList?.contains('aa-mpd-badge') ||
+          target.dataset?.aaMpd === 'true' ||
+          target.closest?.(
+            '#downshift-0-menu, [role="listbox"], [data-testid*="search-destination"], #downshift-0-input'
+          )
+        ) {
           return false;
         }
         for (let i = 0; i < mutation.addedNodes.length; i++) {
           const node = mutation.addedNodes[i] as HTMLElement;
-          if (node.classList?.contains?.('aa-mpd-badge') || node.dataset?.aaMpd === 'true') {
+          if (
+            node.classList?.contains?.('aa-mpd-badge') ||
+            node.dataset?.aaMpd === 'true' ||
+            node.closest?.(
+              '#downshift-0-menu, [role="listbox"], [data-testid*="search-destination"], #downshift-0-input'
+            ) ||
+            (node.id && node.id.includes('downshift')) ||
+            (node.getAttribute?.('role') === 'listbox' || node.getAttribute?.('role') === 'option')
+          ) {
             continue;
           }
           return true;
