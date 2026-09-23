@@ -42,8 +42,10 @@ English
 | Asset | Dimensions | Status | Filename |
 |-------|-----------|--------|----------|
 | Store Icon | 128×128 PNG | ✅ Ready | images/icon-128.png |
-| Screenshot 1 | 1280×800 or 640×400 | ✅ Ready | images/search-screenshot.png |
-| Screenshot 2 | 1280×800 or 640×400 | ✅ Ready | images/card-screenshot.png |
+| Screenshot 1 (Search) | 1280×800 | ✅ Ready | images/search-screenshot.png |
+| Screenshot 2 (Details) | 1280×800 | ✅ Ready | images/details-screenshot.png |
+| Screenshot 3 (Maps) | 1280×800 | ✅ Ready | images/maps-screenshot.png |
+| Screenshot 4 (Options Dashboard) | 1280×800 | ✅ Ready | images/options-dashboard-screenshot.png |
 
 ## Permissions Justification
 
