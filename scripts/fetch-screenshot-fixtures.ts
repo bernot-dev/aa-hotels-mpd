@@ -1,7 +1,7 @@
-// Fetches guest search/details pages with a real browser and saves them as screenshot fixtures,
+// Fetches guest search, map, and details pages with a real browser and saves them as screenshot fixtures,
 // with the site's runtime CSS-in-JS rules written into the HTML (see serializeDocumentWithStyles).
 // Plain HTML scrapes (Firecrawl, outerHTML) lose those rules and render unstyled offline.
-import { chromium } from '@playwright/test';
+import { chromium, type Page } from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs';
 import { serializeDocumentWithStyles } from '../src/debug';
@@ -19,7 +19,7 @@ const commonParams =
 const SEARCH_URL = `https://www.aadvantagehotels.com/search?${commonParams}`;
 const DETAILS_URL = `https://www.aadvantagehotels.com/details?id=23025005&${commonParams}`;
 
-async function clickAll(page: any, pattern: RegExp) {
+async function clickAll(page: Page, pattern: RegExp) {
   const buttons = page.getByRole('button', { name: pattern });
   const count = await buttons.count();
   for (let i = 0; i < count; i++) {
@@ -28,10 +28,10 @@ async function clickAll(page: any, pattern: RegExp) {
   return count;
 }
 
-async function save(page: any, filename: string) {
-  const html = await page.evaluate(`(${serializeDocumentWithStyles.toString()})(document)`);
+async function save(page: Page, filename: string) {
+  const html: string = await page.evaluate(`(${serializeDocumentWithStyles.toString()})(document)`);
   fs.writeFileSync(path.join(fixturesDir, filename), html, 'utf-8');
-  const ruleChars = Array.from((html as string).matchAll(/<style[^>]*\bdata-(?:emotion|styled)\b[^>]*>([\s\S]*?)<\/style>/g))
+  const ruleChars = Array.from(html.matchAll(/<style[^>]*\bdata-(?:emotion|styled)\b[^>]*>([\s\S]*?)<\/style>/g))
     .reduce((sum, [, body]) => sum + body.trim().length, 0);
   console.log(`Saved ${filename} (${(html.length / 1024).toFixed(0)} KB, ${(ruleChars / 1024).toFixed(0)} KB CSS-in-JS)`);
 }

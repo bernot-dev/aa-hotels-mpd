@@ -1,8 +1,9 @@
-import { chromium } from '@playwright/test';
+import { chromium, type Page, type Route } from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
+import type { AddressInfo } from 'node:net';
 
 const projectRoot = path.resolve(__dirname, '../');
 const fixturesDir = path.resolve(projectRoot, 'fixtures');
@@ -25,15 +26,15 @@ function assertFixtureHasRuntimeStyles(name: string, html: string) {
 }
 
 // Photos and map tiles load live; wait for them so screenshots don't show blank placeholders
-async function waitForImages(page: any, label: string) {
+async function waitForImages(page: Page, label: string) {
   await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   await page
     .waitForFunction(() => Array.from(document.images).every((img) => img.complete), undefined, { timeout: 15000 })
     .catch(() => console.warn(`Some ${label} images did not finish loading.`));
 }
 
-async function setupPageRoutes(page: any) {
-  await page.route('**/*', async (route: any) => {
+async function setupPageRoutes(page: Page) {
+  await page.route('**/*', async (route: Route) => {
     const url = route.request().url();
     const resourceType = route.request().resourceType();
 
@@ -113,7 +114,7 @@ async function captureScreenshots() {
   });
 
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
-  const port = (server.address() as any).port;
+  const port = (server.address() as AddressInfo).port;
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-ext-'));
   const context = await chromium.launchPersistentContext(tmpDir, {
