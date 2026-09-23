@@ -311,7 +311,10 @@ test.describe('AA Hotels MPD Extension E2E Suite', () => {
     // Navigate to unpacked Chrome extension options page
     await page.goto(`chrome-extension://${extensionId}/options.html`);
 
-    await expect(page).toHaveTitle('AA Hotels MPD Options');
+    await expect(page).toHaveTitle('AA Hotels MPD - Dashboard & Settings');
+
+    // Switch to Settings tab
+    await page.locator('button[data-tab="settings-tab"]').click();
 
     // Verify all 5 setting checkboxes are present
     const expandRoomRates = page.locator('#expandRoomRates');
@@ -333,7 +336,7 @@ test.describe('AA Hotels MPD Extension E2E Suite', () => {
 
     // Verify status confirmation message appears
     const statusMsg = page.locator('#status');
-    await expect(statusMsg).toHaveText('Options saved.', { timeout: 3000 });
+    await expect(statusMsg).toHaveText('Settings saved.', { timeout: 3000 });
 
     // Save visual artifact
     const screenshotDir = path.resolve(projectRoot, 'artifacts');
