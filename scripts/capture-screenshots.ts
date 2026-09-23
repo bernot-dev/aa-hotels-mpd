@@ -8,6 +8,30 @@ const projectRoot = path.resolve(__dirname, '../');
 const fixturesDir = path.resolve(projectRoot, 'fixtures');
 const imagesDir = path.resolve(projectRoot, 'images');
 
+// The site styles its components with CSS-in-JS (emotion/Chakra, styled-components) injected at
+// runtime. Fixtures saved via plain outerHTML contain these <style> tags empty, and since the site's
+// scripts are blocked here, the page renders unstyled. Fixtures exported with the debug button's
+// serializeDocumentWithStyles() carry the rules inline.
+function assertFixtureHasRuntimeStyles(name: string, html: string) {
+  const cssInJsTags = Array.from(html.matchAll(/<style[^>]*\bdata-(?:emotion|styled)\b[^>]*>([\s\S]*?)<\/style>/g));
+  const ruleChars = cssInJsTags.reduce((sum, [, body]) => sum + body.trim().length, 0);
+  if (cssInJsTags.length > 0 && ruleChars === 0) {
+    throw new Error(
+      `fixtures/${name} has no CSS-in-JS rules (its emotion/styled-components <style> tags are empty), ` +
+        'so it will render unstyled. Regenerate it with `npm run fixtures:screenshots`, ' +
+        'or pass --allow-unstyled to capture anyway.'
+    );
+  }
+}
+
+// Photos and map tiles load live; wait for them so screenshots don't show blank placeholders
+async function waitForImages(page: any, label: string) {
+  await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+  await page
+    .waitForFunction(() => Array.from(document.images).every((img) => img.complete), undefined, { timeout: 15000 })
+    .catch(() => console.warn(`Some ${label} images did not finish loading.`));
+}
+
 async function setupPageRoutes(page: any) {
   await page.route('**/*', async (route: any) => {
     const url = route.request().url();
@@ -41,9 +65,15 @@ async function setupPageRoutes(page: any) {
 async function captureScreenshots() {
   console.log('Starting screenshot capture...');
 
-  const searchHtml = fs.readFileSync(path.join(fixturesDir, 'search-authenticated.html'), 'utf-8');
-  const mapHtml = fs.readFileSync(path.join(fixturesDir, 'search-map-authenticated.html'), 'utf-8');
-  const detailsHtml = fs.readFileSync(path.join(fixturesDir, 'details-authenticated.html'), 'utf-8');
+  const searchHtml = fs.readFileSync(path.join(fixturesDir, 'search-screenshot.html'), 'utf-8');
+  const mapHtml = fs.readFileSync(path.join(fixturesDir, 'search-map-screenshot.html'), 'utf-8');
+  const detailsHtml = fs.readFileSync(path.join(fixturesDir, 'details-screenshot.html'), 'utf-8');
+
+  if (!process.argv.includes('--allow-unstyled')) {
+    assertFixtureHasRuntimeStyles('search-screenshot.html', searchHtml);
+    assertFixtureHasRuntimeStyles('details-screenshot.html', detailsHtml);
+    assertFixtureHasRuntimeStyles('search-map-screenshot.html', mapHtml);
+  }
 
   const pinMatches = Array.from(mapHtml.matchAll(/data-testid="hotel-pin-(\d+)"[^>]*><span>\$?([\d,]+)/g));
   const allMapResults = pinMatches.map(([_, id, priceStr], index) => {
@@ -128,7 +158,8 @@ async function captureScreenshots() {
 
       // Hotel cards on search page
       document.querySelectorAll('[data-testid^="hotel-card-"]').forEach(card => {
-        const nameEl = card.querySelector('[data-testid="hotel-name"]') || card.querySelector('h3');
+        // Only the name half of a card has hotel-name; the pricing half's h3 is the price
+        const nameEl = card.querySelector('[data-testid="hotel-name"]');
         if (nameEl) {
           const originalName = nameEl.textContent || '';
           if (!hotelCache.has(originalName)) {
@@ -216,6 +247,7 @@ async function captureScreenshots() {
     })();
   `);
 
+  await waitForImages(searchPage, 'search');
   await searchPage.waitForTimeout(500);
 
   // Save 1280x800 viewport screenshot focused on the hotel-results-list-container
@@ -247,8 +279,9 @@ async function captureScreenshots() {
     `,
   });
 
-  const pin12498 = mapPage.locator('[data-testid="hotel-pin-12498"]');
-  await pin12498.waitFor({ state: 'visible', timeout: 10000 });
+  const firstPinId = pinMatches[0]?.[1];
+  if (!firstPinId) throw new Error('fixtures/search-map-screenshot.html has no hotel pins');
+  await mapPage.locator(`[data-testid="hotel-pin-${firstPinId}"]`).waitFor({ state: 'visible', timeout: 10000 });
 
   await mapPage.evaluate(`
     (async () => {
@@ -256,7 +289,7 @@ async function captureScreenshots() {
     })();
   `);
 
-  await mapPage.locator('[data-testid="hotel-pin-12498"][data-aa-mpd]').waitFor({ state: 'visible', timeout: 10000 });
+  await mapPage.locator(`[data-testid="hotel-pin-${firstPinId}"][data-aa-mpd]`).waitFor({ state: 'visible', timeout: 10000 });
 
   // Format map container to fill 1280x800 view cleanly
   await mapPage.evaluate(`
@@ -291,6 +324,7 @@ async function captureScreenshots() {
 
   // Anonymize in DOM
   await mapPage.evaluate(anonymizeSearchAndDetailsStr);
+  await waitForImages(mapPage, 'map tile');
   await mapPage.waitForTimeout(500);
 
   await mapPage.screenshot({ path: path.join(imagesDir, 'maps-screenshot.png') });
@@ -335,6 +369,7 @@ async function captureScreenshots() {
     })();
   `);
 
+  await waitForImages(detailsPage, 'details');
   await detailsPage.waitForTimeout(500);
 
   await detailsPage.screenshot({ path: path.join(imagesDir, 'details-screenshot.png') });
