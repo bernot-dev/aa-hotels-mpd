@@ -4,6 +4,7 @@ import { processMapPreviewCards, updateMapPins } from "./map";
 import { resetRateCollector, queueRatesForDispatch } from "./capture/collector";
 import { extractRatesFromSearchCards } from "./capture/rates";
 import { extractSearchCriteria } from "./capture/criteria";
+import { setupMpdSort } from "./sort";
 
 export interface SearchExpansionOptions {
   expandSearchResults: boolean;
@@ -283,12 +284,16 @@ export const processSearchPage = async (
   const cardSelector = 'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]';
   const observeRoot = document.body;
 
+  const mpdSort = setupMpdSort();
+
+  // Reorder after badges update so the MPD sort follows the rates users see
   const callback = updateCards(
     observeRoot,
     maxMPDElem,
     cardSelector,
     includeBonusMiles,
-    useAllInPricing
+    useAllInPricing,
+    () => mpdSort.apply()
   );
 
   const searchExpansion = setupSearchExpansion({
@@ -382,6 +387,7 @@ export const processSearchPage = async (
   return () => {
     document.body.removeEventListener("click", handleMapToggleClick);
     searchExpansion.teardown();
+    mpdSort.teardown();
     observer.disconnect();
     document
       .querySelectorAll('#aa-mpd-search-summary, [id^="aa-mpd-search-summary"]')

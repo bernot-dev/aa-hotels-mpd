@@ -80,6 +80,14 @@
       "matches": [
         "https://search.aadvantagehotels.com/*"
       ]
+    },
+    {
+      "resources": [
+        "images/icon-48.png"
+      ],
+      "matches": [
+        "*://www.aadvantagehotels.com/*"
+      ]
     }
   ]
 }
