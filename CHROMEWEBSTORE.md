@@ -46,6 +46,8 @@ English
 | Screenshot 2 (Details) | 1280×800 | ✅ Ready | images/details-screenshot.png |
 | Screenshot 3 (Maps) | 1280×800 | ✅ Ready | images/maps-screenshot.png |
 | Screenshot 4 (Options Dashboard) | 1280×800 | ✅ Ready | images/options-dashboard-screenshot.png |
+| Small Promo Tile | 440×280 | ✅ Ready | images/promo-small.png |
+| Marquee Promo Tile | 1400×560 | ✅ Ready | images/promo-marquee.png |
 
 ## Permissions Justification
 

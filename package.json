@@ -7,7 +7,8 @@
     "test:e2e": "playwright test",
     "package": "npm run build && python3 scripts/package-extension.py extension.zip",
     "fixtures:screenshots": "tsx scripts/fetch-screenshot-fixtures.ts",
-    "screenshots": "tsx scripts/capture-screenshots.ts"
+    "screenshots": "tsx scripts/capture-screenshots.ts",
+    "promo-tiles": "tsx scripts/capture-promo-tiles.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",
