@@ -32,7 +32,6 @@ export type Config = {
   expandRoomTypes: boolean;
   expandSearchResults: boolean;
   includeBonusMiles: boolean;
-  showDebugButton: boolean;
   keepExhaustiveQueryHistory?: boolean;
 };
 
@@ -805,7 +804,6 @@ async function saveOptions(): Promise<void> {
   const expandRoomTypes = (document.getElementById("expandRoomTypes") as HTMLInputElement).checked;
   const expandSearchResults = (document.getElementById("expandSearchResults") as HTMLInputElement).checked;
   const includeBonusMiles = (document.getElementById("includeBonusMiles") as HTMLInputElement).checked;
-  const showDebugButton = (document.getElementById("showDebugButton") as HTMLInputElement).checked;
   const keepExhaustiveQueryHistory = (
     document.getElementById("keepExhaustiveQueryHistory") as HTMLInputElement
   ).checked;
@@ -821,7 +819,6 @@ async function saveOptions(): Promise<void> {
         expandRoomTypes,
         expandSearchResults,
         includeBonusMiles,
-        showDebugButton,
         keepExhaustiveQueryHistory,
         pricingCalculationMethod,
         useAllInPricing,
@@ -851,7 +848,6 @@ async function restoreOptions(): Promise<void> {
       expandRoomTypes: false,
       expandSearchResults: true,
       includeBonusMiles: false,
-      showDebugButton: true,
       keepExhaustiveQueryHistory: false,
       pricingCalculationMethod: "all_in",
       useAllInPricing: true,
@@ -877,9 +873,6 @@ async function restoreOptions(): Promise<void> {
 
     const bonusEl = document.getElementById("includeBonusMiles") as HTMLInputElement | null;
     if (bonusEl) bonusEl.checked = config.includeBonusMiles;
-
-    const debugEl = document.getElementById("showDebugButton") as HTMLInputElement | null;
-    if (debugEl) debugEl.checked = config.showDebugButton;
 
     const historyEl = document.getElementById("keepExhaustiveQueryHistory") as HTMLInputElement | null;
     if (historyEl) historyEl.checked = config.keepExhaustiveQueryHistory;

@@ -324,8 +324,8 @@ export const processSearchPage = async (
     searchExpansion.onMutation();
 
     // 2. Process map preview cards and pins anywhere in the page
-    processMapPreviewCards(document.body, nights, includeBonusMiles);
-    updateMapPins(document.body);
+    processMapPreviewCards(document.body, nights, includeBonusMiles, useAllInPricing);
+    updateMapPins(document.body, useAllInPricing);
 
     // 3. Capture newly resolved rates into database
     try {

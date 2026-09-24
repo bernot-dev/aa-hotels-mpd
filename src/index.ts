@@ -5,6 +5,8 @@ import { processSearchPage } from "./search";
 import { mountDebugButton } from "./debug";
 import { ingestHotelRates, RawHotelRate, hotelMpdRegistry } from "./registry";
 import { updateMapPins } from "./map";
+import { ingestRoomRates } from "./allin";
+import type { RoomRate } from "./interceptor";
 
 const SEARCH_SELECTOR =
   '#searchPageRightColumn, #contentContainer, [data-selenium="pagination-panel"], #searchPageReactRoot';
@@ -58,7 +60,7 @@ if (typeof window !== "undefined") {
 
     // 2. Update map pins & summary banner
     if (updated > 0 || hotelMpdRegistry.size > 0) {
-      updateMapPins(document.body);
+      updateMapPins(document.body, useAllInPricing);
       const summaryBanner = document.getElementById("aa-mpd-search-summary");
       if (summaryBanner && hotelMpdRegistry.size > 0) {
         const highest = Math.max(...hotelMpdRegistry.values());
@@ -119,10 +121,47 @@ if (typeof window !== "undefined") {
     }
   };
 
+  // Details page room rates: remember them, then show all-in prices on any room cards already rendered
+  const handleIncomingRooms = async (rooms: RoomRate[] | undefined) => {
+    if (!rooms || rooms.length === 0) return;
+    ingestRoomRates(rooms);
+
+    let includeBonusMiles = false;
+    let useAllInPricing = true;
+    try {
+      if (typeof chrome !== "undefined" && chrome.storage?.sync) {
+        const result = await chrome.storage.sync.get([
+          "includeBonusMiles",
+          "pricingCalculationMethod",
+          "useAllInPricing",
+        ]);
+        includeBonusMiles = Boolean(result.includeBonusMiles);
+        if (result.pricingCalculationMethod) {
+          useAllInPricing = result.pricingCalculationMethod === "all_in";
+        } else if (typeof result.useAllInPricing === "boolean") {
+          useAllInPricing = result.useAllInPricing;
+        }
+      }
+    } catch {
+      // Ignore storage read errors
+    }
+    if (!useAllInPricing) return;
+
+    const nights = getNights();
+    document.querySelectorAll('[data-testid="room-card"]').forEach((card) => {
+      try {
+        processCard(card, nights, includeBonusMiles, useAllInPricing);
+      } catch {
+        // Skip cards that are mid-render
+      }
+    });
+  };
+
   // 1. Listen for postMessage (cross-world MAIN -> ISOLATED)
   window.addEventListener("message", (event) => {
     if (event.data?.type === "AA_HOTELS_MPD_NETWORK_DATA") {
       handleIncomingRates(event.data.hotels);
+      handleIncomingRooms(event.data.rooms);
     }
   });
 
@@ -140,6 +179,13 @@ if (typeof window !== "undefined") {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
           handleIncomingRates(parsed);
+        }
+      }
+      const cachedRooms = sessionStorage.getItem("aa_hotels_latest_rooms");
+      if (cachedRooms) {
+        const parsed = JSON.parse(cachedRooms);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          handleIncomingRooms(parsed);
         }
       }
     }

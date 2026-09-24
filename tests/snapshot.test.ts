@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { serializeDocumentWithStyles } from '../src/debug';
+import { serializeDocumentWithStyles } from '../src/snapshot';
 
 describe('serializeDocumentWithStyles', () => {
   beforeEach(() => {

@@ -582,18 +582,17 @@ test.describe('AA Hotels MPD Extension E2E Suite (Redesigned Platform)', () => {
     // Switch to settings tab
     await page.locator('button[data-tab="settings-tab"]').click();
 
-    // Verify all 5 setting checkboxes are present
+    // Verify all 4 setting checkboxes are present, and the retired debug button option is gone
     const expandRoomRates = page.locator('#expandRoomRates');
     const expandRoomTypes = page.locator('#expandRoomTypes');
     const expandSearchResults = page.locator('#expandSearchResults');
     const includeBonusMiles = page.locator('#includeBonusMiles');
-    const showDebugButton = page.locator('#showDebugButton');
 
     await expect(expandRoomRates).toBeAttached();
     await expect(expandRoomTypes).toBeAttached();
     await expect(expandSearchResults).toBeAttached();
     await expect(includeBonusMiles).toBeAttached();
-    await expect(showDebugButton).toBeAttached();
+    await expect(page.locator('#showDebugButton')).toHaveCount(0);
 
     // Toggle options and save
     await expandSearchResults.check();

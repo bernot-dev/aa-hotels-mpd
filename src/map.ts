@@ -8,7 +8,9 @@ import {
   clearHotelMpdRegistry,
   getHotelIdFromPin,
   getHotelIdFromCard,
+  getEnrichedHotel,
 } from "./registry";
+import { applyAllInPrice, candidatesFromHotel } from "./allin";
 
 export {
   hotelMpdRegistry,
@@ -44,13 +46,22 @@ export function getColorForRatio(ratio: number): string {
 }
 
 /**
- * Updates visible map pins with normalized background colors.
+ * Updates visible map pins with normalized background colors, and all-in prices when enabled.
  */
-export function updateMapPins(root: Element = document.body): void {
+export function updateMapPins(root: Element = document.body, useAllInPricing: boolean = true): void {
   const pins = root.querySelectorAll<HTMLElement>(
     'button[data-selenium*="pin"], [data-selenium*="pin"], .static-map-pin, [class*="map-pin"]'
   );
   if (pins.length === 0) return;
+
+  if (useAllInPricing) {
+    pins.forEach((pin) => {
+      const hotelId = getHotelIdFromPin(pin);
+      if (hotelId) {
+        applyAllInPrice(pin.querySelector("span") || pin, candidatesFromHotel(getEnrichedHotel(hotelId)));
+      }
+    });
+  }
 
   const knownPins: { pin: HTMLElement; mpd: number }[] = [];
 
@@ -94,7 +105,8 @@ export function updateMapPins(root: Element = document.body): void {
 export function processMapPreviewCards(
   root: Element = document.body,
   nights: number = 1,
-  includeBonusMiles: boolean = false
+  includeBonusMiles: boolean = false,
+  useAllInPricing: boolean = true
 ): void {
   const previewCards = root.querySelectorAll(
     'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]'
@@ -106,7 +118,7 @@ export function processMapPreviewCards(
     const card = elem;
     if (!card) return;
 
-    const { cardMaxMPD } = processCard(card, nights, includeBonusMiles);
+    const { cardMaxMPD } = processCard(card, nights, includeBonusMiles, useAllInPricing);
 
     if (cardMaxMPD > 0) {
       const hotelId = getHotelIdFromCard(card);
@@ -121,7 +133,7 @@ export function processMapPreviewCards(
   });
 
   if (newRatesFound) {
-    updateMapPins(root);
+    updateMapPins(root, useAllInPricing);
   }
 }
 
@@ -136,7 +148,8 @@ export interface MapController {
 export function setupMapController(
   container: Element,
   nights: number = 1,
-  includeBonusMiles: boolean = false
+  includeBonusMiles: boolean = false,
+  useAllInPricing: boolean = true
 ): MapController {
   let isDisposed = false;
   let isScheduled = false;
@@ -144,8 +157,8 @@ export function setupMapController(
   const runUpdate = () => {
     if (isDisposed) return;
     isScheduled = false;
-    processMapPreviewCards(container, nights, includeBonusMiles);
-    updateMapPins(container);
+    processMapPreviewCards(container, nights, includeBonusMiles, useAllInPricing);
+    updateMapPins(container, useAllInPricing);
   };
 
   const scheduleUpdate = () => {

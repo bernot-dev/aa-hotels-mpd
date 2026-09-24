@@ -158,6 +158,5 @@ export interface ExtensionConfig {
   expandRoomRates: boolean;
   expandRoomTypes: boolean;
   includeBonusMiles: boolean;
-  showDebugButton: boolean;
   keepExhaustiveQueryHistory: boolean;
 }

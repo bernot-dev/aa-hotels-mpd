@@ -4,7 +4,7 @@
 import { chromium, type Page } from '@playwright/test';
 import path from 'node:path';
 import fs from 'node:fs';
-import { serializeDocumentWithStyles } from '../src/debug';
+import { serializeDocumentWithStyles } from '../src/snapshot';
 
 const projectRoot = path.resolve(__dirname, '../');
 const fixturesDir = path.resolve(projectRoot, 'fixtures');

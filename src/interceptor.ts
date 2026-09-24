@@ -7,7 +7,9 @@ export interface EnrichedHotelRate {
   hotelName: string;
   price: number; // Defaults to allInPrice (or basePrice) for backward compatibility
   basePrice: number;
-  allInPrice: number;
+  allInPrice: number; // Room + taxes + all fees, including fees paid at the property
+  /** Totals the site may be displaying for this rate, used to recognize which price is on screen. */
+  sitePriceTotals?: number[];
   nightlyPrice: number;
   fees: number;
   baseMiles: number;
@@ -32,6 +34,48 @@ export interface EnrichedHotelRate {
 }
 
 export type RawHotelRate = EnrichedHotelRate;
+
+/** A single room rate from the details page API, which has no hotel id on each rate. */
+export interface RoomRate {
+  allInPrice: number;
+  sitePriceTotals: number[];
+  /** Miles for AAdvantage members, as shown in the room card's "Earn N miles" line. */
+  rewards: number;
+  nights: number;
+}
+
+type ApiObject = { [key: string]: unknown };
+
+const field = (value: unknown, key: string): unknown =>
+  value && typeof value === "object" ? (value as ApiObject)[key] : undefined;
+
+const amountOf = (value: unknown): number => {
+  const amount = Number(field(value, "amount") ?? NaN);
+  return isFinite(amount) && amount > 0 ? amount : 0;
+};
+
+/**
+ * All-in total: room + taxes + every fee, including resort/property fees paid at the hotel.
+ * Falls back to taxes-only totals for payloads that lack the fees-inclusive field.
+ */
+export function getAllInTotal(item: unknown): number {
+  return (
+    amountOf(field(item, "grandTotalPublishedPriceInclusiveWithFees")) ||
+    amountOf(field(item, "grandTotalPublishedPriceInclusive")) ||
+    amountOf(field(item, "totalPriceInclusive")) ||
+    amountOf(field(field(item, "economics"), "totalInclusive"))
+  );
+}
+
+/** Totals the site may be showing instead of the all-in total, depending on the searcher's jurisdiction. */
+export function getSitePriceTotals(item: unknown): number[] {
+  return [
+    amountOf(field(item, "grandTotalPublishedPriceWithPropertyTaxAndCounterFees")),
+    amountOf(field(item, "totalPrice")),
+    amountOf(field(item, "grandTotalPublishedPriceInclusive")),
+    amountOf(field(field(item, "economics"), "total")),
+  ].filter((amount, i, all) => amount > 0 && all.indexOf(amount) === i);
+}
 
 export const EVENT_NAME = "AA_HOTELS_MPD_NETWORK_DATA";
 
@@ -226,22 +270,15 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
       basePrice = nightlyPrice * nights;
     }
 
-    let allInPrice = 0;
-    if (pricing.displayPrice?.inclusive?.amount) {
-      allInPrice = Number(pricing.displayPrice.inclusive.amount);
-    } else if (pricing.inclusive?.amount) {
-      allInPrice = Number(pricing.inclusive.amount);
-    } else if (pricing.totalInclusive?.amount) {
-      allInPrice = Number(pricing.totalInclusive.amount);
-    } else if (item.grandTotalPublishedPriceInclusive?.amount) {
-      allInPrice = Number(item.grandTotalPublishedPriceInclusive.amount);
-    } else if (item.totalPriceInclusive?.amount) {
-      allInPrice = Number(item.totalPriceInclusive.amount);
-    } else if (economics?.totalInclusive?.amount) {
-      allInPrice = Number(economics.totalInclusive.amount);
-    } else {
-      allInPrice = basePrice;
-    }
+    let allInPrice =
+      getAllInTotal(item) ||
+      (pricing.displayPrice?.inclusive?.amount ? Number(pricing.displayPrice.inclusive.amount) : 0) ||
+      (pricing.inclusive?.amount ? Number(pricing.inclusive.amount) : 0) ||
+      (pricing.totalInclusive?.amount ? Number(pricing.totalInclusive.amount) : 0) ||
+      (item.grandTotalPublishedPriceInclusive?.amount ? Number(item.grandTotalPublishedPriceInclusive.amount) : 0) ||
+      (item.totalPriceInclusive?.amount ? Number(item.totalPriceInclusive.amount) : 0) ||
+      (economics?.totalInclusive?.amount ? Number(economics.totalInclusive.amount) : 0) ||
+      basePrice;
 
     let fees = 0;
     if (typeof item.fees === "number") {
@@ -321,6 +358,7 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
       price: allInPrice > 0 ? allInPrice : basePrice,
       basePrice,
       allInPrice,
+      sitePriceTotals: getSitePriceTotals(item),
       nightlyPrice,
       fees,
       baseMiles,
@@ -430,6 +468,60 @@ export function isSensitiveCheckoutPage(url: string = typeof window !== 'undefin
   );
 }
 
+/**
+ * Extracts room rates from the details page's rooms payload: room types whose `childrenRooms` each
+ * carry prices and member `rewards` but no `hotel` (search results carry a `hotel`).
+ */
+export function extractRoomRatesFromPayload(payload: unknown): RoomRate[] {
+  const rooms: RoomRate[] = [];
+  const visit = (node: unknown, depth: number) => {
+    if (!node || typeof node !== "object" || depth > 5) return;
+    if (Array.isArray(node)) {
+      node.forEach((child) => visit(child, depth + 1));
+      return;
+    }
+    const obj = node as ApiObject;
+    const allInPrice = getAllInTotal(obj);
+    if (allInPrice > 0 && !obj.hotel && typeof obj.rewards === "number") {
+      const nights = Number(obj.numberOfNights);
+      rooms.push({
+        allInPrice,
+        sitePriceTotals: getSitePriceTotals(obj),
+        rewards: obj.rewards,
+        nights: nights > 0 ? nights : 1,
+      });
+      return;
+    }
+    Object.keys(obj).forEach((key) => visit(obj[key], depth + 1));
+  };
+  visit(payload, 0);
+  return rooms;
+}
+
+export function dispatchInterceptedRooms(rooms: RoomRate[]): void {
+  if (!rooms || rooms.length === 0 || typeof window === "undefined") return;
+  try {
+    try {
+      sessionStorage.setItem("aa_hotels_latest_rooms", JSON.stringify(rooms));
+    } catch {
+      // Ignore quota or security errors
+    }
+    window.postMessage({ type: EVENT_NAME, rooms }, "*");
+  } catch (err) {
+    console.debug("[AA-Hotels-MPD] Failed to dispatch room rates:", err);
+  }
+}
+
+function inspectPayload(data: unknown, url?: string, method?: string): void {
+  if (typeof window !== "undefined" && (window as any).__AA_RECORD_NETWORK__) {
+    try {
+      (window as any).__AA_RECORD_NETWORK__({ url: url || '', method: method || '', timestamp: Date.now(), payload: data });
+    } catch {}
+  }
+  dispatchInterceptedRates(extractHotelRatesFromPayload(data));
+  dispatchInterceptedRooms(extractRoomRatesFromPayload(data));
+}
+
 export function shouldInspectUrl(url: string): boolean {
   if (!url) return false;
   if (isSensitiveCheckoutPage(url) || (typeof window !== 'undefined' && isSensitiveCheckoutPage(window.location.href))) {
@@ -478,15 +570,7 @@ export function initNetworkInterceptor(): void {
           response
             .clone()
             .json()
-            .then((data) => {
-              if (typeof window !== "undefined" && (window as any).__AA_RECORD_NETWORK__) {
-                try {
-                  (window as any).__AA_RECORD_NETWORK__({ url, method: 'FETCH', timestamp: Date.now(), payload: data });
-                } catch {}
-              }
-              const rates = extractHotelRatesFromPayload(data);
-              dispatchInterceptedRates(rates);
-            })
+            .then((data) => inspectPayload(data, url, 'FETCH'))
             .catch(() => {});
         }
       } catch {
@@ -519,14 +603,7 @@ export function initNetworkInterceptor(): void {
           if (shouldInspectUrl(url)) {
             const text = this.responseText;
             if (text && (text.startsWith("{") || text.startsWith("["))) {
-              const data = JSON.parse(text);
-              if (typeof window !== "undefined" && (window as any).__AA_RECORD_NETWORK__) {
-                try {
-                  (window as any).__AA_RECORD_NETWORK__({ url, method: 'XHR', timestamp: Date.now(), payload: data });
-                } catch {}
-              }
-              const rates = extractHotelRatesFromPayload(data);
-              dispatchInterceptedRates(rates);
+              inspectPayload(JSON.parse(text), url, 'XHR');
             }
           }
         } catch {

@@ -5,6 +5,13 @@ import {
   hotelMpdRegistry,
   getEnrichedHotel,
 } from "./registry";
+import {
+  applyAllInPrice,
+  candidatesFromHotel,
+  candidatesFromRoom,
+  readMemberMiles,
+  readShownPrice,
+} from "./allin";
 
 export const extractNumber = (e: Element): number | null => {
   // Ignore text inside our own injected badges when extracting original numbers
@@ -39,6 +46,22 @@ export const processCard = (
   let cardMaxMPD = 0;
   let processedTiers = 0;
 
+  const hotelId = getHotelIdFromCard(card);
+  const enriched = hotelId ? getEnrichedHotel(hotelId) : undefined;
+  const dollarsElem = card.querySelector(priceSelector);
+
+  // Show the all-in total in place of the site's price before reading it for MPD. Search and map
+  // cards match by hotel id; details room rates have no id and match by price and member miles.
+  if (useAllInPricing && dollarsElem) {
+    const shown = readShownPrice(dollarsElem);
+    const candidates = enriched
+      ? candidatesFromHotel(enriched)
+      : shown !== null
+      ? candidatesFromRoom(shown, readMemberMiles(card))
+      : null;
+    applyAllInPrice(dollarsElem, candidates, card);
+  }
+
   // Respect user preference for bonus miles / boost tags
   const hasBoostTag = !!card.querySelector('[data-selenium="boost-tag"], [data-element-name="boost-tag"]');
   if (hasBoostTag && !includeBonusMiles) {
@@ -47,10 +70,6 @@ export const processCard = (
     return { cardMaxMPD: 0, processedTiers: 0 };
   }
 
-  const hotelId = getHotelIdFromCard(card);
-  const enriched = hotelId ? getEnrichedHotel(hotelId) : undefined;
-
-  const dollarsElem = card.querySelector(priceSelector);
   const domDollars = dollarsElem ? extractNumber(dollarsElem) : null;
 
   // If no DOM price and no API price, cannot process

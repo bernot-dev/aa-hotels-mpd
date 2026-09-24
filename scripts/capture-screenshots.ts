@@ -11,8 +11,8 @@ const imagesDir = path.resolve(projectRoot, 'images');
 
 // The site styles its components with CSS-in-JS (emotion/Chakra, styled-components) injected at
 // runtime. Fixtures saved via plain outerHTML contain these <style> tags empty, and since the site's
-// scripts are blocked here, the page renders unstyled. Fixtures exported with the debug button's
-// serializeDocumentWithStyles() carry the rules inline.
+// scripts are blocked here, the page renders unstyled. Fixtures saved with serializeDocumentWithStyles()
+// (see scripts/fetch-screenshot-fixtures.ts) carry the rules inline.
 function assertFixtureHasRuntimeStyles(name: string, html: string) {
   const cssInJsTags = Array.from(html.matchAll(/<style[^>]*\bdata-(?:emotion|styled)\b[^>]*>([\s\S]*?)<\/style>/g));
   const ruleChars = cssInJsTags.reduce((sum, [, body]) => sum + body.trim().length, 0);
