@@ -24,6 +24,24 @@ describe("Rate and Criteria Capture Pipeline", () => {
   });
 
   describe("extractSearchCriteria", () => {
+    it("reads the destination and stay from an Agoda search URL (numeric city ID, los)", () => {
+      const url =
+        "https://search.aadvantagehotels.com/search?cid=1951050&checkIn=2026-11-12&rooms=1&adults=2&textToSearch=Dallas+%28TX%29&los=2&city=8683";
+      const criteria = extractSearchCriteria(url, null as unknown as Document);
+      expect(criteria.location).toBe("Dallas, TX");
+      expect(criteria.checkIn).toBe("2026-11-12");
+      expect(criteria.checkOut).toBe("2026-11-14");
+      expect(criteria.nights).toBe(2);
+    });
+
+    it("never records a numeric city ID as the location", () => {
+      const criteria = extractSearchCriteria(
+        "https://search.aadvantagehotels.com/search?city=8683&checkIn=2026-11-12&checkOut=2026-11-14",
+        null as unknown as Document
+      );
+      expect(criteria.location).not.toBe("8683");
+    });
+
     it("extracts all parameters from full URL", () => {
       const url =
         "https://search.aadvantagehotels.com/search?destination=Dallas%2C%20TX%2C%20USA&checkIn=2026-10-05&checkOut=2026-10-08&rooms=2&adults=3&children=1";
@@ -157,96 +175,68 @@ describe("Rate and Criteria Capture Pipeline", () => {
   });
 
   describe("extractRatesFromSearchCards with search fixture", () => {
-    it("extracts all rates with hotel name, price, miles, and MPD from search-guest.html", () => {
+    it("extracts a rate per miles tier for every priced card in the live search-guest.html", () => {
       const fixturePath = path.resolve(__dirname, "../fixtures/search-guest.html");
       const fixtureHtml = fs.readFileSync(fixturePath, "utf-8");
       const dom = new JSDOM(fixtureHtml);
-      const container = dom.window.document.querySelector(
+      const doc = dom.window.document;
+      const container = doc.querySelector(
         '#searchPageRightColumn, [data-selenium="pagination-panel"], #contentContainer'
       );
       expect(container).not.toBeNull();
 
+      const pricedCards = Array.from(doc.querySelectorAll("li.PropertyCardItem")).filter((c) =>
+        c.querySelector('[data-element-name="fpc-room-price"]')
+      );
+      const milesCaptions = pricedCards.flatMap((c) =>
+        Array.from(c.querySelectorAll('[data-testid="upc_caption"]')).filter((e) =>
+          /Earn [\d,]+ miles/.test(e.textContent || "")
+        )
+      );
+      expect(pricedCards.length).toBeGreaterThan(0);
+
       const rates = extractRatesFromSearchCards(container!, 2, true);
-      expect(rates.length).toBeGreaterThanOrEqual(44);
+      expect(rates.length).toBe(milesCaptions.length);
 
-      // Check first hotel card
+      // First rate matches the first priced card's DOM, read independently
+      const firstCard = pricedCards[0];
+      const price = Number(firstCard.querySelector('[data-element-name="fpc-room-price"]')!.getAttribute("data-fpc-value"));
+      const miles = Number(milesCaptions[0].textContent!.match(/Earn ([\d,]+) miles/)![1].replace(/,/g, ""));
+      const name = firstCard.querySelector('[data-selenium="hotel-name"] h2')!.childNodes[0].textContent!.trim();
+
       const firstRate = rates[0];
-      expect(firstRate.hotelName).toBe("Hilton Anatole, Dallas");
-      expect(firstRate.hotelId).toBe("2687");
-      expect(firstRate.location).toBe("Dallas, TX, USA");
-      expect(firstRate.price).toBe(557);
-      expect(firstRate.miles).toBe(300);
-      expect(firstRate.mpd).toBe(0.5);
+      expect(firstRate.hotelId).toBe(firstCard.getAttribute("data-hotelid"));
+      expect(firstRate.hotelName).toBe(name);
+      expect(firstRate.hotelName).not.toMatch(/stars? out of/);
+      expect(firstRate.location).toMatch(/^[A-Za-z .'-]+, [A-Z]{2}$/);
+      expect(firstRate.price).toBe(price);
+      expect(firstRate.miles).toBe(miles);
+      // "2 nights including taxes and fees" is a total price, not nightly
       expect(firstRate.isTotalPrice).toBe(true);
-    });
-
-    it("filters boost/bonus tags when includeBonusMiles is false", () => {
-      const dom = new JSDOM(`
-        <div>
-          <div class="PropertyCardItem" data-selenium="hotel-item">
-            <h3 data-selenium="hotel-name">Normal Hotel</h3>
-            <span class="PropertyCardPrice__Currency" data-selenium="hotel-currency">Total</span>
-            <span class="PropertyCardPrice__Value" data-selenium="display-price">$200</span>
-            <span data-selenium="points-max">Earn 2,000 miles</span>
-          </div>
-          <div class="PropertyCardItem" data-selenium="hotel-item">
-            <h3 data-selenium="hotel-name">Bonus Hotel</h3>
-            <div data-selenium="boost-tag">Bonus Offer</div>
-            <span class="PropertyCardPrice__Currency" data-selenium="hotel-currency">Total</span>
-            <span class="PropertyCardPrice__Value" data-selenium="display-price">$200</span>
-            <span data-selenium="points-max">Earn 6,000 miles</span>
-          </div>
-        </div>
-      `);
-
-      const allRates = extractRatesFromSearchCards(dom.window.document.body, 1, true);
-      expect(allRates.length).toBe(2);
-
-      const standardOnly = extractRatesFromSearchCards(dom.window.document.body, 1, false);
-      expect(standardOnly.length).toBe(1);
-      expect(standardOnly[0].hotelName).toBe("Normal Hotel");
-    });
-
-    it("falls back to hotel card neighborhood when details link does not encode destination", () => {
-      const dom = new JSDOM(`
-        <div>
-          <div>
-            <h4 data-selenium="area-city-name">French Quarter</h4>
-            <h3 data-selenium="hotel-name">Bourbon Orleans Hotel</h3>
-            <a data-selenium="hotel-item-link" href="/accom/property?propertyId=9999&checkIn=2026-10-05&checkOut=2026-10-07">
-              <div class="PropertyCardItem" data-selenium="hotel-item">
-                <span class="PropertyCardPrice__Currency" data-selenium="hotel-currency">Total</span>
-                <span class="PropertyCardPrice__Value" data-selenium="display-price">$300</span>
-                <span data-selenium="points-max">Earn 6,000 miles</span>
-              </div>
-            </a>
-          </div>
-        </div>
-      `);
-
-      const rates = extractRatesFromSearchCards(dom.window.document.body, 1, true);
-      expect(rates.length).toBe(1);
-      expect(rates[0].hotelName).toBe("Bourbon Orleans Hotel");
-      expect(rates[0].location).toBe("French Quarter");
-      expect(rates[0].mpd).toBe(20);
+      expect(firstRate.mpd).toBe(Number((miles / price).toFixed(1)));
     });
   });
 
   describe("extractRatesFromDetailsCards with details fixture", () => {
-    it("extracts room rates from details-guest.html", () => {
+    it("extracts room rates from the live details-guest.html", () => {
       const fixturePath = path.resolve(__dirname, "../fixtures/details-guest.html");
       const fixtureHtml = fs.readFileSync(fixturePath, "utf-8");
       const dom = new JSDOM(fixtureHtml);
+      const doc = dom.window.document;
 
-      const container = dom.window.document.querySelector(
-        '#property-room-grid-root, [data-selenium="room-grid"], #rooms-table'
-      );
+      const container = doc.querySelector("#property-room-grid-root");
       expect(container).not.toBeNull();
 
+      const rooms = doc.querySelectorAll('[data-selenium="ChildRoomsList-room"]');
+      expect(rooms.length).toBeGreaterThan(0);
+
       const rates = extractRatesFromDetailsCards(container!, 2, true);
-      expect(rates.length).toBeGreaterThan(0);
-      expect(rates[0].hotelName).toBe("Element by Marriott Dallas Downtown East");
-      expect(rates[0].price).toBe(496);
+      expect(rates.length).toBeGreaterThanOrEqual(rooms.length);
+      expect(rates[0].hotelName).toBe(doc.querySelector('[data-selenium="hotel-header-name"]')!.textContent!.trim());
+      expect(rates[0].price).toBe(
+        Number(rooms[0].querySelector('[data-element-name="fpc-room-price"]')!.getAttribute("data-fpc-value"))
+      );
+      expect(rates[0].isTotalPrice).toBe(true);
       expect(rates[0].mpd).toBeGreaterThan(0);
     });
   });

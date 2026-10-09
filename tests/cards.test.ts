@@ -2,7 +2,16 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
-import { extractNumber, processCard, updateCards } from '../src/cards';
+import {
+  extractNumber,
+  extractPrice,
+  innermostCards,
+  isTotalPriceText,
+  processCard,
+  updateCards,
+  CARD_SELECTOR,
+  ROOM_CARD_SELECTOR,
+} from '../src/cards';
 import { getNights } from '../src/nights';
 import { getRouteType } from '../src/router';
 
@@ -12,6 +21,37 @@ describe('Router & Route Type Detection', () => {
     expect(getRouteType('https://search.aadvantagehotels.com/accom/property?propertyId=123')).toBe('details');
     expect(getRouteType('https://search.aadvantagehotels.com/')).toBe('search');
     expect(getRouteType('https://search.aadvantagehotels.com/checkout/456')).toBe('other');
+  });
+
+  it('classifies live Agoda search and hotel URLs', () => {
+    expect(getRouteType('https://search.aadvantagehotels.com/search?cid=1951050&city=8683&checkIn=2026-11-12&los=2')).toBe('search');
+    expect(
+      getRouteType('https://search.aadvantagehotels.com/la-quinta-inn-dallas-uptown_3/hotel/dallas-tx-us.html?countryId=181&checkIn=2026-11-12&los=2')
+    ).toBe('details');
+  });
+});
+
+describe('Price parsing', () => {
+  it('treats "N nights including taxes and fees" and "Total" as total-stay prices', () => {
+    expect(isTotalPriceText('2 nights including taxes and fees')).toBe(true);
+    expect(isTotalPriceText('1 night including taxes and fees')).toBe(true);
+    expect(isTotalPriceText('Total (2 nights)')).toBe(true);
+    expect(isTotalPriceText('')).toBe(true);
+    expect(isTotalPriceText('per night')).toBe(false);
+    expect(isTotalPriceText('$120/night')).toBe(false);
+    expect(isTotalPriceText('Avg. nightly price')).toBe(false);
+  });
+
+  it('reads data-fpc-value and rejects non-USD prices', () => {
+    const el = document.createElement('span');
+    el.setAttribute('data-fpc-value', '1112');
+    el.textContent = 'USD 1,112';
+    expect(extractPrice(el)).toBe(1112);
+    el.textContent = 'EUR 1,112';
+    expect(extractPrice(el)).toBeNull();
+    const legacy = document.createElement('span');
+    legacy.textContent = '$557';
+    expect(extractPrice(legacy)).toBe(557);
   });
 });
 
@@ -25,6 +65,15 @@ describe('getNights Safe Parsing', () => {
   it('calculates nights from search params correctly', () => {
     delete (window as any).location;
     window.location = new URL('https://search.aadvantagehotels.com/search?checkIn=2026-10-01&checkOut=2026-10-04') as any;
+
+    expect(getNights()).toBe(3);
+
+    window.location = originalLocation;
+  });
+
+  it('uses the los (length of stay) param when there is no check-out date', () => {
+    delete (window as any).location;
+    window.location = new URL('https://search.aadvantagehotels.com/x/hotel/dallas-tx-us.html?checkIn=2026-11-12&los=3') as any;
 
     expect(getNights()).toBe(3);
 
@@ -63,44 +112,50 @@ describe('extractNumber', () => {
   });
 });
 
+const isMilesCaption = (el: Element) => /Earn [\d,]+ miles/.test(el.textContent || '');
+
 describe('Search Fixture Processing (search-guest.html)', () => {
   const searchHtmlPath = path.resolve(__dirname, '../fixtures/search-guest.html');
   const searchHtml = fs.readFileSync(searchHtmlPath, 'utf-8');
 
-  it('processes all cards in search-guest.html idempotently without errors', () => {
+  it('badges every miles tier on every priced card, idempotently', () => {
     const dom = new JSDOM(searchHtml);
     const doc = dom.window.document;
 
-    const cards = doc.querySelectorAll('li.PropertyCardItem, [data-selenium="hotel-item"]');
-    expect(cards.length).toBeGreaterThan(0);
+    const cards = Array.from(doc.querySelectorAll(CARD_SELECTOR));
+    const pricedCards = cards.filter((c) => c.querySelector('[data-element-name="fpc-room-price"]'));
+    const milesCaptions = pricedCards.flatMap((c) =>
+      Array.from(c.querySelectorAll('[data-testid="upc_caption"]')).filter(isMilesCaption)
+    );
+    expect(pricedCards.length).toBeGreaterThan(0);
 
     let totalProcessed = 0;
     let highestMPD = 0;
-
     cards.forEach((card) => {
       const { cardMaxMPD, processedTiers } = processCard(card, 2, false);
-      if (processedTiers > 0) {
-        totalProcessed++;
-      }
-      if (cardMaxMPD > highestMPD) {
-        highestMPD = cardMaxMPD;
-      }
+      if (processedTiers > 0) totalProcessed++;
+      highestMPD = Math.max(highestMPD, cardMaxMPD);
     });
 
-    expect(totalProcessed).toBe(cards.length);
+    // Unpriced cards (sold out / not yet rendered) are skipped
+    expect(totalProcessed).toBe(pricedCards.length);
     expect(highestMPD).toBeGreaterThan(0);
 
-    // Verify badges are present
     const badges = doc.querySelectorAll('.aa-mpd-badge');
-    expect(badges.length).toBeGreaterThan(44);
+    expect(badges.length).toBe(milesCaptions.length);
+    // Badges go on miles captions, never on the price caption
+    badges.forEach((b) => expect(isMilesCaption(b.parentElement!)).toBe(true));
 
-    // Verify idempotency: running processCard again should not create duplicate badges
-    cards.forEach((card) => {
-      processCard(card, 2, false);
-    });
+    // First card: badge = miles / total price ("2 nights including taxes and fees" is a total)
+    const first = pricedCards[0];
+    const price = Number(first.querySelector('[data-element-name="fpc-room-price"]')!.getAttribute('data-fpc-value'));
+    const firstCaption = Array.from(first.querySelectorAll('[data-testid="upc_caption"]')).find(isMilesCaption)!;
+    const miles = Number(firstCaption.textContent!.match(/Earn ([\d,]+) miles/)![1].replace(/,/g, ''));
+    expect(firstCaption.querySelector('.aa-mpd-badge')!.textContent).toBe(` (${(miles / price).toFixed(1)}\u00A0miles/$)`);
 
-    const badgesAfterSecondRun = doc.querySelectorAll('.aa-mpd-badge');
-    expect(badgesAfterSecondRun.length).toBe(badges.length);
+    // Idempotency: running processCard again should not create duplicate badges
+    cards.forEach((card) => processCard(card, 2, false));
+    expect(doc.querySelectorAll('.aa-mpd-badge').length).toBe(badges.length);
   });
 });
 
@@ -108,42 +163,32 @@ describe('Details Fixture Processing & Bonus Miles Logic (details-guest.html)', 
   const detailsHtmlPath = path.resolve(__dirname, '../fixtures/details-guest.html');
   const detailsHtml = fs.readFileSync(detailsHtmlPath, 'utf-8');
 
-  it('skips boost tags when includeBonusMiles is false', () => {
-    const dom = new JSDOM(detailsHtml);
-    const doc = dom.window.document;
+  it('badges every room row; headline is the member tier unless bonus miles are included', () => {
+    const doc = new JSDOM(detailsHtml).window.document;
+    const rows = innermostCards(doc.querySelectorAll(ROOM_CARD_SELECTOR));
+    expect(rows.length).toBe(doc.querySelectorAll('[data-selenium="ChildRoomsList-room"]').length);
 
-    const roomCards = doc.querySelectorAll('[data-selenium="master-room-card"], .MasterRoom');
-    expect(roomCards.length).toBe(10);
-
-    let processedCount = 0;
-    roomCards.forEach((card) => {
-      const { processedTiers } = processCard(card, 2, false);
-      if (processedTiers > 0) {
-        processedCount++;
-      }
+    rows.forEach((row) => {
+      const tiers = Array.from(row.querySelectorAll('[data-testid="upc_caption"]')).filter(isMilesCaption);
+      const memberRate = processCard(row, 2, false, true, false);
+      expect(memberRate.processedTiers).toBe(tiers.length);
+      const bonusRate = processCard(row, 2, true, true, false);
+      expect(bonusRate.cardMaxMPD).toBeGreaterThanOrEqual(memberRate.cardMaxMPD);
     });
-
-    // 5 standard cards processed, 5 boost cards skipped
-    expect(processedCount).toBe(5);
+    expect(doc.querySelectorAll('.aa-mpd-badge').length).toBeGreaterThanOrEqual(rows.length);
   });
 
-  it('processes boost tags when includeBonusMiles is true', () => {
-    const dom = new JSDOM(detailsHtml);
-    const doc = dom.window.document;
+  it('skips boosted rooms unless includeBonusMiles is true', () => {
+    const doc = new JSDOM(detailsHtml).window.document;
+    const row = doc.querySelector('[data-selenium="ChildRoomsList-room"]')!;
+    const boost = doc.createElement('div');
+    boost.setAttribute('data-selenium', 'boost-tag');
+    boost.textContent = 'Earn 2,000 bonus miles!';
+    row.prepend(boost);
 
-    const roomCards = doc.querySelectorAll('[data-selenium="master-room-card"], .MasterRoom');
-    expect(roomCards.length).toBe(10);
-
-    let processedCount = 0;
-    roomCards.forEach((card) => {
-      const { processedTiers } = processCard(card, 2, true);
-      if (processedTiers > 0) {
-        processedCount++;
-      }
-    });
-
-    // All 10 cards processed including boosted offers
-    expect(processedCount).toBe(10);
+    expect(processCard(row, 2, false, true, false).processedTiers).toBe(0);
+    expect(row.querySelectorAll('.aa-mpd-badge').length).toBe(0);
+    expect(processCard(row, 2, true, true, false).processedTiers).toBeGreaterThan(0);
   });
 });
 

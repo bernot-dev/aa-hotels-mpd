@@ -1,6 +1,6 @@
 // Map View Controller, Pin Color Normalization & Property Preview MPD
 
-import { processCard } from "./cards";
+import { processCard, innermostCards, CARD_SELECTOR } from "./cards";
 import {
   hotelMpdRegistry,
   registerHotelMPD,
@@ -43,13 +43,14 @@ export function getColorForRatio(ratio: number): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+export const PIN_SELECTOR =
+  '[data-element-name="map-search-property-marker"], [data-selenium^="propertyMarkerIcon-"], button[data-selenium*="pin"], [data-selenium*="pin"], .static-map-pin, [class*="map-pin"]';
+
 /**
  * Updates visible map pins with normalized background colors.
  */
 export function updateMapPins(root: Element = document.body): void {
-  const pins = root.querySelectorAll<HTMLElement>(
-    'button[data-selenium*="pin"], [data-selenium*="pin"], .static-map-pin, [class*="map-pin"]'
-  );
+  const pins = root.querySelectorAll<HTMLElement>(PIN_SELECTOR);
   if (pins.length === 0) return;
 
   const knownPins: { pin: HTMLElement; mpd: number }[] = [];
@@ -72,13 +73,15 @@ export function updateMapPins(root: Element = document.body): void {
     const ratio = maxMPD > minMPD ? (mpd - minMPD) / (maxMPD - minMPD) : 1.0;
     const color = getColorForRatio(ratio);
 
-    pin.style.setProperty("background", color, "important");
-    pin.style.setProperty("background-color", color, "important");
-    pin.style.setProperty("border-color", color, "important");
-    pin.style.setProperty("color", "#ffffff", "important");
-    pin.style.setProperty("font-weight", "bold", "important");
+    // Agoda markers draw their bubble on an inner content element
+    const bubble = pin.querySelector<HTMLElement>(".propertyMarkerIcon-content") || pin;
+    bubble.style.setProperty("background", color, "important");
+    bubble.style.setProperty("background-color", color, "important");
+    bubble.style.setProperty("border-color", color, "important");
+    bubble.style.setProperty("color", "#ffffff", "important");
+    bubble.style.setProperty("font-weight", "bold", "important");
     pin.setAttribute("data-aa-mpd", mpd.toFixed(1));
-    const span = pin.querySelector("span");
+    const span = bubble.querySelector("span");
     if (span) {
       span.style.setProperty("color", "#ffffff", "important");
       span.style.setProperty("font-weight", "bold", "important");
@@ -96,9 +99,7 @@ export function processMapPreviewCards(
   nights: number = 1,
   includeBonusMiles: boolean = false
 ): void {
-  const previewCards = root.querySelectorAll(
-    'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]'
-  );
+  const previewCards = innermostCards(root.querySelectorAll(CARD_SELECTOR));
 
   let newRatesFound = false;
 

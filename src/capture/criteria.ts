@@ -86,9 +86,14 @@ export function extractSearchCriteria(
   if (currentUrl) {
     try {
       const url = new URL(currentUrl, "https://search.aadvantagehotels.com");
+      // Agoda search URLs carry the typed destination in textToSearch (e.g. "Dallas (TX)") and a
+      // numeric city ID in city
+      const cityParam = url.searchParams.get("city");
+      const textToSearch = url.searchParams.get("textToSearch");
       const destParam =
         url.searchParams.get("destination") ||
-        url.searchParams.get("city") ||
+        (textToSearch ? normalizeLocation(textToSearch) : null) ||
+        (cityParam && !/^\d+$/.test(cityParam.trim()) ? cityParam : null) ||
         url.searchParams.get("location") ||
         url.searchParams.get("dest") ||
         url.searchParams.get("q") ||
@@ -108,6 +113,13 @@ export function extractSearchCriteria(
       const outParam = url.searchParams.get("checkOut") || url.searchParams.get("checkout");
       if (outParam) {
         checkOut = outParam;
+      } else if (checkIn && Number(url.searchParams.get("los")) > 0) {
+        // Agoda URLs give the stay length (los) instead of a check-out date
+        const out = new Date(`${checkIn.slice(0, 10)}T00:00:00Z`);
+        if (!isNaN(out.getTime())) {
+          out.setUTCDate(out.getUTCDate() + Number(url.searchParams.get("los")));
+          checkOut = out.toISOString().slice(0, 10);
+        }
       }
 
       const roomsParam = url.searchParams.get("rooms");

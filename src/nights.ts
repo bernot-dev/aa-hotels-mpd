@@ -18,6 +18,12 @@ export const getNights = (): number => {
     }
   }
 
+  // Agoda URLs give the length of stay directly
+  const los = Number(params.get("los"));
+  if (Number.isInteger(los) && los > 0) {
+    return los;
+  }
+
   // Fallback: check DOM inputs if present
   try {
     const checkInInput = document.querySelector<HTMLInputElement>('#check-in-date')?.value;

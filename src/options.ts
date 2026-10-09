@@ -851,7 +851,7 @@ async function restoreOptions(): Promise<void> {
       expandRoomTypes: false,
       expandSearchResults: true,
       includeBonusMiles: false,
-      showDebugButton: true,
+      showDebugButton: false,
       keepExhaustiveQueryHistory: false,
       pricingCalculationMethod: "all_in",
       useAllInPricing: true,

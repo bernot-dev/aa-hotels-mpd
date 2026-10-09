@@ -2,7 +2,7 @@ import { getNights } from "./nights";
 import {
   registerHotelMPD,
   getHotelIdFromCard,
-  hotelMpdRegistry,
+  getCurrentPageBestMPD,
   getEnrichedHotel,
 } from "./registry";
 
@@ -17,9 +17,61 @@ export const extractNumber = (e: Element): number | null => {
 };
 
 export const CARD_SELECTOR = 'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]';
-export const PRICE_SELECTOR = '[data-selenium="display-price"], .PropertyCardPrice__Value';
-export const PRICE_TYPE_SELECTOR = '[data-selenium="hotel-currency"], .PropertyCardPrice__Currency';
-export const TIER_SELECTOR = '[data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"]';
+export const ROOM_CARD_SELECTOR =
+  '[data-selenium="ChildRoomsList-room"], [data-selenium="master-room-card"], [data-selenium="room-card"], [data-element-name="room-card"], .MasterRoom';
+export const PRICE_SELECTOR =
+  '[data-element-name="fpc-room-price"], [data-selenium="display-price"], .PropertyCardPrice__Value';
+export const PRICE_TYPE_SELECTOR =
+  '[data-element-name="fpc-price-text"], [data-selenium="hotel-currency"], .PropertyCardPrice__Currency';
+// upc_caption is shared by the price, the price note and the miles captions; getMilesElements filters it
+export const TIER_SELECTOR =
+  '[data-testid="upc_caption"], [data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"]';
+
+const MILES_TEXT = /earn\s+[\d,]+\s+(?:aadvantage\s+)?miles/i;
+
+/**
+ * Returns the elements in a card that state a miles earn amount (e.g. "Earn 1,100 miles").
+ */
+export const getMilesElements = (card: Element): Element[] =>
+  Array.from(card.querySelectorAll(TIER_SELECTOR)).filter((el) => {
+    if (el.getAttribute("data-testid") !== "upc_caption") return true;
+    const clone = el.cloneNode(true) as Element;
+    clone.querySelectorAll(".aa-mpd-badge").forEach((b) => b.remove());
+    return MILES_TEXT.test(clone.textContent || "");
+  });
+
+/**
+ * Reads a card's displayed price in USD. Returns null for missing prices or prices in another currency.
+ */
+export const extractPrice = (priceElem: Element): number | null => {
+  const text = priceElem.textContent?.trim() || "";
+  const currency = text.match(/^([A-Z]{3})\b/)?.[1];
+  if (currency && currency !== "USD") return null;
+
+  const fpcValue = Number(priceElem.getAttribute("data-fpc-value"));
+  if (fpcValue > 0) return fpcValue;
+  return extractNumber(priceElem);
+};
+
+/**
+ * Whether a price note describes the whole stay ("2 nights including taxes and fees", "Total (2 nights)")
+ * rather than a nightly rate ("per night", "/night", "avg. nightly").
+ */
+export const isTotalPriceText = (priceTypeText: string): boolean => {
+  const text = priceTypeText.trim().toLowerCase();
+  if (!text || text.includes("total")) return true;
+  if (/\d+\s+nights?\b/.test(text)) return true;
+  return !/per\s+night|\/\s*night|\/\s*nt\b|nightly/.test(text);
+};
+
+/**
+ * Drops cards that contain another matching card, so a grouping container (e.g. a master room)
+ * isn't processed with the price of its first child.
+ */
+export const innermostCards = (cards: ArrayLike<Element>): Element[] => {
+  const list = Array.from(cards);
+  return list.filter((card) => !list.some((other) => other !== card && card.contains(other)));
+};
 
 export interface CardProcessResult {
   cardMaxMPD: number;
@@ -30,12 +82,9 @@ export const processCard = (
   card: Element,
   nights: number,
   includeBonusMiles: boolean,
-  useAllInPricing: boolean = true
+  useAllInPricing: boolean = true,
+  useEnrichment: boolean = true
 ): CardProcessResult => {
-  const priceSelector = PRICE_SELECTOR;
-  const priceTypeSelector = PRICE_TYPE_SELECTOR;
-  const tierSelector = TIER_SELECTOR;
-
   let cardMaxMPD = 0;
   let processedTiers = 0;
 
@@ -48,20 +97,18 @@ export const processCard = (
   }
 
   const hotelId = getHotelIdFromCard(card);
-  const enriched = hotelId ? getEnrichedHotel(hotelId) : undefined;
+  const enriched = hotelId && useEnrichment ? getEnrichedHotel(hotelId) : undefined;
 
-  const dollarsElem = card.querySelector(priceSelector);
-  const domDollars = dollarsElem ? extractNumber(dollarsElem) : null;
+  const dollarsElem = card.querySelector(PRICE_SELECTOR);
+  const domDollars = dollarsElem ? extractPrice(dollarsElem) : null;
 
   // If no DOM price and no API price, cannot process
   if ((!domDollars || domDollars <= 0) && !enriched) {
     return { cardMaxMPD: 0, processedTiers: 0 };
   }
 
-  const pricingTextElem = card.querySelector(priceTypeSelector);
-  const textContent = pricingTextElem?.textContent?.trim().toLowerCase() || "";
-  const isNightly = textContent.includes("night") || textContent.includes("/nt");
-  const isTotalPrice = !isNightly || textContent.includes("total");
+  const pricingTextElem = card.querySelector(PRICE_TYPE_SELECTOR);
+  const isTotalPrice = isTotalPriceText(pricingTextElem?.textContent || "");
 
   // Determine authoritative pricing
   const effectivePrice = enriched
@@ -77,7 +124,8 @@ export const processCard = (
   // If we have API data with an all-in total or base total, it's inherently total stay price
   const effectiveIsTotalPrice = enriched ? (enriched.allInPrice > 0 || enriched.basePrice > 0 || isTotalPrice) : isTotalPrice;
 
-  const tiers = card.querySelectorAll(tierSelector);
+  const tierMpds: number[] = [];
+  const tiers = getMilesElements(card);
   tiers.forEach((tier) => {
     const miles = extractNumber(tier);
     if (!miles || miles <= 0) {
@@ -136,10 +184,15 @@ export const processCard = (
     }
 
     processedTiers++;
-    if (mpd > cardMaxMPD) {
-      cardMaxMPD = mpd;
-    }
+    tierMpds.push(mpd);
   });
+
+  // Every tier gets a badge, but the card's headline rate follows the bonus-miles setting so it
+  // agrees with rates from the intercepted API: the lowest tier is what any member earns, the
+  // highest includes cardmember/status bonuses.
+  if (tierMpds.length > 0) {
+    cardMaxMPD = includeBonusMiles ? Math.max(...tierMpds) : Math.min(...tierMpds);
+  }
 
   if (cardMaxMPD > 0 && hotelId) {
     registerHotelMPD(hotelId, cardMaxMPD);
@@ -148,19 +201,22 @@ export const processCard = (
   return { cardMaxMPD, processedTiers };
 };
 
+export interface UpdateCardsOptions {
+  // Use intercepted API data for card prices. Disable for room rows, whose prices differ from the
+  // hotel-level price in the search payload.
+  useEnrichment?: boolean;
+  onProcessed?: () => void;
+}
+
 export const updateCards = (
   container: Element,
   maxMPDElem: HTMLElement,
   cardSelector: string,
   includeBonusMiles: boolean,
-  useAllInPricingOrOnProcessed?: boolean | (() => void),
-  onProcessed?: () => void
+  useAllInPricing: boolean = true,
+  options: UpdateCardsOptions = {}
 ): ((mutationList?: MutationRecord[]) => void) => {
-  const useAllInPricing =
-    typeof useAllInPricingOrOnProcessed === "boolean" ? useAllInPricingOrOnProcessed : true;
-  const actualOnProcessed =
-    typeof useAllInPricingOrOnProcessed === "function" ? useAllInPricingOrOnProcessed : onProcessed;
-
+  const { useEnrichment = true, onProcessed } = options;
   let isScheduled = false;
 
   const runUpdate = () => {
@@ -168,10 +224,10 @@ export const updateCards = (
     const nights = getNights();
     let maxMPD = 0;
 
-    const cards = container.querySelectorAll(cardSelector);
+    const cards = innermostCards(container.querySelectorAll(cardSelector));
     cards.forEach((card) => {
       try {
-        const { cardMaxMPD } = processCard(card, nights, includeBonusMiles, useAllInPricing);
+        const { cardMaxMPD } = processCard(card, nights, includeBonusMiles, useAllInPricing, useEnrichment);
         if (cardMaxMPD > maxMPD) {
           maxMPD = cardMaxMPD;
         }
@@ -180,20 +236,20 @@ export const updateCards = (
       }
     });
 
-    if (maxMPD > 0) {
-      maxMPDElem.innerHTML = `Best earn rate on this page: <b>${maxMPD.toFixed(1)} miles/$</b>.`;
-      maxMPDElem.style.display = "block";
-    } else if (hotelMpdRegistry.size > 0) {
-      const highestCached = Math.max(...hotelMpdRegistry.values());
-      if (highestCached > 0) {
-        maxMPDElem.innerHTML = `Best earn rate on this page: <b>${highestCached.toFixed(1)} miles/$</b>.`;
-        maxMPDElem.style.display = "block";
-      }
+    // Cards render lazily, so the intercepted payload may know about better rates on this page
+    if (useEnrichment) {
+      maxMPD = Math.max(maxMPD, getCurrentPageBestMPD());
     }
 
-    if (actualOnProcessed) {
+    if (maxMPD > 0) {
+      const html = `Best earn rate on this page: <b>${maxMPD.toFixed(1)} miles/$</b>.`;
+      if (maxMPDElem.innerHTML !== html) maxMPDElem.innerHTML = html;
+      maxMPDElem.style.display = "block";
+    }
+
+    if (onProcessed) {
       try {
-        actualOnProcessed();
+        onProcessed();
       } catch (err) {
         console.debug('[AA-Hotels-MPD] Error in onProcessed callback:', err);
       }

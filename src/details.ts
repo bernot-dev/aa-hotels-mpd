@@ -1,4 +1,4 @@
-import { updateCards } from "./cards";
+import { updateCards, ROOM_CARD_SELECTOR } from "./cards";
 import { resetRateCollector } from "./capture/collector";
 import { getNights } from "./nights";
 
@@ -64,7 +64,7 @@ export function setupRoomExpansion(options: RoomExpansionOptions): {
   const expandRates = () => {
     if (!expandRoomRates || isDisposed) return;
     const toggles = document.querySelectorAll<HTMLButtonElement>(
-      'button[data-selenium="room-see-more-toggle"], [data-element-name="room-see-more-toggle"], button[aria-label*="more rates" i]'
+      'button[data-selenium="MasterRoom-showMoreLessButton"], button[data-selenium="room-see-more-toggle"], [data-element-name="room-see-more-toggle"], button[aria-label*="more rates" i]'
     );
     toggles.forEach((button) => {
       if (button.dataset.aaMpdExpanded === "true") {
@@ -227,6 +227,7 @@ export const processDetailsPage = async (container: Element): Promise<() => void
 
   const maxMPDElem = document.createElement("div");
   maxMPDElem.id = "aa-mpd-details-summary";
+  maxMPDElem.dataset.aaMpd = "true";
   maxMPDElem.style.background = "#fff3cd";
   maxMPDElem.style.color = "#856404";
   maxMPDElem.style.border = "1px solid #ffeeba";
@@ -263,15 +264,14 @@ export const processDetailsPage = async (container: Element): Promise<() => void
     console.warn("[AA-Hotels-MPD] Failed to read storage options:", err);
   }
 
-  const cardSelector =
-    '[data-selenium="master-room-card"], [data-selenium="room-card"], [data-element-name="room-card"], .MasterRoom';
-
+  // Room rows show their own prices; the hotel-level price from the search payload doesn't apply to them
   const callback = updateCards(
     targetContainer,
     maxMPDElem,
-    cardSelector,
+    ROOM_CARD_SELECTOR,
     includeBonusMiles,
-    useAllInPricing
+    useAllInPricing,
+    { useEnrichment: false }
   );
 
   const roomExpansion = setupRoomExpansion({
@@ -286,7 +286,8 @@ export const processDetailsPage = async (container: Element): Promise<() => void
 
   observer.observe(targetContainer, { childList: true, subtree: true });
 
-  targetContainer.insertAdjacentElement("beforebegin", maxMPDElem);
+  // Place the banner directly above the room grid
+  container.insertAdjacentElement("beforebegin", maxMPDElem);
 
   // Initial immediate processing
   callback();

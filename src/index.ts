@@ -3,15 +3,16 @@ import { waitForElement } from "./wait";
 import { processDetailsPage } from "./details";
 import { processSearchPage } from "./search";
 import { mountDebugButton } from "./debug";
-import { ingestHotelRates, RawHotelRate, hotelMpdRegistry } from "./registry";
+import { ingestHotelRates, RawHotelRate, hotelMpdRegistry, getCurrentPageBestMPD } from "./registry";
 import { updateMapPins } from "./map";
 
 const SEARCH_SELECTOR =
   '#searchPageRightColumn, #contentContainer, [data-selenium="pagination-panel"], #searchPageReactRoot';
+// Wait for the room grid itself: the page shell (#property-critical-root) renders well before it
 const DETAILS_SELECTOR =
-  '#property-room-grid-root, [data-element-name="property-room-grid-root"], #property-critical-root, [data-selenium="room-grid"]';
+  '#property-room-grid-root, [data-element-name="property-room-grid-root"], [data-selenium="room-grid"]';
 
-import { processCard, CARD_SELECTOR } from "./cards";
+import { processCard, innermostCards, CARD_SELECTOR } from "./cards";
 import { getNights } from "./nights";
 import { extractSearchCriteria, isValidLocation, normalizeLocation } from "./capture/criteria";
 import { queueRatesForDispatch } from "./capture/collector";
@@ -46,12 +47,14 @@ if (typeof window !== "undefined") {
     const updated = ingestHotelRates(hotels, includeBonusMiles, useAllInPricing);
 
     // 1. Reactive Upgrade: Immediately re-evaluate any visible hotel cards
-    const cards = document.querySelectorAll(CARD_SELECTOR);
+    let bestCardMpd = 0;
+    const cards = innermostCards(document.querySelectorAll(CARD_SELECTOR));
     if (cards.length > 0) {
       const nights = getNights();
       cards.forEach((card) => {
         try {
-          processCard(card, nights, includeBonusMiles, useAllInPricing);
+          const { cardMaxMPD } = processCard(card, nights, includeBonusMiles, useAllInPricing);
+          bestCardMpd = Math.max(bestCardMpd, cardMaxMPD);
         } catch {}
       });
     }
@@ -60,12 +63,10 @@ if (typeof window !== "undefined") {
     if (updated > 0 || hotelMpdRegistry.size > 0) {
       updateMapPins(document.body);
       const summaryBanner = document.getElementById("aa-mpd-search-summary");
-      if (summaryBanner && hotelMpdRegistry.size > 0) {
-        const highest = Math.max(...hotelMpdRegistry.values());
-        if (highest > 0) {
-          summaryBanner.innerHTML = `Best earn rate on this page: <b>${highest.toFixed(1)} miles/$</b>.`;
-          summaryBanner.style.display = "block";
-        }
+      const highest = Math.max(bestCardMpd, getCurrentPageBestMPD());
+      if (summaryBanner && highest > 0) {
+        summaryBanner.innerHTML = `Best earn rate on this page: <b>${highest.toFixed(1)} miles/$</b>.`;
+        summaryBanner.style.display = "block";
       }
     }
 

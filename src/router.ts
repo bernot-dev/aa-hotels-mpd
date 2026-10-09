@@ -46,7 +46,9 @@ export function getRouteType(urlStr: string = typeof window !== 'undefined' ? wi
     const url = new URL(urlStr, origin);
 
     // Property details routes on search.aadvantagehotels.com
+    // e.g. /la-quinta-inn-dallas-uptown_3/hotel/dallas-tx-us.html
     if (
+      /\/hotel\/[^/]+\.html$/i.test(url.pathname) ||
       url.pathname.includes('/accom/property') ||
       url.pathname.includes('/property') ||
       url.searchParams.has('propertyId') ||

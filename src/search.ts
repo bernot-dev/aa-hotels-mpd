@@ -1,6 +1,6 @@
-import { updateCards } from "./cards";
+import { updateCards, CARD_SELECTOR } from "./cards";
 import { getNights } from "./nights";
-import { processMapPreviewCards, updateMapPins } from "./map";
+import { updateMapPins } from "./map";
 import { resetRateCollector, queueRatesForDispatch } from "./capture/collector";
 import { extractRatesFromSearchCards } from "./capture/rates";
 import { extractSearchCriteria } from "./capture/criteria";
@@ -58,32 +58,26 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
     }
   };
 
+  // Only true "load more" buttons append results. Pagination ("Next", page numbers) replaces the
+  // current page, and carousel arrows ("Next property image") are not result controls, so neither
+  // may ever be clicked.
+  const LOAD_MORE_TEXT = /^(?:load|show|see|view) more(?: hotels| results| properties)?$/;
   const findLoadMoreButton = (): HTMLButtonElement | null => {
-    // 1. Check data-selenium, data-element-name, or pagination-next-btn
-    const byAttr = document.querySelector<HTMLButtonElement>(
-      'button[data-selenium="pagination-next-btn"], [data-element-name="pagination-next-btn"], a[data-selenium="pagination-next-btn"], button[aria-label*="next" i], button[aria-label*="load more" i]'
+    const candidates = document.querySelectorAll<HTMLButtonElement>(
+      'button, [role="button"], [data-selenium="load-more-button"], [data-element-name="load-more-button"]'
     );
-    if (byAttr) return byAttr;
-
-    // 2. Check by text content across all button and role=button elements
-    const allButtons = document.querySelectorAll<HTMLButtonElement>(
-      'button, [role="button"], a[data-selenium*="pagination"]'
-    );
-    for (let i = 0; i < allButtons.length; i++) {
-      const btn = allButtons[i];
-      const text = btn.textContent?.trim().toLowerCase() || "";
+    for (let i = 0; i < candidates.length; i++) {
+      const btn = candidates[i];
       if (
-        text === "load more" ||
-        text === "show more" ||
-        text === "see more" ||
-        text === "next" ||
-        text === "next page" ||
-        text === "load more hotels" ||
-        text === "show more hotels" ||
-        text === "view more hotels" ||
-        text.startsWith("load more") ||
-        text.startsWith("show more")
+        btn.closest(
+          '[data-selenium="pagination-panel"], #paginationContainer, [data-element-name*="pagination" i], [data-element-name*="carousel" i], [data-element-name="property-card-gallery"]'
+        )
       ) {
+        continue;
+      }
+      const attr = `${btn.getAttribute("data-selenium") || ""} ${btn.getAttribute("data-element-name") || ""}`;
+      const text = btn.textContent?.trim().toLowerCase().replace(/\s+/g, " ") || "";
+      if (/load-more/i.test(attr) || LOAD_MORE_TEXT.test(text)) {
         return btn;
       }
     }
@@ -91,9 +85,7 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
   };
 
   const countCards = (): number => {
-    return document.querySelectorAll(
-      'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]'
-    ).length;
+    return document.querySelectorAll(CARD_SELECTOR).length;
   };
 
   const isButtonBusy = (btn: HTMLElement): boolean => {
@@ -234,6 +226,7 @@ export const processSearchPage = async (
 
   const maxMPDElem = document.createElement("div");
   maxMPDElem.id = "aa-mpd-search-summary";
+  maxMPDElem.dataset.aaMpd = "true";
   maxMPDElem.style.background = "#fff3cd";
   maxMPDElem.style.color = "#856404";
   maxMPDElem.style.border = "1px solid #ffeeba";
@@ -280,7 +273,7 @@ export const processSearchPage = async (
 
   container.insertAdjacentElement("beforebegin", maxMPDElem);
 
-  const cardSelector = 'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]';
+  const cardSelector = CARD_SELECTOR;
   const observeRoot = document.body;
 
   const callback = updateCards(
@@ -318,8 +311,8 @@ export const processSearchPage = async (
     callback();
     searchExpansion.onMutation();
 
-    // 2. Process map preview cards and pins anywhere in the page
-    processMapPreviewCards(document.body, nights, includeBonusMiles);
+    // 2. Recolor map pins anywhere in the page (map preview cards are the same
+    // property cards, so updateCards already badges them with the user's pricing settings)
     updateMapPins(document.body);
 
     // 3. Capture newly resolved rates into database
