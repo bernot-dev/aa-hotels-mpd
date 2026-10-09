@@ -247,6 +247,24 @@ describe("Rate and Criteria Capture Pipeline", () => {
       expect(rates[0].isTotalPrice).toBe(true);
       expect(rates[0].mpd).toBeGreaterThan(0);
     });
+
+    it("excludes bonus miles offers when includeBonusMiles is false", () => {
+      const fixturePath = path.resolve(__dirname, "../fixtures/details-guest.html");
+      const fixtureHtml = fs.readFileSync(fixturePath, "utf-8");
+      const dom = new JSDOM(fixtureHtml);
+      const doc = dom.window.document;
+
+      const container = doc.querySelector("#property-room-grid-root");
+      expect(container).not.toBeNull();
+
+      const ratesWithBonus = extractRatesFromDetailsCards(container!, 2, true);
+      const ratesWithoutBonus = extractRatesFromDetailsCards(container!, 2, false);
+
+      expect(ratesWithBonus.some((r) => r.isBonus)).toBe(true);
+      expect(ratesWithoutBonus.every((r) => !r.isBonus)).toBe(true);
+      expect(ratesWithoutBonus.length).toBe(38);
+      expect(ratesWithBonus.length).toBe(76);
+    });
   });
 
   describe("Collector Deduplication & Batch Dispatch", () => {

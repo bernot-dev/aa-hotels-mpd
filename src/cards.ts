@@ -43,6 +43,52 @@ export const PRICE_TYPE_SELECTOR =
 export const TIER_SELECTOR =
   '[data-testid="upc_caption"], [data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"], [data-testid$="tier-earn-rewards"]';
 
+export const BOOST_SELECTOR =
+  '[data-testid="boost-applied-badge"], [data-element-name="boost-applied-badge"], [data-testid="boost-best-value-jacket"], [data-element-name="jacket-boost"], [data-selenium="boost-tag"], [data-element-name="boost-tag"]';
+
+export const BOOST_JACKET_SELECTOR =
+  '[data-testid="boost-best-value-jacket"], [data-element-name="jacket-boost"]';
+
+export const BOOST_STYLE_ID = "aa-mpd-boost-jacket-styles";
+
+/**
+ * Checks whether a card or room offer represents a bonus miles / boost promotion.
+ */
+export function isBonusOffer(card: Element): boolean {
+  if (
+    card.querySelector(BOOST_SELECTOR) ||
+    (typeof card.matches === "function" && card.matches(BOOST_SELECTOR))
+  ) {
+    return true;
+  }
+  const clone = card.cloneNode(true) as Element;
+  clone.querySelectorAll(".aa-mpd-badge").forEach((b) => b.remove());
+  return /bonus\s+miles/i.test(clone.textContent || "");
+}
+
+/**
+ * Injects or removes global CSS rules for hiding boost jackets when bonus miles offers are unchecked.
+ */
+export function updateBoostJacketStyles(includeBonusMiles: boolean): void {
+  if (typeof document === "undefined") return;
+  let style = document.getElementById(BOOST_STYLE_ID) as HTMLStyleElement | null;
+  if (!includeBonusMiles) {
+    if (!style) {
+      style = document.createElement("style");
+      style.id = BOOST_STYLE_ID;
+      style.textContent = `
+        [data-testid="boost-best-value-jacket"],
+        [data-element-name="jacket-boost"] {
+          display: none !important;
+        }
+      `;
+      document.head?.appendChild(style);
+    }
+  } else if (style) {
+    style.remove();
+  }
+}
+
 const MILES_TEXT = /earn\s+[\d,]+\s+(?:aadvantage\s+)?miles/i;
 
 /**
@@ -467,11 +513,27 @@ export const processCard = (
     applyAllInPrice(dollarsElem, candidates, card);
   }
 
+  // Manage visibility of boost jackets in/around card
+  const jackets = card.querySelectorAll<HTMLElement>(BOOST_JACKET_SELECTOR);
+  jackets.forEach((j) => {
+    j.style.display = includeBonusMiles ? "" : "none";
+  });
+  if (
+    card instanceof HTMLElement &&
+    (card.matches(BOOST_JACKET_SELECTOR) || card.getAttribute("data-testid") === "boost-best-value-jacket")
+  ) {
+    card.style.display = includeBonusMiles ? "" : "none";
+  }
+
   // Respect user preference for bonus miles / boost tags
-  const hasBoostTag = !!card.querySelector('[data-selenium="boost-tag"], [data-element-name="boost-tag"]');
-  if (hasBoostTag && !includeBonusMiles) {
-    // If bonus miles are excluded, remove any previously injected badges and skip
-    card.querySelectorAll('.aa-mpd-badge').forEach((b) => b.remove());
+  const hasBoost = isBonusOffer(card);
+  if (hasBoost && !includeBonusMiles) {
+    // If bonus miles are excluded, remove any previously injected badges, clear rate dataset and skip
+    card.querySelectorAll(".aa-mpd-badge").forEach((b) => b.remove());
+    if (card instanceof HTMLElement) {
+      delete card.dataset.aaMpdRate;
+    }
+    card.closest("[data-aa-mpd-rate]")?.removeAttribute("data-aa-mpd-rate");
     return { cardMaxMPD: 0, processedTiers: 0 };
   }
 
@@ -610,6 +672,21 @@ export const updateCards = (
     const nights = getNights();
     let maxMPD = 0;
 
+    // Hide or show boost jackets based on includeBonusMiles option
+    const root = container.ownerDocument || (typeof document !== "undefined" ? document : null);
+    if (root) {
+      root
+        .querySelectorAll<HTMLElement>(BOOST_JACKET_SELECTOR)
+        .forEach((jacket) => {
+          if (!includeBonusMiles) {
+            jacket.style.display = "none";
+          } else if (jacket.style.display === "none") {
+            jacket.style.display = "";
+          }
+        });
+    }
+    updateBoostJacketStyles(includeBonusMiles);
+
     const cards = innermostCards(container.querySelectorAll(cardSelector));
     cards.forEach((card) => {
       try {
@@ -646,6 +723,8 @@ export const updateCards = (
       const html = `<img class="aa-mpd-banner-logo" src="${logoUrl}" alt="" aria-hidden="true" width="28" height="28" /><span class="aa-mpd-banner-text">Best earn rate on this page: <b>${maxMPD.toFixed(1)} miles/$</b>.</span>`;
       if (maxMPDElem.innerHTML !== html) maxMPDElem.innerHTML = html;
       maxMPDElem.style.display = "block";
+    } else {
+      maxMPDElem.style.display = "none";
     }
 
     if (onProcessed) {
