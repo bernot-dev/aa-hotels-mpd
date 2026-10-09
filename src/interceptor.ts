@@ -12,8 +12,8 @@ export interface EnrichedHotelRate {
   sitePriceTotals?: number[];
   nightlyPrice: number;
   fees: number;
-  baseMiles: number;
-  tieredMiles: number;
+  baseMiles: number; // Base miles for "AAdvantage member"
+  tieredMiles: number; // Base miles for "AAdvantage credit cardmembers with status" (>= baseMiles)
   city: string;
   state: string;
   location: string; // Canonical e.g. "Flagstaff, AZ"
@@ -265,19 +265,17 @@ function extractAgodaProperty(
   const nightlyPrice = Number(roomPricing.price?.perNight?.inclusive?.display) || 0;
   if (allInPrice <= 0 && basePrice <= 0) return null;
 
-  // Loyalty offers: the ENABLED offer is what this visitor earns; the others are higher tiers
-  // (e.g. "AAdvantage credit cardmembers with status").
+  // Loyalty offers are earning levels: the lowest is the "AAdvantage member" amount and the highest
+  // the "AAdvantage credit cardmembers with status" amount. Both are base miles.
   const offers: any[] =
     perBook.inclusive?.loyaltyOfferSummary?.offers || perBook.exclusive?.loyaltyOfferSummary?.offers || [];
-  const points = offers
-    .map((o) => ({ points: Number(o?.earn?.points) || 0, enabled: o?.status === "ENABLED" || o?.isSelected === true }))
-    .filter((o) => o.points > 0);
-  let baseMiles = points.find((o) => o.enabled)?.points || 0;
-  let tieredMiles = points.reduce((max, o) => Math.max(max, o.points), 0);
-  if (baseMiles <= 0) {
-    baseMiles = Number(roomPricing.externalLoyaltyPricing?.perBook?.pointsToEarn) || tieredMiles;
+  const points = offers.map((o) => Number(o?.earn?.points) || 0).filter((p) => p > 0);
+  if (points.length === 0) {
+    const pointsToEarn = Number(roomPricing.externalLoyaltyPricing?.perBook?.pointsToEarn) || 0;
+    if (pointsToEarn > 0) points.push(pointsToEarn);
   }
-  if (tieredMiles < baseMiles) tieredMiles = baseMiles;
+  const baseMiles = points.length > 0 ? Math.min(...points) : 0;
+  const tieredMiles = points.length > 0 ? Math.max(...points) : 0;
   if (baseMiles <= 0) return null;
 
   const info = item.content?.informationSummary || {};

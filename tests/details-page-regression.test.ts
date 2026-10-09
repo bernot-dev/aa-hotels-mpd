@@ -74,8 +74,8 @@ describe('Details Page Presentation Regression Tests', () => {
 
     const badges = roomGroupContainer.querySelectorAll('.aa-mpd-badge');
     expect(badges.length).toBe(2);
-    expect(badges[0].textContent).toBe(' (5.0\u00A0miles/$)');
-    expect(badges[1].textContent).toBe(' (20.0\u00A0miles/$)');
+    expect(badges[0].textContent).toContain('5.0 mpd');
+    expect(badges[1].textContent).toContain('20.0 mpd');
   });
 
   it('teardown removes summary banner and disconnects observer', async () => {

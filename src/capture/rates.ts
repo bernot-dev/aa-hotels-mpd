@@ -11,7 +11,29 @@ import {
   PRICE_TYPE_SELECTOR,
 } from "../cards";
 import { isValidLocation } from "./criteria";
+import { DEFAULT_EARNING_LEVEL, EarningLevel } from "../settings";
 import { getEnrichedHotel, getHotelIdFromCard } from "../registry";
+
+/**
+ * Miles shown for the earning level: cards list one line per level, the lowest being
+ * "AAdvantage member" and the highest "credit cardmembers with status".
+ */
+function selectedLevelMiles(card: Element, earningLevel: EarningLevel): number | null {
+  const amounts = getMilesElements(card)
+    .map((el) => extractNumber(el) || 0)
+    .filter((miles) => miles > 0);
+  if (amounts.length === 0) return null;
+  return earningLevel === "member" ? Math.min(...amounts) : Math.max(...amounts);
+}
+
+/**
+ * First photo of a search card's gallery, as an absolute URL.
+ */
+function getCardImageUrl(card: Element): string | undefined {
+  const src = card.querySelector('img[data-element-name="ssrweb-mosaicphotos"]')?.getAttribute("src");
+  if (!src) return undefined;
+  return src.startsWith("//") ? `https:${src}` : src;
+}
 
 /**
  * Text of a hotel name element without nested extras such as star-rating screen-reader text.
@@ -29,7 +51,8 @@ function getOwnHeadingText(nameEl: Element): string {
 export function extractRatesFromSearchCards(
   container: Element,
   nights: number,
-  includeBonusMiles: boolean
+  includeBonusMiles: boolean,
+  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL
 ): CapturedRate[] {
   const cards = innermostCards(container.querySelectorAll(CARD_SELECTOR));
   const captured: CapturedRate[] = [];
@@ -151,24 +174,31 @@ export function extractRatesFromSearchCards(
       }
     }
 
-    const tiers = getMilesElements(card);
-    tiers.forEach((tier) => {
-      const miles = extractNumber(tier);
-      if (!miles || miles <= 0) return;
+    const miles = selectedLevelMiles(card, earningLevel);
+    if (!miles) return;
 
-      const mpd = isTotalPrice ? miles / dollars : miles / dollars / (nights || 1);
-      if (isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return;
+    const mpd = isTotalPrice ? miles / dollars : miles / dollars / (nights || 1);
+    if (isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return;
 
-      captured.push({
-        hotelName,
-        hotelId,
-        location: finalLocation,
-        price: dollars,
-        miles,
-        mpd: Number(mpd.toFixed(1)),
-        isTotalPrice,
-        isBonus: hasBoostTag,
-      });
+    captured.push({
+      hotelName,
+      hotelId,
+      location: finalLocation,
+      price: dollars,
+      miles,
+      mpd: Number(mpd.toFixed(1)),
+      isTotalPrice,
+      isBonus: hasBoostTag,
+      // Hotel details for the dashboard, from the intercepted API data when available
+      imageUrl: enriched?.imageUrl || getCardImageUrl(card),
+      stars: enriched?.stars,
+      rating: enriched?.rating,
+      reviewCount: enriched?.reviewCount,
+      refundable: enriched?.refundable,
+      neighborhood: enriched?.neighborhood,
+      country: enriched?.country,
+      basePrice: enriched?.basePrice,
+      allInPrice: enriched?.allInPrice,
     });
   });
 
@@ -179,7 +209,8 @@ export function extractRatesFromDetailsCards(
   container: Element,
   nights: number,
   includeBonusMiles: boolean,
-  hotelNameFallback: string = "Hotel Details"
+  hotelNameFallback: string = "Hotel Details",
+  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL
 ): CapturedRate[] {
 
   // Try extracting hotel name from document headings
@@ -234,24 +265,21 @@ export function extractRatesFromDetailsCards(
     const pricingTextElem = card.querySelector(PRICE_TYPE_SELECTOR);
     const isTotalPrice = isTotalPriceText(pricingTextElem?.textContent || "");
 
-    const tiers = getMilesElements(card);
-    tiers.forEach((tier) => {
-      const miles = extractNumber(tier);
-      if (!miles || miles <= 0) return;
+    const miles = selectedLevelMiles(card, earningLevel);
+    if (!miles) return;
 
-      const mpd = isTotalPrice ? miles / dollars : miles / dollars / (nights || 1);
-      if (isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return;
+    const mpd = isTotalPrice ? miles / dollars : miles / dollars / (nights || 1);
+    if (isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return;
 
-      captured.push({
-        hotelName,
-        hotelId,
-        location: detailsLocation,
-        price: dollars,
-        miles,
-        mpd: Number(mpd.toFixed(1)),
-        isTotalPrice,
-        isBonus: hasBoostTag,
-      });
+    captured.push({
+      hotelName,
+      hotelId,
+      location: detailsLocation,
+      price: dollars,
+      miles,
+      mpd: Number(mpd.toFixed(1)),
+      isTotalPrice,
+      isBonus: hasBoostTag,
     });
   });
 

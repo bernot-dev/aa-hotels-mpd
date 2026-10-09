@@ -212,7 +212,7 @@ describe('Search page with base pricing', () => {
     const settled = mutations;
     await new Promise((r) => setTimeout(r, 300));
 
-    expect(document.querySelector('.aa-mpd-badge')?.textContent).toBe(' (10.0 miles/$)');
+    expect(document.querySelector('.aa-mpd-badge')?.textContent).toContain('10.0 mpd');
     expect(mutations).toBe(settled);
     observer.disconnect();
     teardown();

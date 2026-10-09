@@ -76,8 +76,8 @@ describe('Search Page Presentation Regression Tests', () => {
     // 2. Verify both cards received badges
     const badges = container.querySelectorAll('.aa-mpd-badge');
     expect(badges.length).toBe(2);
-    expect(badges[0].textContent).toBe(' (10.0\u00A0miles/$)');
-    expect(badges[1].textContent).toBe(' (20.0\u00A0miles/$)');
+    expect(badges[0].textContent).toContain('10.0 mpd');
+    expect(badges[1].textContent).toContain('20.0 mpd');
   });
 
   it('dynamically observes and processes newly appended cards and updates max banner', async () => {
@@ -100,7 +100,7 @@ describe('Search Page Presentation Regression Tests', () => {
     // Verify new card was processed
     const newBadge = newCard.querySelector('.aa-mpd-badge');
     expect(newBadge).not.toBeNull();
-    expect(newBadge?.textContent).toBe(' (30.0\u00A0miles/$)');
+    expect(newBadge?.textContent).toContain('30.0 mpd');
 
     // Verify max MPD summary banner updated to new highest rate
     expect(summary.innerHTML).toContain('30.0 miles/$');
@@ -146,7 +146,7 @@ describe('Search Page Presentation Regression Tests', () => {
     // 4. Verify Americana Motor Hotel now received the MPD badge: 5,000 / 250 = 20.0 MPD
     const badge = loadingCard.querySelector('.aa-mpd-badge');
     expect(badge).not.toBeNull();
-    expect(badge?.textContent).toBe(' (20.0\u00A0miles/$)');
+    expect(badge?.textContent).toContain('20.0 mpd');
 
     // 5. Verify the summary banner updated to 20.0 MPD
     expect(summary.innerHTML).toContain('20.0 miles/$');
@@ -208,9 +208,9 @@ describe('Search Page Presentation Regression Tests', () => {
     expect(banner?.style.display).toBe('block');
     expect(banner?.innerHTML).toContain('Best earn rate on this page:');
 
-    // Verify badges injected across fixture cards
+    // Verify badges injected across fixture cards (1 chip per priced card in property-card-info)
     const badges = fixtureContainer!.querySelectorAll('.aa-mpd-badge');
-    expect(badges.length).toBeGreaterThan(44);
+    expect(badges.length).toBeGreaterThanOrEqual(30);
 
     fixtureCleanup();
     expect(document.getElementById('aa-mpd-search-summary')).toBeNull();

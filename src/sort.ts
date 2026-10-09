@@ -37,16 +37,7 @@ function setMpdSortPreferred(preferred: boolean): void {
   }
 }
 
-function getLogoUrl(): string | null {
-  try {
-    if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL("images/icon-48.png");
-    }
-  } catch {
-    // Extension context may be invalidated after an update
-  }
-  return null;
-}
+import { getLogoUrl } from "./logo";
 
 /** Chrome 135+ can render rich option content once a select opts in to `appearance: base-select`. */
 function supportsCustomizableSelect(): boolean {
@@ -104,6 +95,11 @@ function findHotelList(): HTMLElement | null {
 
 /** Best MPD shown in an item's badges, or -1 when it has none (sorted last). */
 export function getItemMpd(item: Element): number {
+  // Prefer the card's headline rate, which follows the selected earning level
+  const card = item.matches("[data-aa-mpd-rate]") ? item : item.querySelector("[data-aa-mpd-rate]");
+  const headline = parseFloat((card as HTMLElement | null)?.dataset.aaMpdRate || "");
+  if (isFinite(headline) && headline > 0) return headline;
+
   let best = -1;
   item.querySelectorAll<HTMLElement>(".aa-mpd-badge[data-rate]").forEach((badge) => {
     const rate = parseFloat(badge.dataset.rate || "");
@@ -139,7 +135,7 @@ export function setupMpdSort(): MpdSortController {
     option.value = MPD_SORT_VALUE;
     option.textContent = MPD_SORT_LABEL;
     option.setAttribute("data-aa-mpd", "true");
-    const logoUrl = getLogoUrl();
+    const logoUrl = getLogoUrl(48);
     if (rich && logoUrl) {
       // Customizable selects render option markup, so the extension logo can sit inline
       const logo = document.createElement("img");

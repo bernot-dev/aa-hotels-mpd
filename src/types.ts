@@ -1,5 +1,7 @@
 // Common data structures for AA Hotels MPD Rate Tracking and Dashboard
 
+import type { EarningLevel } from "./settings";
+
 export interface SearchCriteria {
   location: string;
   checkIn: string;
@@ -158,5 +160,6 @@ export interface ExtensionConfig {
   expandRoomRates: boolean;
   expandRoomTypes: boolean;
   includeBonusMiles: boolean;
+  earningLevel: EarningLevel;
   keepExhaustiveQueryHistory: boolean;
 }

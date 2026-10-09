@@ -29,7 +29,7 @@ describe('MPD Calculation Regression Tests', () => {
 
       const badge = card.querySelector('.aa-mpd-badge');
       expect(badge).not.toBeNull();
-      expect(badge?.textContent).toBe(' (10.0\u00A0miles/$)');
+      expect(badge?.textContent).toContain('10.0 mpd');
       expect(badge?.getAttribute('data-aa-mpd')).toBe('true');
     });
 
@@ -40,7 +40,7 @@ describe('MPD Calculation Regression Tests', () => {
 
       expect(cardMaxMPD).toBeCloseTo(10.0, 1);
       const badge = card.querySelector('.aa-mpd-badge');
-      expect(badge?.textContent).toBe(' (10.0\u00A0miles/$)');
+      expect(badge?.textContent).toContain('10.0 mpd');
     });
   });
 
@@ -54,7 +54,7 @@ describe('MPD Calculation Regression Tests', () => {
       expect(cardMaxMPD).toBeCloseTo(10.0, 1);
 
       const badge = card.querySelector('.aa-mpd-badge');
-      expect(badge?.textContent).toBe(' (10.0\u00A0miles/$)');
+      expect(badge?.textContent).toContain('10.0 mpd');
     });
 
     it('calculates correctly for a 1-night stay in per-night mode', () => {
@@ -89,7 +89,7 @@ describe('MPD Calculation Regression Tests', () => {
   });
 
   describe('Multiple Reward Tiers', () => {
-    it('badges every tier; headline MPD is the member tier unless bonus miles are included', () => {
+    it('badges every earning level; headline MPD follows the selected level (status cardmember by default)', () => {
       card.innerHTML = `
         <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total</div>
         <div data-selenium="display-price" class="PropertyCardPrice__Value">$200</div>
@@ -99,16 +99,18 @@ describe('MPD Calculation Regression Tests', () => {
 
       const { cardMaxMPD, processedTiers } = processCard(card, 1, false);
       expect(processedTiers).toBe(2);
-      expect(cardMaxMPD).toBeCloseTo(2.0, 1);
+      expect(cardMaxMPD).toBeCloseTo(25.0, 1);
+      expect(processCard(card, 1, false, true, true, 'member').cardMaxMPD).toBeCloseTo(2.0, 1);
+      // Bonus miles are a separate setting and don't change the earning level
       expect(processCard(card, 1, true).cardMaxMPD).toBeCloseTo(25.0, 1);
 
       const badges = card.querySelectorAll('.aa-mpd-badge');
       expect(badges.length).toBe(2);
       // Tier 1: 400 / 200 = 2.0 miles/$
-      expect(badges[0].textContent).toBe(' (2.0\u00A0miles/$)');
+      expect(badges[0].textContent).toContain('2.0 mpd');
       expect((badges[0] as HTMLElement).style.color).toBe('');
       // Tier 2: 5000 / 200 = 25.0 miles/$
-      expect(badges[1].textContent).toBe(' (25.0\u00A0miles/$)');
+      expect(badges[1].textContent).toContain('25.0 mpd');
       expect((badges[1] as HTMLElement).style.color).toBe('green');
     });
   });
@@ -120,7 +122,7 @@ describe('MPD Calculation Regression Tests', () => {
 
       let badges = card.querySelectorAll('.aa-mpd-badge');
       expect(badges.length).toBe(1);
-      expect(badges[0].textContent).toBe(' (10.0\u00A0miles/$)');
+      expect(badges[0].textContent).toContain('10.0 mpd');
 
       // Price decreases to $100 (e.g. promo or currency toggle)
       card.querySelector('[data-selenium="display-price"]')!.textContent = '$100';
@@ -130,7 +132,7 @@ describe('MPD Calculation Regression Tests', () => {
 
       badges = card.querySelectorAll('.aa-mpd-badge');
       expect(badges.length).toBe(1); // Still exactly 1 badge
-      expect(badges[0].textContent).toBe(' (20.0\u00A0miles/$)');
+      expect(badges[0].textContent).toContain('20.0 mpd');
       expect((badges[0] as HTMLElement).style.color).toBe('green');
     });
 

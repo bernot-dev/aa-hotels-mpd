@@ -1,5 +1,6 @@
 // Shared Hotel MPD Registry and DOM ID extraction helpers
 import { EnrichedHotelRate } from "./interceptor";
+import { DEFAULT_EARNING_LEVEL, EarningLevel, milesForEarningLevel } from "./settings";
 
 export type RawHotelRate = EnrichedHotelRate;
 
@@ -72,7 +73,7 @@ function persistToStorage(): void {
  */
 export function ingestHotelRates(
   rates: EnrichedHotelRate[],
-  includeBonusMiles: boolean = false,
+  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL,
   useAllInPricing: boolean = true
 ): number {
   if (!rates || rates.length === 0) return 0;
@@ -111,9 +112,7 @@ export function ingestHotelRates(
 
     if (price <= 0) return;
 
-    const miles = includeBonusMiles
-      ? tieredMiles || baseMiles
-      : baseMiles || tieredMiles;
+    const miles = milesForEarningLevel(baseMiles, tieredMiles, earningLevel);
 
     if (miles <= 0) return;
 
@@ -170,30 +169,26 @@ export function getAllEnrichedHotels(): EnrichedHotelRate[] {
 
 export function getAllInMPD(
   hotelId: string,
-  includeBonusMiles: boolean = false
+  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL
 ): number | undefined {
   const hotel = hotelDataRegistry.get(hotelId);
   if (!hotel) return undefined;
   const price = hotel.allInPrice > 0 ? hotel.allInPrice : hotel.price;
   if (price <= 0) return undefined;
-  const miles = includeBonusMiles
-    ? hotel.tieredMiles || hotel.baseMiles
-    : hotel.baseMiles || hotel.tieredMiles;
+  const miles = milesForEarningLevel(hotel.baseMiles, hotel.tieredMiles, earningLevel);
   const mpd = miles / price;
   return mpd > 0 ? mpd : undefined;
 }
 
 export function getBaseMPD(
   hotelId: string,
-  includeBonusMiles: boolean = false
+  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL
 ): number | undefined {
   const hotel = hotelDataRegistry.get(hotelId);
   if (!hotel) return undefined;
   const price = hotel.basePrice > 0 ? hotel.basePrice : hotel.price;
   if (price <= 0) return undefined;
-  const miles = includeBonusMiles
-    ? hotel.tieredMiles || hotel.baseMiles
-    : hotel.baseMiles || hotel.tieredMiles;
+  const miles = milesForEarningLevel(hotel.baseMiles, hotel.tieredMiles, earningLevel);
   const mpd = miles / price;
   return mpd > 0 ? mpd : undefined;
 }
@@ -277,4 +272,28 @@ export function getHotelIdFromCard(card: Element): string | null {
   }
 
   return null;
+}
+
+export function getSearchSetMpdRange(): { minMpd: number; maxMpd: number } {
+  const values = Array.from(hotelMpdRegistry.values()).filter((v) => typeof v === "number" && v > 0);
+  if (values.length === 0) return { minMpd: 0, maxMpd: 0 };
+  return {
+    minMpd: Math.min(...values),
+    maxMpd: Math.max(...values),
+  };
+}
+
+export function getMpdDot(mpd: number, minMpd?: number, maxMpd?: number): "🟢" | "🟡" | "🔴" {
+  if (minMpd === undefined || maxMpd === undefined || maxMpd <= 0) {
+    const range = getSearchSetMpdRange();
+    minMpd = range.minMpd;
+    maxMpd = range.maxMpd;
+  }
+  if (maxMpd <= minMpd || minMpd <= 0) {
+    return "🟢";
+  }
+  const ratio = (mpd - minMpd) / (maxMpd - minMpd);
+  if (ratio >= 0.66) return "🟢";
+  if (ratio <= 0.33) return "🔴";
+  return "🟡";
 }

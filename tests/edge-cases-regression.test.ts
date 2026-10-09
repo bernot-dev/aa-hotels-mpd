@@ -42,7 +42,7 @@ describe('Edge Cases and Regression Guard Tests', () => {
       }).not.toThrow();
 
       const badge = card.querySelector('.aa-mpd-badge');
-      expect(badge?.textContent).toBe(' (10.0\u00A0miles/$)');
+      expect(badge?.textContent).toContain('10.0 mpd');
     });
 
     it('safely skips cards where price is 0 or non-numeric (e.g. Sold Out)', () => {

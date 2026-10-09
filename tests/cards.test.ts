@@ -142,16 +142,18 @@ describe('Search Fixture Processing (search-guest.html)', () => {
     expect(highestMPD).toBeGreaterThan(0);
 
     const badges = doc.querySelectorAll('.aa-mpd-badge');
-    expect(badges.length).toBe(milesCaptions.length);
-    // Badges go on miles captions, never on the price caption
-    badges.forEach((b) => expect(isMilesCaption(b.parentElement!)).toBe(true));
+    expect(badges.length).toBe(pricedCards.length);
+    // Badges go into property-card-info
+    badges.forEach((b) => expect(b.parentElement!.getAttribute('data-element-name')).toBe('property-card-info'));
 
-    // First card: badge = miles / total price ("2 nights including taxes and fees" is a total)
+    // First card: chip includes all-in price and mpd
     const first = pricedCards[0];
     const price = Number(first.querySelector('[data-element-name="fpc-room-price"]')!.getAttribute('data-fpc-value'));
-    const firstCaption = Array.from(first.querySelectorAll('[data-testid="upc_caption"]')).find(isMilesCaption)!;
-    const miles = Number(firstCaption.textContent!.match(/Earn ([\d,]+) miles/)![1].replace(/,/g, ''));
-    expect(firstCaption.querySelector('.aa-mpd-badge')!.textContent).toBe(` (${(miles / price).toFixed(1)}\u00A0miles/$)`);
+    const firstInfo = first.querySelector('[data-element-name="property-card-info"]')!;
+    const chip = firstInfo.querySelector('.aa-mpd-badge')!;
+    expect(chip).not.toBeNull();
+    expect(chip.textContent).toContain(`$${price} all-in`);
+    expect(chip.textContent).toContain('mpd');
 
     // Idempotency: running processCard again should not create duplicate badges
     cards.forEach((card) => processCard(card, 2, false));
@@ -163,17 +165,18 @@ describe('Details Fixture Processing & Bonus Miles Logic (details-guest.html)', 
   const detailsHtmlPath = path.resolve(__dirname, '../fixtures/details-guest.html');
   const detailsHtml = fs.readFileSync(detailsHtmlPath, 'utf-8');
 
-  it('badges every room row; headline is the member tier unless bonus miles are included', () => {
+  it('badges every room row; headline follows the earning level', () => {
     const doc = new JSDOM(detailsHtml).window.document;
     const rows = innermostCards(doc.querySelectorAll(ROOM_CARD_SELECTOR));
     expect(rows.length).toBe(doc.querySelectorAll('[data-selenium="ChildRoomsList-room"]').length);
 
     rows.forEach((row) => {
       const tiers = Array.from(row.querySelectorAll('[data-testid="upc_caption"]')).filter(isMilesCaption);
-      const memberRate = processCard(row, 2, false, true, false);
+      const memberRate = processCard(row, 2, false, true, false, 'member');
       expect(memberRate.processedTiers).toBe(tiers.length);
-      const bonusRate = processCard(row, 2, true, true, false);
-      expect(bonusRate.cardMaxMPD).toBeGreaterThanOrEqual(memberRate.cardMaxMPD);
+      const statusRate = processCard(row, 2, false, true, false, 'status_cardmember');
+      expect(statusRate.cardMaxMPD).toBeGreaterThanOrEqual(memberRate.cardMaxMPD);
+      expect((row as HTMLElement).dataset.aaMpdRate).toBe(String(statusRate.cardMaxMPD));
     });
     expect(doc.querySelectorAll('.aa-mpd-badge').length).toBeGreaterThanOrEqual(rows.length);
   });

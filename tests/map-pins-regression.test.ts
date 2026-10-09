@@ -332,7 +332,7 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
       // 1. Verify preview card received MPD badge: 4,200 miles / $499 = 8.4 miles/$
       const badge = previewCard.querySelector('.aa-mpd-badge');
       expect(badge).not.toBeNull();
-      expect(badge?.textContent).toBe(' (8.4\u00A0miles/$)');
+      expect(badge?.textContent).toContain('8.4 mpd');
 
       // 2. Verify hotel was registered in hotelMpdRegistry
       expect(hotelMpdRegistry.get('301')).toBeCloseTo(8.416, 2);

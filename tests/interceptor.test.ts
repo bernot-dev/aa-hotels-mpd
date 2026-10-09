@@ -324,18 +324,19 @@ describe("Network Response Interceptor", () => {
   });
 
   describe("ingestHotelRates", () => {
-    it("registers rates into hotelMpdRegistry and handles includeBonusMiles", () => {
+    it("registers rates for the selected earning level", () => {
       const rates = [
         { hotelId: "1001", price: 500, baseMiles: 2500, tieredMiles: 5000 },
+        { hotelId: "1002", price: 500, baseMiles: 2500, tieredMiles: 5000 },
       ];
 
-      // With bonus miles OFF -> 2500 / 500 = 5.0 MPD
-      ingestHotelRates(rates, false);
-      expect(getHotelMPD("1001")).toBeCloseTo(5.0);
-
-      // With bonus miles ON -> 5000 / 500 = 10.0 MPD
-      ingestHotelRates(rates, true);
+      // Default: credit cardmember with status -> 5000 / 500 = 10.0 MPD
+      ingestHotelRates([rates[0]] as any);
       expect(getHotelMPD("1001")).toBeCloseTo(10.0);
+
+      // AAdvantage member -> 2500 / 500 = 5.0 MPD
+      ingestHotelRates([rates[1]] as any, "member");
+      expect(getHotelMPD("1002")).toBeCloseTo(5.0);
     });
   });
 });

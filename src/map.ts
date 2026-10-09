@@ -1,6 +1,7 @@
 // Map View Controller, Pin Color Normalization & Property Preview MPD
 
 import { processCard, innermostCards, CARD_SELECTOR } from "./cards";
+import { DEFAULT_EARNING_LEVEL, EarningLevel } from "./settings";
 import {
   hotelMpdRegistry,
   registerHotelMPD,
@@ -109,7 +110,8 @@ export function processMapPreviewCards(
   root: Element = document.body,
   nights: number = 1,
   includeBonusMiles: boolean = false,
-  useAllInPricing: boolean = true
+  useAllInPricing: boolean = true,
+  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL
 ): void {
   const previewCards = innermostCards(root.querySelectorAll(CARD_SELECTOR));
 
@@ -119,7 +121,7 @@ export function processMapPreviewCards(
     const card = elem;
     if (!card) return;
 
-    const { cardMaxMPD } = processCard(card, nights, includeBonusMiles, useAllInPricing);
+    const { cardMaxMPD } = processCard(card, nights, includeBonusMiles, useAllInPricing, true, earningLevel);
 
     if (cardMaxMPD > 0) {
       const hotelId = getHotelIdFromCard(card);
@@ -150,7 +152,8 @@ export function setupMapController(
   container: Element,
   nights: number = 1,
   includeBonusMiles: boolean = false,
-  useAllInPricing: boolean = true
+  useAllInPricing: boolean = true,
+  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL
 ): MapController {
   let isDisposed = false;
   let isScheduled = false;
@@ -158,7 +161,7 @@ export function setupMapController(
   const runUpdate = () => {
     if (isDisposed) return;
     isScheduled = false;
-    processMapPreviewCards(container, nights, includeBonusMiles, useAllInPricing);
+    processMapPreviewCards(container, nights, includeBonusMiles, useAllInPricing, earningLevel);
     updateMapPins(container, useAllInPricing);
   };
 

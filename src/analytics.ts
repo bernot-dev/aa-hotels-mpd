@@ -213,14 +213,46 @@ export function computeSeasonalityStats(records: TopMpdRecord[]): SeasonalitySta
  * Deduplicates top MPD records so each unique hotel is featured at most once.
  * Retains the first (best-ranked under current sorting) record for each hotel.
  */
+// Hotel details that some records of a hotel may lack (e.g. rates read from the page rather than the API)
+const HOTEL_DETAIL_FIELDS = ["imageUrl", "stars", "rating", "reviewCount", "neighborhood", "country"] as const;
+type HotelDetailField = (typeof HOTEL_DETAIL_FIELDS)[number];
+
+const isMissing = (value: unknown) => value === undefined || value === "";
+
+function fillMissing(to: Partial<TopMpdRecord>, from: Partial<TopMpdRecord>): void {
+  const copy = <K extends HotelDetailField>(field: K) => {
+    if (isMissing(to[field]) && !isMissing(from[field])) to[field] = from[field];
+  };
+  HOTEL_DETAIL_FIELDS.forEach(copy);
+}
+
+/**
+ * Keeps the first (best) record per hotel, matched by id or name, and fills hotel details it lacks
+ * (photo, stars, rating, ...) from the hotel's other records.
+ */
 export function deduplicateRecordsByHotel(records: TopMpdRecord[]): TopMpdRecord[] {
+  const idOf = (r: TopMpdRecord) => (r.hotelId ? String(r.hotelId).trim() : "");
+  const nameOf = (r: TopMpdRecord) => (r.hotelName || "").trim().toLowerCase();
+
+  const detailsByKey = new Map<string, Partial<TopMpdRecord>>();
+  const collect = (key: string, r: TopMpdRecord) => {
+    if (!key) return;
+    const details = detailsByKey.get(key) || {};
+    fillMissing(details, r);
+    detailsByKey.set(key, details);
+  };
+  for (const r of records) {
+    collect(`id:${idOf(r)}`, r);
+    collect(`name:${nameOf(r)}`, r);
+  }
+
   const seenIds = new Set<string>();
   const seenNames = new Set<string>();
   const deduplicated: TopMpdRecord[] = [];
 
   for (const r of records) {
-    const id = r.hotelId ? String(r.hotelId).trim() : "";
-    const name = (r.hotelName || "").trim().toLowerCase();
+    const id = idOf(r);
+    const name = nameOf(r);
 
     if (id && seenIds.has(id)) {
       continue;
@@ -231,7 +263,12 @@ export function deduplicateRecordsByHotel(records: TopMpdRecord[]): TopMpdRecord
 
     if (id) seenIds.add(id);
     if (name) seenNames.add(name);
-    deduplicated.push(r);
+
+    const merged: TopMpdRecord = { ...r };
+    for (const details of [detailsByKey.get(`id:${id}`), detailsByKey.get(`name:${name}`)]) {
+      if (details) fillMissing(merged, details);
+    }
+    deduplicated.push(merged);
   }
 
   return deduplicated;

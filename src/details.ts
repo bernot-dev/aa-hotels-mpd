@@ -1,6 +1,7 @@
 import { updateCards, ROOM_CARD_SELECTOR } from "./cards";
 import { resetRateCollector } from "./capture/collector";
 import { getNights } from "./nights";
+import { loadPricingSettings } from "./settings";
 
 export interface RoomExpansionOptions {
   expandRoomTypes: boolean;
@@ -227,38 +228,26 @@ export const processDetailsPage = async (container: Element): Promise<() => void
 
   const maxMPDElem = document.createElement("div");
   maxMPDElem.id = "aa-mpd-details-summary";
+  maxMPDElem.className = "aa-mpd-banner";
   maxMPDElem.dataset.aaMpd = "true";
-  maxMPDElem.style.background = "#fff3cd";
-  maxMPDElem.style.color = "#856404";
-  maxMPDElem.style.border = "1px solid #ffeeba";
-  maxMPDElem.style.borderRadius = "8px";
-  maxMPDElem.style.padding = "14px 20px";
+  maxMPDElem.style.background = "linear-gradient(135deg, #f0f7ff 0%, #e1effe 100%)";
+  maxMPDElem.style.color = "#0d2440";
+  maxMPDElem.style.border = "1px solid #bfdbfe";
+  maxMPDElem.style.borderLeft = "5px solid #0078d2";
+  maxMPDElem.style.borderRadius = "10px";
+  maxMPDElem.style.padding = "12px 18px";
   maxMPDElem.style.margin = "16px 0";
-  maxMPDElem.style.fontSize = "16px";
+  maxMPDElem.style.fontSize = "15px";
   maxMPDElem.style.display = "none";
 
+  const { includeBonusMiles, useAllInPricing, earningLevel } = await loadPricingSettings();
   let expandRoomRates = false;
   let expandRoomTypes = false;
-  let includeBonusMiles = false;
-  let useAllInPricing = true;
-
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.sync) {
-      const result = await chrome.storage.sync.get([
-        "expandRoomRates",
-        "expandRoomTypes",
-        "includeBonusMiles",
-        "pricingCalculationMethod",
-        "useAllInPricing",
-      ]);
+      const result = await chrome.storage.sync.get(["expandRoomRates", "expandRoomTypes"]);
       expandRoomRates = Boolean(result.expandRoomRates);
       expandRoomTypes = Boolean(result.expandRoomTypes);
-      includeBonusMiles = Boolean(result.includeBonusMiles);
-      if (result.pricingCalculationMethod) {
-        useAllInPricing = result.pricingCalculationMethod === "all_in";
-      } else if (typeof result.useAllInPricing === "boolean") {
-        useAllInPricing = result.useAllInPricing;
-      }
     }
   } catch (err) {
     console.warn("[AA-Hotels-MPD] Failed to read storage options:", err);
@@ -271,7 +260,7 @@ export const processDetailsPage = async (container: Element): Promise<() => void
     ROOM_CARD_SELECTOR,
     includeBonusMiles,
     useAllInPricing,
-    { useEnrichment: false }
+    { useEnrichment: false, earningLevel }
   );
 
   const roomExpansion = setupRoomExpansion({

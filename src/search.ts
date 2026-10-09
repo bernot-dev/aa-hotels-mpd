@@ -1,5 +1,6 @@
 import { updateCards, CARD_SELECTOR } from "./cards";
 import { getNights } from "./nights";
+import { loadPricingSettings } from "./settings";
 import { updateMapPins } from "./map";
 import { resetRateCollector, queueRatesForDispatch } from "./capture/collector";
 import { extractRatesFromSearchCards } from "./capture/rates";
@@ -227,36 +228,25 @@ export const processSearchPage = async (
 
   const maxMPDElem = document.createElement("div");
   maxMPDElem.id = "aa-mpd-search-summary";
+  maxMPDElem.className = "aa-mpd-banner";
   maxMPDElem.dataset.aaMpd = "true";
-  maxMPDElem.style.background = "#fff3cd";
-  maxMPDElem.style.color = "#856404";
-  maxMPDElem.style.border = "1px solid #ffeeba";
-  maxMPDElem.style.borderRadius = "8px";
-  maxMPDElem.style.padding = "14px 20px";
+  maxMPDElem.style.background = "linear-gradient(135deg, #f0f7ff 0%, #e1effe 100%)";
+  maxMPDElem.style.color = "#0d2440";
+  maxMPDElem.style.border = "1px solid #bfdbfe";
+  maxMPDElem.style.borderLeft = "5px solid #0078d2";
+  maxMPDElem.style.borderRadius = "10px";
+  maxMPDElem.style.padding = "12px 18px";
   maxMPDElem.style.margin = "16px 0";
-  maxMPDElem.style.fontSize = "16px";
+  maxMPDElem.style.fontSize = "15px";
   maxMPDElem.style.display = "none";
 
-  let includeBonusMiles = false;
+  const { includeBonusMiles, useAllInPricing, earningLevel } = await loadPricingSettings();
   let expandSearchResults = true;
-  let useAllInPricing = true;
-
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.sync) {
-      const result = await chrome.storage.sync.get([
-        "includeBonusMiles",
-        "expandSearchResults",
-        "pricingCalculationMethod",
-        "useAllInPricing",
-      ]);
-      includeBonusMiles = Boolean(result.includeBonusMiles);
+      const result = await chrome.storage.sync.get(["expandSearchResults"]);
       if (typeof result.expandSearchResults === "boolean") {
         expandSearchResults = result.expandSearchResults;
-      }
-      if (result.pricingCalculationMethod) {
-        useAllInPricing = result.pricingCalculationMethod === "all_in";
-      } else if (typeof result.useAllInPricing === "boolean") {
-        useAllInPricing = result.useAllInPricing;
       }
     }
   } catch (err) {
@@ -272,7 +262,14 @@ export const processSearchPage = async (
     .querySelectorAll('#aa-mpd-search-summary, [id^="aa-mpd-search-summary"]')
     .forEach((el) => el.remove());
 
-  container.insertAdjacentElement("beforebegin", maxMPDElem);
+  const hotelList =
+    document.querySelector("ol.hotel-list-container") ||
+    container.querySelector("ol.hotel-list-container");
+  if (hotelList) {
+    hotelList.insertAdjacentElement("beforebegin", maxMPDElem);
+  } else {
+    container.insertAdjacentElement("beforebegin", maxMPDElem);
+  }
 
   const cardSelector = CARD_SELECTOR;
   const observeRoot = document.body;
@@ -286,7 +283,7 @@ export const processSearchPage = async (
     cardSelector,
     includeBonusMiles,
     useAllInPricing,
-    () => mpdSort.apply()
+    { earningLevel, onProcessed: () => mpdSort.apply() }
   );
 
   const searchExpansion = setupSearchExpansion({
@@ -302,13 +299,21 @@ export const processSearchPage = async (
     // Ensure summary banner remains attached if view toggled
     const currentBanner = document.getElementById("aa-mpd-search-summary");
     if (!currentBanner || !currentBanner.parentElement) {
-      const activeContainer =
-        document.querySelector('#searchPageRightColumn') ||
-        document.querySelector('#contentContainer') ||
-        document.querySelector('[data-selenium="pagination-panel"]') ||
-        document.querySelector('#searchPageReactRoot');
-      if (activeContainer) {
-        activeContainer.insertAdjacentElement("beforebegin", maxMPDElem);
+      const hotelList =
+        document.querySelector("ol.hotel-list-container") ||
+        container.querySelector("ol.hotel-list-container");
+      if (hotelList) {
+        hotelList.insertAdjacentElement("beforebegin", maxMPDElem);
+      } else {
+        const activeContainer =
+          document.querySelector('#searchPageRightColumn') ||
+          document.querySelector('#contentContainer') ||
+          document.querySelector('[data-selenium="pagination-panel"]') ||
+          document.querySelector('#searchPageReactRoot') ||
+          container;
+        if (activeContainer) {
+          activeContainer.insertAdjacentElement("beforebegin", maxMPDElem);
+        }
       }
     }
 
@@ -323,7 +328,7 @@ export const processSearchPage = async (
     // 3. Capture newly resolved rates into database
     try {
       const criteria = extractSearchCriteria();
-      const domRates = extractRatesFromSearchCards(document.body, nights, includeBonusMiles);
+      const domRates = extractRatesFromSearchCards(document.body, nights, includeBonusMiles, earningLevel);
       if (domRates.length > 0) {
         queueRatesForDispatch(criteria, domRates);
       }
@@ -347,11 +352,23 @@ export const processSearchPage = async (
       if (
         target?.classList?.contains("aa-mpd-badge") ||
         target?.id === "aa-mpd-search-summary" ||
-        target?.dataset?.aaMpd
+        target?.dataset?.aaMpd ||
+        target?.closest?.(".aa-mpd-badge, #aa-mpd-search-summary, [data-aa-mpd]")
       ) {
         return false;
       }
-      return true;
+      for (let i = 0; i < m.addedNodes.length; i++) {
+        const node = m.addedNodes[i] as HTMLElement;
+        if (
+          node.classList?.contains?.("aa-mpd-badge") ||
+          node.dataset?.aaMpd === "true" ||
+          node.closest?.(".aa-mpd-badge, #aa-mpd-search-summary, [data-aa-mpd]")
+        ) {
+          continue;
+        }
+        return true;
+      }
+      return m.addedNodes.length === 0;
     });
 
     if (hasExternal) {

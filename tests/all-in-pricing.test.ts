@@ -70,7 +70,7 @@ describe("All-In Pricing & Race Condition Safeguards", () => {
 
     const badge = cardPricing.querySelector<HTMLElement>(".aa-mpd-badge");
     expect(badge).not.toBeNull();
-    expect(badge?.textContent).toBe(" (13.6\u00A0miles/$)");
+    expect(badge?.textContent).toContain("13.6 mpd");
     expect(badge?.getAttribute("data-pricing-type")).toBe("all-in");
     expect(badge?.title).toContain("Total with taxes & fees: $331.94");
     expect(badge?.getAttribute("data-pending-api")).toBeNull();
@@ -87,7 +87,7 @@ describe("All-In Pricing & Race Condition Safeguards", () => {
 
     const badge = cardPricing.querySelector<HTMLElement>(".aa-mpd-badge");
     expect(badge).not.toBeNull();
-    expect(badge?.textContent).toBe(" (15.1\u00A0miles/$)");
+    expect(badge?.textContent).toContain("15.1 mpd");
     expect(badge?.getAttribute("data-pricing-type")).toBe("base");
   });
 
@@ -100,7 +100,7 @@ describe("All-In Pricing & Race Condition Safeguards", () => {
     expect(resultInitial.cardMaxMPD).toBeCloseTo(15.1, 1);
     const initialBadge = cardPricing.querySelector<HTMLElement>(".aa-mpd-badge");
     expect(initialBadge?.getAttribute("data-pending-api")).toBe("true");
-    expect(initialBadge?.textContent).toBe(" (15.1\u00A0miles/$)");
+    expect(initialBadge?.textContent).toContain("15.1 mpd");
 
     // 2. Network interceptor event arrives later
     ingestHotelRates([sampleEnrichedHotel], true, true);
@@ -112,7 +112,7 @@ describe("All-In Pricing & Race Condition Safeguards", () => {
     const upgradedBadge = cardPricing.querySelector<HTMLElement>(".aa-mpd-badge");
     expect(upgradedBadge?.getAttribute("data-pending-api")).toBeNull();
     expect(upgradedBadge?.getAttribute("data-pricing-type")).toBe("all-in");
-    expect(upgradedBadge?.textContent).toBe(" (13.6\u00A0miles/$)");
+    expect(upgradedBadge?.textContent).toContain("13.6 mpd");
   });
 
   it("handles Race Condition 2: API response arrives before DOM renders", () => {
@@ -128,7 +128,7 @@ describe("All-In Pricing & Race Condition Safeguards", () => {
     expect(cardMaxMPD).toBeCloseTo(13.6, 1);
     const badge = cardPricing.querySelector<HTMLElement>(".aa-mpd-badge");
     expect(badge?.getAttribute("data-pending-api")).toBeNull();
-    expect(badge?.textContent).toBe(" (13.6\u00A0miles/$)");
+    expect(badge?.textContent).toContain("13.6 mpd");
   });
 
   it("handles Race Condition 3: invalidates stale registry when search session or dates change", () => {

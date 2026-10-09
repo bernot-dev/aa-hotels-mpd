@@ -26,12 +26,14 @@ import {
   LocationHierarchyState,
   LocationHierarchyCity,
 } from "./analytics";
+import { DEFAULT_EARNING_LEVEL, EarningLevel, parseEarningLevel } from "./settings";
 
 export type Config = {
   expandRoomRates: boolean;
   expandRoomTypes: boolean;
   expandSearchResults: boolean;
   includeBonusMiles: boolean;
+  earningLevel: EarningLevel;
   keepExhaustiveQueryHistory?: boolean;
 };
 
@@ -811,6 +813,9 @@ async function saveOptions(): Promise<void> {
   const pricingSelect = document.getElementById("pricingCalculationMethod") as HTMLSelectElement | null;
   const pricingCalculationMethod = pricingSelect?.value === "base" ? "base" : "all_in";
   const useAllInPricing = pricingCalculationMethod === "all_in";
+  const earningLevel = parseEarningLevel(
+    (document.getElementById("earningLevel") as HTMLSelectElement | null)?.value
+  );
 
   try {
     if (typeof chrome !== "undefined" && chrome.storage?.sync) {
@@ -819,6 +824,7 @@ async function saveOptions(): Promise<void> {
         expandRoomTypes,
         expandSearchResults,
         includeBonusMiles,
+        earningLevel,
         keepExhaustiveQueryHistory,
         pricingCalculationMethod,
         useAllInPricing,
@@ -848,6 +854,7 @@ async function restoreOptions(): Promise<void> {
       expandRoomTypes: false,
       expandSearchResults: true,
       includeBonusMiles: false,
+      earningLevel: DEFAULT_EARNING_LEVEL as string,
       keepExhaustiveQueryHistory: false,
       pricingCalculationMethod: "all_in",
       useAllInPricing: true,
@@ -861,6 +868,9 @@ async function restoreOptions(): Promise<void> {
     if (pricingSelect) {
       pricingSelect.value = config.pricingCalculationMethod === "base" ? "base" : "all_in";
     }
+
+    const earningSelect = document.getElementById("earningLevel") as HTMLSelectElement | null;
+    if (earningSelect) earningSelect.value = parseEarningLevel(config.earningLevel);
 
     const ratesEl = document.getElementById("expandRoomRates") as HTMLInputElement | null;
     if (ratesEl) ratesEl.checked = config.expandRoomRates;

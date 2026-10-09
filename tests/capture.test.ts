@@ -175,7 +175,7 @@ describe("Rate and Criteria Capture Pipeline", () => {
   });
 
   describe("extractRatesFromSearchCards with search fixture", () => {
-    it("extracts a rate per miles tier for every priced card in the live search-guest.html", () => {
+    it("extracts one rate per priced card in the live search-guest.html, at the selected earning level", () => {
       const fixturePath = path.resolve(__dirname, "../fixtures/search-guest.html");
       const fixtureHtml = fs.readFileSync(fixturePath, "utf-8");
       const dom = new JSDOM(fixtureHtml);
@@ -195,13 +195,21 @@ describe("Rate and Criteria Capture Pipeline", () => {
       );
       expect(pricedCards.length).toBeGreaterThan(0);
 
-      const rates = extractRatesFromSearchCards(container!, 2, true);
-      expect(rates.length).toBe(milesCaptions.length);
+      expect(milesCaptions.length).toBeGreaterThan(pricedCards.length);
+
+      const rates = extractRatesFromSearchCards(container!, 2, false);
+      expect(rates.length).toBe(pricedCards.length);
 
       // First rate matches the first priced card's DOM, read independently
       const firstCard = pricedCards[0];
       const price = Number(firstCard.querySelector('[data-element-name="fpc-room-price"]')!.getAttribute("data-fpc-value"));
-      const miles = Number(milesCaptions[0].textContent!.match(/Earn ([\d,]+) miles/)![1].replace(/,/g, ""));
+      const cardMiles = Array.from(firstCard.querySelectorAll('[data-testid="upc_caption"]'))
+        .map((e) => e.textContent!.match(/Earn ([\d,]+) miles/)?.[1])
+        .filter(Boolean)
+        .map((m) => Number(m!.replace(/,/g, "")));
+      // Default level is credit cardmember with status: the higher miles line
+      const miles = Math.max(...cardMiles);
+      expect(extractRatesFromSearchCards(container!, 2, false, "member")[0].miles).toBe(Math.min(...cardMiles));
       const name = firstCard.querySelector('[data-selenium="hotel-name"] h2')!.childNodes[0].textContent!.trim();
 
       const firstRate = rates[0];

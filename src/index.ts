@@ -3,6 +3,7 @@ import { waitForElement } from "./wait";
 import { processDetailsPage } from "./details";
 import { processSearchPage } from "./search";
 import { mountDebugButton } from "./debug";
+import { loadPricingSettings, milesForEarningLevel } from "./settings";
 import { ingestHotelRates, RawHotelRate, hotelMpdRegistry, getCurrentPageBestMPD } from "./registry";
 import { updateMapPins } from "./map";
 import { ingestRoomRates } from "./allin";
@@ -26,27 +27,9 @@ if (typeof window !== "undefined") {
     if (isSensitiveCheckoutPage(window.location.href)) return;
     if (!hotels || hotels.length === 0) return;
 
-    let includeBonusMiles = false;
-    let useAllInPricing = true;
-    try {
-      if (typeof chrome !== "undefined" && chrome.storage?.sync) {
-        const result = await chrome.storage.sync.get([
-          "includeBonusMiles",
-          "pricingCalculationMethod",
-          "useAllInPricing",
-        ]);
-        includeBonusMiles = Boolean(result.includeBonusMiles);
-        if (result.pricingCalculationMethod) {
-          useAllInPricing = result.pricingCalculationMethod === "all_in";
-        } else if (typeof result.useAllInPricing === "boolean") {
-          useAllInPricing = result.useAllInPricing;
-        }
-      }
-    } catch {
-      // Ignore storage read errors
-    }
+    const { includeBonusMiles, useAllInPricing, earningLevel } = await loadPricingSettings();
 
-    const updated = ingestHotelRates(hotels, includeBonusMiles, useAllInPricing);
+    const updated = ingestHotelRates(hotels, earningLevel, useAllInPricing);
 
     // 1. Reactive Upgrade: Immediately re-evaluate any visible hotel cards
     let bestCardMpd = 0;
@@ -55,7 +38,7 @@ if (typeof window !== "undefined") {
       const nights = getNights();
       cards.forEach((card) => {
         try {
-          const { cardMaxMPD } = processCard(card, nights, includeBonusMiles, useAllInPricing);
+          const { cardMaxMPD } = processCard(card, nights, includeBonusMiles, useAllInPricing, true, earningLevel);
           bestCardMpd = Math.max(bestCardMpd, cardMaxMPD);
         } catch {}
       });
@@ -88,9 +71,7 @@ if (typeof window !== "undefined") {
         const effectivePrice = (useAllInPricing && h.allInPrice > 0)
           ? h.allInPrice
           : (h.basePrice > 0 ? h.basePrice : h.price);
-        const miles = includeBonusMiles
-          ? (h.tieredMiles || h.baseMiles)
-          : (h.baseMiles || h.tieredMiles);
+        const miles = milesForEarningLevel(h.baseMiles, h.tieredMiles, earningLevel);
         const mpd = effectivePrice > 0 ? miles / effectivePrice : 0;
         const hotelLoc = normalizeLocation(h.location || criteria.location) || criteria.location;
         return {
@@ -103,7 +84,8 @@ if (typeof window !== "undefined") {
           miles,
           mpd: Number(mpd.toFixed(1)),
           isTotalPrice: true,
-          isBonus: includeBonusMiles && h.tieredMiles > h.baseMiles,
+          // The results API carries base miles only; promotional bonus miles aren't in it
+          isBonus: false,
           stars: h.stars,
           rating: h.rating,
           reviewCount: h.reviewCount,
@@ -127,31 +109,13 @@ if (typeof window !== "undefined") {
     if (!rooms || rooms.length === 0) return;
     ingestRoomRates(rooms);
 
-    let includeBonusMiles = false;
-    let useAllInPricing = true;
-    try {
-      if (typeof chrome !== "undefined" && chrome.storage?.sync) {
-        const result = await chrome.storage.sync.get([
-          "includeBonusMiles",
-          "pricingCalculationMethod",
-          "useAllInPricing",
-        ]);
-        includeBonusMiles = Boolean(result.includeBonusMiles);
-        if (result.pricingCalculationMethod) {
-          useAllInPricing = result.pricingCalculationMethod === "all_in";
-        } else if (typeof result.useAllInPricing === "boolean") {
-          useAllInPricing = result.useAllInPricing;
-        }
-      }
-    } catch {
-      // Ignore storage read errors
-    }
+    const { includeBonusMiles, useAllInPricing, earningLevel } = await loadPricingSettings();
     if (!useAllInPricing) return;
 
     const nights = getNights();
     document.querySelectorAll('[data-testid="room-card"]').forEach((card) => {
       try {
-        processCard(card, nights, includeBonusMiles, useAllInPricing);
+        processCard(card, nights, includeBonusMiles, useAllInPricing, true, earningLevel);
       } catch {
         // Skip cards that are mid-render
       }

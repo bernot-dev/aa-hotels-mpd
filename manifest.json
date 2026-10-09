@@ -83,9 +83,13 @@
     },
     {
       "resources": [
-        "images/icon-48.png"
+        "images/icon-16.png",
+        "images/icon-32.png",
+        "images/icon-48.png",
+        "images/icon-128.png"
       ],
       "matches": [
+        "https://search.aadvantagehotels.com/*",
         "*://www.aadvantagehotels.com/*"
       ]
     }
