@@ -1,4 +1,4 @@
-import { updateCards, CARD_SELECTOR } from "./cards";
+import { updateCards, CARD_SELECTOR, BOOST_STYLE_ID } from "./cards";
 import { getNights } from "./nights";
 import { loadPricingSettings } from "./settings";
 import { updateMapPins } from "./map";
@@ -402,6 +402,7 @@ export const processSearchPage = async (
     document
       .querySelectorAll('#aa-mpd-search-summary, [id^="aa-mpd-search-summary"]')
       .forEach((el) => el.remove());
+    document.getElementById(BOOST_STYLE_ID)?.remove();
     resetRateCollector();
   };
 };

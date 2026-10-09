@@ -1,4 +1,4 @@
-import { updateCards, ROOM_CARD_SELECTOR } from "./cards";
+import { updateCards, ROOM_CARD_SELECTOR, BOOST_STYLE_ID } from "./cards";
 import { resetRateCollector } from "./capture/collector";
 import { getNights } from "./nights";
 import { loadPricingSettings } from "./settings";
@@ -286,6 +286,7 @@ export const processDetailsPage = async (container: Element): Promise<() => void
     roomExpansion.teardown();
     observer.disconnect();
     maxMPDElem.remove();
+    document.getElementById(BOOST_STYLE_ID)?.remove();
     resetRateCollector();
   };
 };

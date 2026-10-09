@@ -14,6 +14,7 @@ import {
   calculateCPM,
   CARD_SELECTOR,
   ROOM_CARD_SELECTOR,
+  isBonusOffer,
 } from '../src/cards';
 import {
   getPriceDollarSigns,
@@ -174,16 +175,16 @@ describe('Details Fixture Processing & Bonus Miles Logic (details-guest.html)', 
   const detailsHtmlPath = path.resolve(__dirname, '../fixtures/details-guest.html');
   const detailsHtml = fs.readFileSync(detailsHtmlPath, 'utf-8');
 
-  it('badges every room row; headline follows the earning level', () => {
+  it('badges every room row when includeBonusMiles is true; headline follows the earning level', () => {
     const doc = new JSDOM(detailsHtml).window.document;
     const rows = innermostCards(doc.querySelectorAll(ROOM_CARD_SELECTOR));
     expect(rows.length).toBe(doc.querySelectorAll('[data-selenium="ChildRoomsList-room"]').length);
 
     rows.forEach((row) => {
       const tiers = Array.from(row.querySelectorAll('[data-testid="upc_caption"]')).filter(isMilesCaption);
-      const memberRate = processCard(row, 2, false, true, false, 'member');
+      const memberRate = processCard(row, 2, true, true, false, 'member');
       expect(memberRate.processedTiers).toBe(tiers.length);
-      const statusRate = processCard(row, 2, false, true, false, 'status_cardmember');
+      const statusRate = processCard(row, 2, true, true, false, 'status_cardmember');
       expect(statusRate.cardMaxMPD).toBeGreaterThanOrEqual(memberRate.cardMaxMPD);
       expect((row as HTMLElement).dataset.aaMpdRate).toBe(String(statusRate.cardMaxMPD));
     });
@@ -201,6 +202,71 @@ describe('Details Fixture Processing & Bonus Miles Logic (details-guest.html)', 
     expect(processCard(row, 2, false, true, false).processedTiers).toBe(0);
     expect(row.querySelectorAll('.aa-mpd-badge').length).toBe(0);
     expect(processCard(row, 2, true, true, false).processedTiers).toBeGreaterThan(0);
+  });
+
+  it('excludes bonus miles offers, hides boost jackets, and excludes them from best MPD when includeBonusMiles is false', async () => {
+    const doc = new JSDOM(detailsHtml).window.document;
+    const rows = innermostCards(doc.querySelectorAll(ROOM_CARD_SELECTOR));
+    const container = doc.querySelector('#property-room-grid-root')!;
+    const maxBanner = doc.createElement('div');
+
+    const update = updateCards(container, maxBanner, ROOM_CARD_SELECTOR, false, true, { useEnrichment: false });
+    update();
+    await new Promise((r) => setTimeout(r, 60));
+
+    let boostedCount = 0;
+    let nonBoostedCount = 0;
+    rows.forEach((row) => {
+      const isBonus = isBonusOffer(row);
+      const badges = row.querySelectorAll('.aa-mpd-badge');
+      if (isBonus) {
+        boostedCount++;
+        expect(badges.length).toBe(0);
+        expect((row as HTMLElement).dataset.aaMpdRate).toBeUndefined();
+      } else {
+        nonBoostedCount++;
+        expect(badges.length).toBeGreaterThan(0);
+      }
+    });
+
+    expect(boostedCount).toBe(38);
+    expect(nonBoostedCount).toBe(38);
+
+    // All boost-best-value-jacket elements must be hidden
+    const jackets = container.querySelectorAll<HTMLElement>('[data-testid="boost-best-value-jacket"]');
+    expect(jackets.length).toBe(38);
+    jackets.forEach((j) => {
+      expect(j.style.display).toBe('none');
+    });
+
+    // Best MPD banner reflects non-boosted rate (17.8 miles/$ vs boosted 19.0 miles/$)
+    expect(maxBanner.innerHTML).toContain('17.8 miles/$');
+    expect(maxBanner.innerHTML).not.toContain('19.0 miles/$');
+  });
+
+  it('includes bonus miles offers and restores boost jackets when includeBonusMiles is true', async () => {
+    const doc = new JSDOM(detailsHtml).window.document;
+    const container = doc.querySelector('#property-room-grid-root')!;
+    const maxBanner = doc.createElement('div');
+
+    // Run first with false (jackets hidden)
+    const updateFalse = updateCards(container, maxBanner, ROOM_CARD_SELECTOR, false, true, { useEnrichment: false });
+    updateFalse();
+    await new Promise((r) => setTimeout(r, 60));
+
+    // Now update with true
+    const updateTrue = updateCards(container, maxBanner, ROOM_CARD_SELECTOR, true, true, { useEnrichment: false });
+    updateTrue();
+    await new Promise((r) => setTimeout(r, 60));
+
+    const jackets = container.querySelectorAll<HTMLElement>('[data-testid="boost-best-value-jacket"]');
+    expect(jackets.length).toBe(38);
+    jackets.forEach((j) => {
+      expect(j.style.display).not.toBe('none');
+    });
+
+    // Best MPD banner includes bonus rate (19.0 miles/$)
+    expect(maxBanner.innerHTML).toContain('19.0 miles/$');
   });
 });
 

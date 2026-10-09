@@ -9,6 +9,7 @@ import {
   ROOM_CARD_SELECTOR,
   PRICE_SELECTOR,
   PRICE_TYPE_SELECTOR,
+  isBonusOffer,
 } from "../cards";
 import { isValidLocation } from "./criteria";
 import { DEFAULT_EARNING_LEVEL, EarningLevel } from "../settings";
@@ -58,7 +59,7 @@ export function extractRatesFromSearchCards(
   const captured: CapturedRate[] = [];
 
   cards.forEach((card) => {
-    const hasBoostTag = !!card.querySelector('[data-selenium="boost-tag"], [data-element-name="boost-tag"]');
+    const hasBoostTag = isBonusOffer(card);
     if (hasBoostTag && !includeBonusMiles) {
       return;
     }
@@ -249,9 +250,7 @@ export function extractRatesFromDetailsCards(
   const captured: CapturedRate[] = [];
 
   cards.forEach((card) => {
-    const hasBoostTag = !!card.querySelector(
-      '[data-selenium="boost-tag"], [data-element-name="boost-tag"]'
-    );
+    const hasBoostTag = isBonusOffer(card);
     if (hasBoostTag && !includeBonusMiles) {
       return;
     }

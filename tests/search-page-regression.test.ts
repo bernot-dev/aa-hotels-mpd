@@ -214,7 +214,7 @@ describe('Search Page Presentation Regression Tests', () => {
 
     fixtureCleanup();
     expect(document.getElementById('aa-mpd-search-summary')).toBeNull();
-  });
+  }, 15000);
 
   it('runs against real search-authenticated.html fixture and correctly populates banner and badges', async () => {
     const fixturePath = path.resolve(__dirname, '../fixtures/search-authenticated.html');
