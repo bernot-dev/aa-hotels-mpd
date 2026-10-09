@@ -1,6 +1,6 @@
 # AA Hotels MPD
 
-A powerful, privacy-first Chrome extension that calculates and displays Miles Per Dollar (MPD), Cents Per Mile (CPM), and comparative value metrics on [AAdvantage Hotels](https://search.aadvantagehotels.com).
+A free, privacy-first Chrome extension that helps you find the highest-earning American Airlines AAdvantage® hotel bookings on the new [AAdvantage Hotels](https://search.aadvantagehotels.com) site.
 
 [![Chrome Web Store](https://img.shields.io/badge/Chrome%20Web%20Store-AA%20Hotels%20MPD-blue?logo=google-chrome)](https://chromewebstore.google.com/detail/aa-hotels-mpd/ojdenlcjodnolmcgdpghhmdlmginhiei)
 
@@ -8,95 +8,74 @@ A powerful, privacy-first Chrome extension that calculates and displays Miles Pe
 
 ---
 
-## Key Features
+## What It Does For You
 
-### 1. 3-Row Branded MPD Chips
-Every hotel card displays an on-brand, 3-row value chip with the AA Hotels MPD logo:
-- **Row 1 — Miles Per Dollar (MPD):** Earn rate with relative tier indicator (🟢 high earn rate, 🟡 medium, 🔴 low).
-- **Row 2 — Cents Per Mile (CPM):** Acquisition cost per mile with relative acquisition value indicator.
-- **Row 3 — Nightly Rate & Price Rating:** All-in nightly price with 1–3 dollar sign rating (💲 least expensive to 💲💲💲 most expensive in search set).
+When you search for hotels on AAdvantage Hotels, hotel rates vary dramatically in how many miles and Loyalty Points they reward. One hotel might offer 10 miles per dollar spent, while another next door offers 28 miles per dollar.
 
-### 2. Location Best Earn Rate Banner
-- Displays prominently right above search results with the top earn rate found across the destination.
-- Includes a live spinning logo animation while background queries are running.
-- Includes an alert notification informing you if better deals may exist on additional result pages.
+**AA Hotels MPD** automatically analyzes rates as you browse and highlights the best earning opportunities:
 
-### 3. Automated Background Search Pagination
-- Headless GraphQL querying for subsequent search result pages (pages 2+).
-- **Gated & Configurable:** Controlled by the *"Expand All Search Results automatically"* option, with a configurable max pages depth cap (default: 5 pages).
-- **Polite & Safe:** Built-in 3-second base delay with 2 seconds of random jitter (3–5s between queries) to ensure safe, reliable requests.
-- Rates from all queried pages are instantly ingested to surface the best earning deals in the location.
-
-### 4. Native MPD Sort
-- Adds a branded **"Most miles per dollar"** sort option directly to the native `sort-bar-container` on search pages.
-- Sorts results descending by MPD with a single click.
-
-### 5. Configurable Earning Levels & Pricing
-- **Earning Level:** Choose between *AAdvantage® Member* and *AAdvantage® Credit Cardmembers with Status* to match your Loyalty Point base earn tier.
-- **Pricing Basis:** Option to calculate MPD based on all-in total price (including taxes & fees) or base price.
-- **Bonus Miles:** Option to include or exclude promotional bonus miles from room calculations.
-
-### 6. Completely Private & Local
-- Runs 100% locally in your browser.
-- Zero analytics, zero telemetry, and zero data transmitted to any external servers.
+- **Miles Per Dollar (MPD):** See the exact miles-per-dollar earn rate directly on each hotel card and room option.
+- **Acquisition Cost (CPM):** See your cost per mile in cents (CPM), making it easy to decide if paying slightly more for a room is a cost-effective way to earn miles toward elite status.
+- **Quick-Scan Value Colors:** Color-coded dots show how a hotel's earn rate compares to other options in your search:
+  - 🟢 **Green** — Top-tier earn rate in your search set
+  - 🟡 **Yellow** — Average earn rate
+  - 🔴 **Red** — Below-average earn rate
+- **Relative Price Ratings:** 💲 to 💲💲💲 shows where each hotel falls within your search's price range.
+- **Top Earn Rate Banner:** A banner at the top of results displays the highest earn rate found for your entire destination.
+- **Automatic Multi-Page Scanning:** The extension automatically checks additional pages of results in the background, so you can discover top-earning hotels that might otherwise be buried on page 3 or 4.
+- **Sort by Miles Per Dollar:** Adds a "Most miles per dollar" sort option right into the site's sort menu, ranking search results by earn rate with a single click.
+- **Customized for Your Status Tier:** Select whether you're an *AAdvantage® Member* or an *AAdvantage® Credit Cardmember with Status* so calculations reflect what you will actually earn.
+- **All-In Pricing:** Calculates earn rates against the full total price (including taxes and fees) so there are no surprises at checkout.
+- **100% Private:** Runs entirely on your computer. No accounts, no analytics, no ads, and no personal data ever leaves your browser.
 
 ---
 
-## Screenshots
+## What's New in Version 2.0
 
-| Search Results | Hotel Room Details |
-|:---:|:---:|
-| ![Search Results](./images/search-screenshot.png) | ![Room Details](./images/details-screenshot.png) |
+Version 2.0 is a complete rebuild designed specifically for the **new AAdvantage Hotels platform** at `search.aadvantagehotels.com`:
 
-| Map View | Extension Options |
-|:---:|:---:|
-| ![Map View](./images/maps-screenshot.png) | ![Options](./images/options-dashboard-screenshot.png) |
+- **Adapted to the new website:** Fully rewritten to support the new booking site, interactive maps, and updated room selection interface.
+- **Multi-page deal discovery:** Scans subsequent result pages automatically so you don't miss high-earning properties on later pages.
+- **In-page MPD sort:** Restores one-click sorting by earn rate directly within the search results sort bar.
+- **Cost-per-mile metric (CPM):** Added to help you quickly assess whether a higher room rate makes sense for earning miles.
+- **Earning tier selection:** Choose between general member and status cardmember rates for accurate Loyalty Point calculations.
+
+---
+
+## How to Use It
+
+1. Install **AA Hotels MPD** from the [Chrome Web Store](https://chromewebstore.google.com/detail/aa-hotels-mpd/ojdenlcjodnolmcgdpghhmdlmginhiei).
+2. Go to [search.aadvantagehotels.com](https://search.aadvantagehotels.com) and search for any city or destination.
+3. Each hotel card and map pin automatically displays its earn rate, CPM, and value rating.
+4. Select **"Most miles per dollar"** in the sort menu to rank hotels from highest to lowest earn rate.
+5. Click into any hotel to compare earn rates across different room types.
+6. Click the extension icon or visit Options to select your earning level, adjust background search depth, or customize pricing settings.
 
 ---
 
 ## Development
 
-### Prerequisites
-- Node.js (v20+)
-- npm
+If you want to build or run the extension locally:
 
-### Installation
 ```bash
+# Clone the repository
+git clone https://github.com/bernot-dev/aa-hotels-mpd.git
+cd aa-hotels-mpd
+
+# Install dependencies
 npm install
-```
 
-### Build
-Compile TypeScript and package bundles with Webpack:
-```bash
+# Build the extension bundle
 npm run build
-```
 
-For live development watch mode:
-```bash
-npm run watch
-```
-
-### Testing
-Run unit and integration tests (235+ tests across Vitest):
-```bash
+# Run automated tests
 npm test
 ```
 
-### Packaging for Chrome Web Store
-```bash
-npm run package
-```
-Generates `extension.zip` containing `manifest.json`, `options.html`, compiled `dist/` scripts, and icons.
-
----
-
-## Installation in Chrome
-
-1. Clone and build the repository (`npm run build`).
-2. Open Chrome and navigate to `chrome://extensions`.
-3. Enable **Developer mode** in the top right corner.
-4. Click **Load unpacked** and select the repository root directory.
-5. Visit [search.aadvantagehotels.com](https://search.aadvantagehotels.com) and search for hotels!
+To load the built extension into Chrome:
+1. Navigate to `chrome://extensions` in Google Chrome.
+2. Enable **Developer mode** in the upper right corner.
+3. Click **Load unpacked** and select the repository directory.
 
 ---
 
