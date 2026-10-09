@@ -485,9 +485,6 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
     await expect(includeBonusMiles).toBeAttached();
     await expect(page.locator('#showDebugButton')).toHaveCount(0);
 
-    // Fixture export panel is opt-in
-    await expect(showDebugButton).not.toBeChecked();
-
     // Toggle options and save
     await expandSearchResults.check();
     await includeBonusMiles.check();
@@ -497,7 +494,7 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
     const statusMsg = page.locator('#status');
     await expect(statusMsg).toHaveText('Settings saved.', { timeout: 3000 });
     const stored = await context.serviceWorkers()[0].evaluate(() => chrome.storage.sync.get(null));
-    expect(stored).toMatchObject({ expandSearchResults: true, includeBonusMiles: true, showDebugButton: false });
+    expect(stored).toMatchObject({ expandSearchResults: true, includeBonusMiles: true });
 
     // Save visual artifact of settings tab
     await page.screenshot({
@@ -509,21 +506,7 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
     );
   });
 
-  test('7. Fixture export panel appears only after enabling it in settings', async ({ context, extensionId }) => {
-    const options = await context.newPage();
-    await options.goto(`chrome-extension://${extensionId}/options.html`);
-    await options.locator('button[data-tab="settings-tab"]').click();
-    await options.locator('#showDebugButton').check();
-    await options.locator('#save').click();
-    await expect(options.locator('#status')).toHaveText('Settings saved.', { timeout: 3000 });
-
-    const page = await openPage(context);
-    await page.goto(SEARCH_URL, { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('#aa-mpd-debug-panel')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('#aa-mpd-debug-panel')).toContainText('DOM Fixture');
-  });
-
-  test('8. Sensitive checkout page exclusion guard: never injects scripts or badges on checkout URLs', async ({
+  test('7. Sensitive checkout page exclusion guard: never injects scripts or badges on checkout URLs', async ({
     context,
   }) => {
     const page = await openPage(context);
