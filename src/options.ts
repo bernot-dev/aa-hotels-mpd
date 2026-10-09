@@ -32,6 +32,7 @@ export type Config = {
   expandRoomRates: boolean;
   expandRoomTypes: boolean;
   expandSearchResults: boolean;
+  maxSearchPages?: number;
   includeBonusMiles: boolean;
   earningLevel: EarningLevel;
   keepExhaustiveQueryHistory?: boolean;
@@ -805,6 +806,8 @@ async function saveOptions(): Promise<void> {
   const expandRoomRates = (document.getElementById("expandRoomRates") as HTMLInputElement).checked;
   const expandRoomTypes = (document.getElementById("expandRoomTypes") as HTMLInputElement).checked;
   const expandSearchResults = (document.getElementById("expandSearchResults") as HTMLInputElement).checked;
+  const maxSearchPagesInput = document.getElementById("maxSearchPages") as HTMLInputElement | null;
+  const maxSearchPages = Math.max(1, Math.min(50, parseInt(maxSearchPagesInput?.value || "5", 10) || 5));
   const includeBonusMiles = (document.getElementById("includeBonusMiles") as HTMLInputElement).checked;
   const keepExhaustiveQueryHistory = (
     document.getElementById("keepExhaustiveQueryHistory") as HTMLInputElement
@@ -823,6 +826,7 @@ async function saveOptions(): Promise<void> {
         expandRoomRates,
         expandRoomTypes,
         expandSearchResults,
+        maxSearchPages,
         includeBonusMiles,
         earningLevel,
         keepExhaustiveQueryHistory,
@@ -853,6 +857,7 @@ async function restoreOptions(): Promise<void> {
       expandRoomRates: false,
       expandRoomTypes: false,
       expandSearchResults: true,
+      maxSearchPages: 5,
       includeBonusMiles: false,
       earningLevel: DEFAULT_EARNING_LEVEL as string,
       keepExhaustiveQueryHistory: false,
@@ -880,6 +885,9 @@ async function restoreOptions(): Promise<void> {
 
     const searchEl = document.getElementById("expandSearchResults") as HTMLInputElement | null;
     if (searchEl) searchEl.checked = config.expandSearchResults;
+
+    const maxPagesEl = document.getElementById("maxSearchPages") as HTMLInputElement | null;
+    if (maxPagesEl) maxPagesEl.value = String(config.maxSearchPages || 5);
 
     const bonusEl = document.getElementById("includeBonusMiles") as HTMLInputElement | null;
     if (bonusEl) bonusEl.checked = config.includeBonusMiles;

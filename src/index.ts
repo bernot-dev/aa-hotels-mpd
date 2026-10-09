@@ -3,11 +3,12 @@ import { waitForElement } from "./wait";
 import { processDetailsPage } from "./details";
 import { processSearchPage } from "./search";
 import { mountDebugButton } from "./debug";
-import { loadPricingSettings, milesForEarningLevel } from "./settings";
+import { loadPricingSettings, loadSearchSettings, milesForEarningLevel } from "./settings";
 import { ingestHotelRates, RawHotelRate, hotelMpdRegistry, getCurrentPageBestMPD } from "./registry";
 import { updateMapPins } from "./map";
 import { ingestRoomRates } from "./allin";
 import type { RoomRate } from "./interceptor";
+import { updateSummaryBanner, runBackgroundSearchQueries, abortBackgroundSearchQueries } from "./search-query";
 
 const SEARCH_SELECTOR =
   '#searchPageRightColumn, #contentContainer, [data-selenium="pagination-panel"], #searchPageReactRoot';
@@ -50,8 +51,7 @@ if (typeof window !== "undefined") {
       const summaryBanner = document.getElementById("aa-mpd-search-summary");
       const highest = Math.max(bestCardMpd, getCurrentPageBestMPD());
       if (summaryBanner && highest > 0) {
-        summaryBanner.innerHTML = `Best earn rate on this page: <b>${highest.toFixed(1)} miles/$</b>.`;
-        summaryBanner.style.display = "block";
+        updateSummaryBanner(summaryBanner, highest);
       }
     }
 
@@ -123,10 +123,26 @@ if (typeof window !== "undefined") {
   };
 
   // 1. Listen for postMessage (cross-world MAIN -> ISOLATED)
-  window.addEventListener("message", (event) => {
+  window.addEventListener("message", async (event) => {
     if (event.data?.type === "AA_HOTELS_MPD_NETWORK_DATA") {
       handleIncomingRates(event.data.hotels);
       handleIncomingRooms(event.data.rooms);
+    } else if (event.data?.type === "AA_HOTELS_CAPTURED_SEARCH_REQUEST") {
+      try {
+        const { url, headers, body } = event.data;
+        const searchSettings = await loadSearchSettings();
+        if (searchSettings.expandSearchResults) {
+          runBackgroundSearchQueries(
+            { url, headers, body },
+            {
+              expandSearchResults: searchSettings.expandSearchResults,
+              maxSearchPages: searchSettings.maxSearchPages,
+            }
+          );
+        }
+      } catch (err) {
+        console.debug("[AA-Hotels-MPD] Error launching background search queries:", err);
+      }
     }
   });
 
@@ -163,6 +179,9 @@ let currentNavEpoch = 0;
 
 async function handleRouteChange(routeInfo: RouteInfo) {
   const thisEpoch = ++currentNavEpoch;
+
+  // Abort any active background search queries
+  abortBackgroundSearchQueries();
 
   // 1. Teardown active controller and cancel ongoing wait observers from previous route
   if (activeAbortController) {

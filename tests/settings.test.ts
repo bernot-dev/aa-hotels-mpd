@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   DEFAULT_EARNING_LEVEL,
+  DEFAULT_MAX_SEARCH_PAGES,
   loadPricingSettings,
+  loadSearchSettings,
   milesForEarningLevel,
   parseEarningLevel,
 } from '../src/settings';
@@ -48,5 +50,51 @@ describe('Most miles per dollar sort value', () => {
     expect(getItemMpd(item)).toBe(2);
     item.querySelector('[data-aa-mpd-rate]')!.removeAttribute('data-aa-mpd-rate');
     expect(getItemMpd(item)).toBe(25);
+  });
+});
+
+describe('Search settings', () => {
+  afterEach(() => {
+    delete (globalThis as any).chrome;
+  });
+
+  it('defaults to expandSearchResults true and maxSearchPages 5', async () => {
+    (globalThis as any).chrome = { storage: { sync: { get: vi.fn().mockResolvedValue({}) } } };
+    expect(await loadSearchSettings()).toEqual({
+      expandSearchResults: true,
+      maxSearchPages: DEFAULT_MAX_SEARCH_PAGES,
+    });
+  });
+
+  it('loads configured values and clamps maxSearchPages between 1 and 50', async () => {
+    (globalThis as any).chrome = {
+      storage: {
+        sync: {
+          get: vi.fn().mockResolvedValue({
+            expandSearchResults: false,
+            maxSearchPages: 100,
+          }),
+        },
+      },
+    };
+    expect(await loadSearchSettings()).toEqual({
+      expandSearchResults: false,
+      maxSearchPages: 50,
+    });
+
+    (globalThis as any).chrome = {
+      storage: {
+        sync: {
+          get: vi.fn().mockResolvedValue({
+            expandSearchResults: true,
+            maxSearchPages: 0,
+          }),
+        },
+      },
+    };
+    expect(await loadSearchSettings()).toEqual({
+      expandSearchResults: true,
+      maxSearchPages: DEFAULT_MAX_SEARCH_PAGES,
+    });
   });
 });

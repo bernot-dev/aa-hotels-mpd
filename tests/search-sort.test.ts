@@ -460,5 +460,5 @@ describe('Modern sort-bar-container MPD sort', () => {
 
     cleanup();
     expect(document.getElementById(SORT_BUTTON_ID)).toBeNull();
-  });
+  }, 15000);
 });

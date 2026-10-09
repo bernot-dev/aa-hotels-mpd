@@ -295,7 +295,7 @@ describe('End-to-End updateCards Runner', () => {
         const badgeAfter = container.querySelector('.aa-mpd-badge');
         expect(badgeAfter).not.toBeNull();
         expect(badgeAfter?.textContent).toContain('25.0');
-        expect(maxBanner.textContent).toContain('Best earn rate on this page');
+        expect(maxBanner.textContent).toContain('Best earn rate for this location');
         resolve();
       }, 50);
     });

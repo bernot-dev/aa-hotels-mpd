@@ -20,6 +20,7 @@ import {
 import { getLogoUrl } from "./logo";
 import { DEFAULT_EARNING_LEVEL, EarningLevel, milesForEarningLevel } from "./settings";
 import type { EnrichedHotelRate } from "./interceptor";
+import { updateSummaryBanner } from "./search-query";
 
 export const extractNumber = (e: Element): number | null => {
   // Ignore text inside our own injected badges when extracting original numbers
@@ -332,6 +333,30 @@ export function ensureChipStyles(): void {
     .aa-mpd-banner-text strong {
       color: #004b87 !important;
       font-weight: 700 !important;
+    }
+
+    @keyframes aa-mpd-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .aa-mpd-banner-logo.aa-mpd-spinning {
+      animation: aa-mpd-spin 1.2s linear infinite !important;
+    }
+
+    .aa-mpd-banner-alert {
+      display: inline-flex !important;
+      align-items: center !important;
+      padding: 3px 10px !important;
+      background: #fef3c7 !important;
+      color: #92400e !important;
+      border: 1px solid #fde68a !important;
+      border-radius: 6px !important;
+      font-size: 13px !important;
+      font-weight: 500 !important;
+      line-height: 1.2 !important;
+      margin-left: 10px !important;
+      vertical-align: middle !important;
     }
   `;
   document.head.appendChild(style);
@@ -719,10 +744,7 @@ export const updateCards = (
     }
 
     if (maxMPD > 0) {
-      const logoUrl = getLogoUrl(32);
-      const html = `<img class="aa-mpd-banner-logo" src="${logoUrl}" alt="" aria-hidden="true" width="28" height="28" /><span class="aa-mpd-banner-text">Best earn rate on this page: <b>${maxMPD.toFixed(1)} miles/$</b>.</span>`;
-      if (maxMPDElem.innerHTML !== html) maxMPDElem.innerHTML = html;
-      maxMPDElem.style.display = "block";
+      updateSummaryBanner(maxMPDElem, maxMPD);
     } else {
       maxMPDElem.style.display = "none";
     }

@@ -54,3 +54,34 @@ export async function loadPricingSettings(): Promise<PricingSettings> {
   }
   return settings;
 }
+
+export const DEFAULT_MAX_SEARCH_PAGES = 5;
+
+export interface SearchSettings {
+  expandSearchResults: boolean;
+  maxSearchPages: number;
+}
+
+export async function loadSearchSettings(): Promise<SearchSettings> {
+  const settings: SearchSettings = {
+    expandSearchResults: true,
+    maxSearchPages: DEFAULT_MAX_SEARCH_PAGES,
+  };
+  try {
+    if (typeof chrome !== "undefined" && chrome.storage?.sync) {
+      const result = await chrome.storage.sync.get([
+        "expandSearchResults",
+        "maxSearchPages",
+      ]);
+      if (typeof result.expandSearchResults === "boolean") {
+        settings.expandSearchResults = result.expandSearchResults;
+      }
+      if (typeof result.maxSearchPages === "number" && result.maxSearchPages > 0) {
+        settings.maxSearchPages = Math.max(1, Math.min(50, Math.floor(result.maxSearchPages)));
+      }
+    }
+  } catch {
+    // Ignore storage read errors and use defaults
+  }
+  return settings;
+}

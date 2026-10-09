@@ -206,7 +206,7 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
       // 4. Verify duplicate banners are eliminated: EXACTLY 1 banner remains
       const deduplicatedBanners = document.querySelectorAll('#aa-mpd-search-summary');
       expect(deduplicatedBanners.length).toBe(1);
-      expect(deduplicatedBanners[0].innerHTML).toContain('Best earn rate on this page:');
+      expect(deduplicatedBanners[0].innerHTML).toContain('Best earn rate for this location:');
 
       // 5. Verify matching pins in bug fixture are decorated
       const decoratedPins = document.querySelectorAll('button[data-aa-mpd]');

@@ -6,6 +6,7 @@ import { resetRateCollector, queueRatesForDispatch } from "./capture/collector";
 import { extractRatesFromSearchCards } from "./capture/rates";
 import { extractSearchCriteria } from "./capture/criteria";
 import { setupMpdSort } from "./sort";
+import { abortBackgroundSearchQueries } from "./search-query";
 
 export interface SearchExpansionOptions {
   expandSearchResults: boolean;
@@ -398,6 +399,7 @@ export const processSearchPage = async (
     document.body.removeEventListener("click", handleMapToggleClick);
     searchExpansion.teardown();
     mpdSort.teardown();
+    abortBackgroundSearchQueries();
     observer.disconnect();
     document
       .querySelectorAll('#aa-mpd-search-summary, [id^="aa-mpd-search-summary"]')

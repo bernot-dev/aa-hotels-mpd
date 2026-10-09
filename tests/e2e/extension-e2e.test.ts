@@ -190,7 +190,7 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
 
     const summaryBanner = page.locator('#aa-mpd-search-summary');
     await expect(summaryBanner).toBeVisible({ timeout: 10000 });
-    await expect(summaryBanner).toContainText(/Best earn rate on this page: \d+\.\d miles\/\$/);
+    await expect(summaryBanner).toContainText(/Best earn rate for this location: \d+\.\d miles\/\$/);
 
     const expectedBadges = await countMilesCaptions(page, 'li.PropertyCardItem');
     expect(expectedBadges).toBeGreaterThan(0);

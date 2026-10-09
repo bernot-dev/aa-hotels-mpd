@@ -746,6 +746,50 @@ function tapResponse(response: Response, url: string, requestBody?: unknown): vo
   };
 }
 
+export function serializeHeaders(headers: HeadersInit | undefined): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (!headers) return result;
+  try {
+    if (typeof (headers as any).forEach === "function") {
+      (headers as Headers).forEach((value, key) => {
+        result[key.toLowerCase()] = value;
+      });
+    } else if (Array.isArray(headers)) {
+      headers.forEach(([key, value]) => {
+        result[key.toLowerCase()] = value;
+      });
+    } else if (typeof headers === "object") {
+      for (const k of Object.keys(headers)) {
+        result[k.toLowerCase()] = String((headers as Record<string, any>)[k]);
+      }
+    }
+  } catch {}
+  return result;
+}
+
+export function isSearchQuery(url: string, body: unknown): boolean {
+  if (!body) return false;
+  let parsed: any = body;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return false;
+    }
+  }
+  if (!parsed || typeof parsed !== "object") return false;
+  const opName = String(parsed.operationName || "").toLowerCase();
+  if (opName.includes("search")) return true;
+  if (parsed.variables) {
+    for (const key of Object.keys(parsed.variables)) {
+      if (key.toLowerCase().includes("search") && parsed.variables[key]?.searchRequest?.page) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Wraps a fetch implementation so JSON responses from search/property endpoints are inspected.
  */
@@ -766,6 +810,24 @@ export function wrapFetch(originalFetch: typeof fetch): typeof fetch {
           : input.toString();
       if (shouldInspectUrl(url)) {
         tapResponse(response, url, init?.body);
+        const reqHeaders = serializeHeaders(init?.headers);
+        if (
+          isSearchQuery(url, init?.body) &&
+          !reqHeaders["x-aa-mpd-background"] &&
+          typeof window !== "undefined"
+        ) {
+          try {
+            window.postMessage(
+              {
+                type: "AA_HOTELS_CAPTURED_SEARCH_REQUEST",
+                url,
+                headers: reqHeaders,
+                body: init?.body,
+              },
+              "*"
+            );
+          } catch {}
+        }
       }
     } catch {
       // Ignore inspection errors to never interfere with page functionality
@@ -823,13 +885,28 @@ export function initNetworkInterceptor(): void {
       body?: Document | XMLHttpRequestBodyInit | null
     ) {
       const requestBody = typeof body === "string" ? body : undefined;
+      const self = this;
       this.addEventListener("load", function () {
         try {
-          const url = (this as any)._aaMpdUrl || "";
+          const url = (self as any)._aaMpdUrl || "";
           if (shouldInspectUrl(url)) {
-            const text = this.responseText;
+            const text = self.responseText;
             if (text && (text.startsWith("{") || text.startsWith("["))) {
               inspectPayload(url, "XHR", JSON.parse(text), requestBody);
+            }
+            if (
+              isSearchQuery(url, requestBody) &&
+              typeof window !== "undefined"
+            ) {
+              window.postMessage(
+                {
+                  type: "AA_HOTELS_CAPTURED_SEARCH_REQUEST",
+                  url,
+                  headers: {},
+                  body: requestBody,
+                },
+                "*"
+              );
             }
           }
         } catch {
