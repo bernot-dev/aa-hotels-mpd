@@ -1,6 +1,13 @@
-// Background headless GraphQL queries for additional pages of search results
-import { extractHotelRatesFromPayload, EnrichedHotelRate } from "./interceptor";
-import { ingestHotelRates, getCurrentPageBestMPD } from "./registry";
+import { extractHotelRatesFromPayload, extractTotalFilteredHotels, EnrichedHotelRate } from "./interceptor";
+import {
+  ingestHotelRates,
+  getCurrentPageBestMPD,
+  getLocationBestMPD,
+  getSearchTotalResults,
+  setSearchTotalResults,
+  getConsideredHotelsCount,
+  isAllResultsConsidered,
+} from "./registry";
 import { loadPricingSettings, milesForEarningLevel, DEFAULT_MAX_SEARCH_PAGES } from "./settings";
 import { getLogoUrl } from "./logo";
 import { extractSearchCriteria } from "./capture/criteria";
@@ -32,10 +39,17 @@ export function setBackgroundSearchLoading(loading: boolean): void {
   backgroundSearchLoading = loading;
 }
 
+export interface SummaryBannerOptions {
+  isLoadingOverride?: boolean;
+  totalHotels?: number | null;
+  consideredHotels?: number;
+  allCovered?: boolean;
+}
+
 export function updateSummaryBanner(
   bannerElem: HTMLElement,
   maxMPD: number,
-  isLoadingOverride?: boolean
+  optionsOrLoading?: boolean | SummaryBannerOptions
 ): void {
   if (maxMPD <= 0) return;
   const logoUrl = getLogoUrl(32);
@@ -50,12 +64,72 @@ export function updateSummaryBanner(
     return;
   }
 
-  const loading = typeof isLoadingOverride === "boolean" ? isLoadingOverride : isBackgroundSearchLoading();
+  const opts: SummaryBannerOptions =
+    typeof optionsOrLoading === "boolean"
+      ? { isLoadingOverride: optionsOrLoading }
+      : optionsOrLoading || {};
+
+  const loading =
+    typeof opts.isLoadingOverride === "boolean"
+      ? opts.isLoadingOverride
+      : isBackgroundSearchLoading();
+
+  let totalCount =
+    typeof opts.totalHotels === "number"
+      ? opts.totalHotels
+      : getSearchTotalResults();
+
+  let consideredCount =
+    typeof opts.consideredHotels === "number"
+      ? opts.consideredHotels
+      : getConsideredHotelsCount();
+
+  if (typeof document !== "undefined") {
+    const domCards = document.querySelectorAll(
+      'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"], [data-testid="hotel-card-pricing"]'
+    ).length;
+    consideredCount = Math.max(consideredCount, domCards);
+
+    if (totalCount === null) {
+      const statusElem = document.querySelector('[data-testid="search-result-update"]');
+      const match = statusElem?.textContent?.match(/(\d+)\s+properties found/i);
+      if (match) {
+        totalCount = Number(match[1]);
+      } else {
+        const pageCountText = document.querySelector('#paginationPageCount, [data-selenium="pagination-text"]')?.textContent || "";
+        if (pageCountText.includes("Page 1 of 1") && domCards > 0) {
+          totalCount = domCards;
+        }
+      }
+    }
+  }
+
+  const allCovered =
+    typeof opts.allCovered === "boolean"
+      ? opts.allCovered
+      : (typeof totalCount === "number" && totalCount > 0 && consideredCount >= totalCount) ||
+        isAllResultsConsidered();
+
+  let consideredSuffix = "";
+  if (consideredCount > 0) {
+    if (typeof totalCount === "number" && totalCount > 0) {
+      consideredSuffix = ` (considering ${consideredCount} of ${totalCount} properties)`;
+    } else {
+      consideredSuffix = ` (considering ${consideredCount} properties)`;
+    }
+  }
+
   const spinningClass = loading ? " aa-mpd-spinning" : "";
   const alertMsg = loading
     ? "Searching additional pages... There may be better deals on additional pages."
     : "There may be better deals on additional pages.";
-  const html = `<img class="aa-mpd-banner-logo${spinningClass}" src="${logoUrl}" alt="" aria-hidden="true" width="28" height="28" /><span class="aa-mpd-banner-text">Best earn rate for this location: <b>${maxMPD.toFixed(1)} miles/$</b>.</span><span class="aa-mpd-banner-alert">${alertMsg}</span>`;
+
+  const headerHtml = `<div class="aa-mpd-banner-header"><img class="aa-mpd-banner-logo${spinningClass}" src="${logoUrl}" alt="" aria-hidden="true" width="28" height="28" /><span class="aa-mpd-banner-text">Best earn rate for this location: <b>${maxMPD.toFixed(1)} miles/$</b>${consideredSuffix}.</span></div>`;
+  const alertHtml = !allCovered
+    ? `<div class="aa-mpd-banner-alert-row"><span class="aa-mpd-banner-alert">${alertMsg}</span></div>`
+    : "";
+
+  const html = `${headerHtml}${alertHtml}`;
   if (bannerElem.innerHTML !== html) {
     bannerElem.innerHTML = html;
   }
@@ -66,7 +140,7 @@ export function updateAllSearchBanners(): void {
   if (typeof document === "undefined") return;
   const banner = document.getElementById("aa-mpd-search-summary");
   if (!banner) return;
-  const bestMPD = getCurrentPageBestMPD();
+  const bestMPD = getLocationBestMPD() || getCurrentPageBestMPD();
   if (bestMPD > 0) {
     updateSummaryBanner(banner, bestMPD, isBackgroundSearchLoading());
   }
@@ -172,6 +246,10 @@ export async function runBackgroundSearchQueries(
         }
 
         const data = await res.json();
+        const total = extractTotalFilteredHotels(data);
+        if (typeof total === "number") {
+          setSearchTotalResults(total);
+        }
         const rates = extractHotelRatesFromPayload(data, nextBody);
         queriedPages++;
 

@@ -4,6 +4,7 @@ import {
   registerHotelPrice,
   getHotelIdFromCard,
   getCurrentPageBestMPD,
+  getLocationBestMPD,
   getEnrichedHotel,
   getMpdDot,
   getSearchSetMpdRange,
@@ -297,8 +298,9 @@ export function ensureChipStyles(): void {
     #aa-mpd-details-summary,
     .aa-mpd-banner {
       display: none;
-      align-items: center;
-      gap: 12px;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
       background: linear-gradient(135deg, #f0f7ff 0%, #e1effe 100%) !important;
       color: #0d2440 !important;
       border: 1px solid #bfdbfe !important;
@@ -311,6 +313,13 @@ export function ensureChipStyles(): void {
       line-height: 1.4 !important;
       box-shadow: 0 2px 8px rgba(13, 36, 64, 0.06) !important;
       box-sizing: border-box !important;
+    }
+
+    .aa-mpd-banner-header {
+      display: flex !important;
+      align-items: center !important;
+      width: 100% !important;
+      line-height: 1.4 !important;
     }
 
     .aa-mpd-banner-logo {
@@ -344,6 +353,12 @@ export function ensureChipStyles(): void {
       animation: aa-mpd-spin 1.2s linear infinite !important;
     }
 
+    .aa-mpd-banner-alert-row {
+      display: flex !important;
+      margin-left: 38px !important;
+      margin-top: 2px !important;
+    }
+
     .aa-mpd-banner-alert {
       display: inline-flex !important;
       align-items: center !important;
@@ -355,8 +370,6 @@ export function ensureChipStyles(): void {
       font-size: 13px !important;
       font-weight: 500 !important;
       line-height: 1.2 !important;
-      margin-left: 10px !important;
-      vertical-align: middle !important;
     }
   `;
   document.head.appendChild(style);
@@ -738,9 +751,9 @@ export const updateCards = (
       cards.forEach((card) => updateCardDots(card, minMpd, rangeMax, minPrice, maxPrice));
     }
 
-    // Cards render lazily, so the intercepted payload may know about better rates on this page
+    // Cards render lazily, so the intercepted payload may know about better rates on this page or across location
     if (useEnrichment) {
-      maxMPD = Math.max(maxMPD, getCurrentPageBestMPD());
+      maxMPD = Math.max(maxMPD, getLocationBestMPD(), getCurrentPageBestMPD());
     }
 
     if (maxMPD > 0) {

@@ -144,11 +144,42 @@ export function getCanonicalLocation(city: string, state: string): string {
   return `${cleanCity}, ${cleanState}`;
 }
 
+export function extractTotalFilteredHotels(payload: any): number | null {
+  if (!payload || typeof payload !== "object") return null;
+  if (payload.data && typeof payload.data === "object") {
+    for (const key of Object.keys(payload.data)) {
+      const searchInfo = payload.data[key]?.searchResult?.searchInfo;
+      if (typeof searchInfo?.totalFilteredHotels === "number") {
+        return searchInfo.totalFilteredHotels;
+      }
+      if (typeof payload.data[key]?.searchResult?.totalFilteredHotels === "number") {
+        return payload.data[key].searchResult.totalFilteredHotels;
+      }
+      if (typeof payload.data[key]?.totalProperties === "number") {
+        return payload.data[key].totalProperties;
+      }
+    }
+    if (typeof payload.data.searchResult?.searchInfo?.totalFilteredHotels === "number") {
+      return payload.data.searchResult.searchInfo.totalFilteredHotels;
+    }
+  }
+  if (typeof payload.searchResult?.searchInfo?.totalFilteredHotels === "number") {
+    return payload.searchResult.searchInfo.totalFilteredHotels;
+  }
+  if (typeof payload.totalFilteredHotels === "number") {
+    return payload.totalFilteredHotels;
+  }
+  if (typeof payload.totalProperties === "number") {
+    return payload.totalProperties;
+  }
+  return null;
+}
+
 /**
  * Dispatches intercepted hotel rates across the world boundary via CustomEvent and postMessage on window.
  * Also saves to sessionStorage to guarantee zero-drop sync across world initialization races.
  */
-export function dispatchInterceptedRates(rates: EnrichedHotelRate[]): void {
+export function dispatchInterceptedRates(rates: EnrichedHotelRate[], totalHotels?: number | null): void {
   if (!rates || rates.length === 0) return;
   if (typeof window !== "undefined") {
     try {
@@ -156,6 +187,9 @@ export function dispatchInterceptedRates(rates: EnrichedHotelRate[]): void {
       if (typeof sessionStorage !== "undefined") {
         try {
           sessionStorage.setItem("aa_hotels_latest_rates", JSON.stringify(rates));
+          if (typeof totalHotels === "number") {
+            sessionStorage.setItem("aa_hotels_latest_total", String(totalHotels));
+          }
         } catch {
           // Ignore quota or security errors
         }
@@ -167,6 +201,7 @@ export function dispatchInterceptedRates(rates: EnrichedHotelRate[]): void {
           {
             type: EVENT_NAME,
             hotels: rates,
+            totalHotels: typeof totalHotels === "number" ? totalHotels : undefined,
           },
           "*"
         );
@@ -176,7 +211,7 @@ export function dispatchInterceptedRates(rates: EnrichedHotelRate[]): void {
       if (typeof window.dispatchEvent === "function") {
         window.dispatchEvent(
           new CustomEvent(EVENT_NAME, {
-            detail: { hotels: rates },
+            detail: { hotels: rates, totalHotels: typeof totalHotels === "number" ? totalHotels : undefined },
           })
         );
       }
@@ -706,7 +741,8 @@ function inspectPayload(url: string, method: string, data: unknown, requestBody?
         // Debug recording is best effort
       }
     }
-    dispatchInterceptedRates(extractHotelRatesFromPayload(data, requestBody));
+    const totalHotels = extractTotalFilteredHotels(data);
+    dispatchInterceptedRates(extractHotelRatesFromPayload(data, requestBody), totalHotels);
     dispatchInterceptedRooms(extractRoomRatesFromPayload(data));
   } catch {
     // Ignore inspection errors to never interfere with page functionality

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   extractHotelRatesFromPayload,
+  extractTotalFilteredHotels,
   shouldInspectUrl,
   dispatchInterceptedRates,
   EVENT_NAME,
@@ -305,6 +306,58 @@ describe("Network Response Interceptor", () => {
     });
   });
 
+  describe("extractTotalFilteredHotels", () => {
+    it("extracts totalFilteredHotels from Agoda citySearch GraphQL payload", () => {
+      const payload = {
+        data: {
+          citySearch: {
+            searchResult: {
+              searchInfo: {
+                totalFilteredHotels: 64,
+              },
+            },
+          },
+        },
+      };
+      expect(extractTotalFilteredHotels(payload)).toBe(64);
+    });
+
+    it("extracts totalFilteredHotels for larger multi-page search like Miami (690 results)", () => {
+      const payload = {
+        data: {
+          citySearch: {
+            searchResult: {
+              searchInfo: {
+                totalFilteredHotels: 690,
+              },
+            },
+          },
+        },
+      };
+      expect(extractTotalFilteredHotels(payload)).toBe(690);
+    });
+
+    it("falls back to alternative totalProperties and top-level fields", () => {
+      expect(extractTotalFilteredHotels({ totalFilteredHotels: 120 })).toBe(120);
+      expect(extractTotalFilteredHotels({ totalProperties: 45 })).toBe(45);
+      expect(
+        extractTotalFilteredHotels({
+          data: {
+            areaSearch: {
+              totalProperties: 88,
+            },
+          },
+        })
+      ).toBe(88);
+    });
+
+    it("returns null for non-object or missing search counts", () => {
+      expect(extractTotalFilteredHotels(null)).toBeNull();
+      expect(extractTotalFilteredHotels({})).toBeNull();
+      expect(extractTotalFilteredHotels("string")).toBeNull();
+    });
+  });
+
   describe("dispatchInterceptedRates", () => {
     it("dispatches CustomEvent with rates detail on window", () => {
       let receivedDetail: any = null;
@@ -318,7 +371,24 @@ describe("Network Response Interceptor", () => {
       ];
       dispatchInterceptedRates(rates);
 
-      expect(receivedDetail).toEqual({ hotels: rates });
+      expect(receivedDetail).toEqual({ hotels: rates, totalHotels: undefined });
+      window.removeEventListener(EVENT_NAME, listener);
+    });
+
+    it("dispatches totalHotels count and persists to sessionStorage", () => {
+      let receivedDetail: any = null;
+      const listener = (e: Event) => {
+        receivedDetail = (e as CustomEvent).detail;
+      };
+      window.addEventListener(EVENT_NAME, listener);
+
+      const rates = [
+        { hotelId: "123", price: 100, baseMiles: 1000, tieredMiles: 1500 },
+      ];
+      dispatchInterceptedRates(rates, 64);
+
+      expect(receivedDetail).toEqual({ hotels: rates, totalHotels: 64 });
+      expect(sessionStorage.getItem("aa_hotels_latest_total")).toBe("64");
       window.removeEventListener(EVENT_NAME, listener);
     });
   });

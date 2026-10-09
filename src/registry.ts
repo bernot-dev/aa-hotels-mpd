@@ -11,11 +11,13 @@ export const hotelPriceRegistry = new Map<string, number>();
 const MPD_STORAGE_KEY = "aa_hotels_mpd_registry";
 const DATA_STORAGE_KEY = "aa_hotels_data_registry";
 const PRICE_STORAGE_KEY = "aa_hotels_price_registry";
+const TOTAL_STORAGE_KEY = "aa_hotels_total_registry";
 
 let activeSearchId: string | null = null;
 let activeDates: string | null = null;
 // Hotel IDs from the most recent results payload (one page of search results)
 let currentPageHotelIds: string[] = [];
+let searchTotalResults: number | null = null;
 
 // Initialize from sessionStorage if available
 try {
@@ -60,6 +62,15 @@ try {
         }
       }
     }
+
+    // 4. Restore total search results count
+    const rawTotal = sessionStorage.getItem(TOTAL_STORAGE_KEY);
+    if (rawTotal) {
+      const parsed = Number(rawTotal);
+      if (!isNaN(parsed) && parsed > 0) {
+        searchTotalResults = parsed;
+      }
+    }
   }
 } catch {
   // Ignore storage access errors
@@ -82,6 +93,12 @@ function persistToStorage(): void {
         priceObj[id] = price;
       });
       sessionStorage.setItem(PRICE_STORAGE_KEY, JSON.stringify(priceObj));
+
+      if (typeof searchTotalResults === "number" && searchTotalResults > 0) {
+        sessionStorage.setItem(TOTAL_STORAGE_KEY, String(searchTotalResults));
+      } else {
+        sessionStorage.removeItem(TOTAL_STORAGE_KEY);
+      }
     }
   } catch {
     // Ignore storage write errors
@@ -114,6 +131,7 @@ export function ingestHotelRates(
     hotelMpdRegistry.clear();
     hotelDataRegistry.clear();
     hotelPriceRegistry.clear();
+    searchTotalResults = null;
   }
 
   if (thisSearchId) activeSearchId = thisSearchId;
@@ -176,6 +194,43 @@ export function getCurrentPageBestMPD(): number {
   return best;
 }
 
+/**
+ * Best MPD across all known/considered hotels for the current destination search.
+ */
+export function getLocationBestMPD(): number {
+  let best = 0;
+  for (const mpd of hotelMpdRegistry.values()) {
+    if (mpd > best) best = mpd;
+  }
+  return best;
+}
+
+export function setSearchTotalResults(total: number | null): void {
+  if (typeof total === "number" && total > 0) {
+    searchTotalResults = total;
+    persistToStorage();
+  } else if (total === null) {
+    searchTotalResults = null;
+    persistToStorage();
+  }
+}
+
+export function getSearchTotalResults(): number | null {
+  return searchTotalResults;
+}
+
+export function getConsideredHotelsCount(): number {
+  return hotelMpdRegistry.size > 0 ? hotelMpdRegistry.size : hotelDataRegistry.size;
+}
+
+export function isAllResultsConsidered(): boolean {
+  if (typeof searchTotalResults === "number" && searchTotalResults > 0) {
+    const considered = getConsideredHotelsCount();
+    return considered >= searchTotalResults;
+  }
+  return false;
+}
+
 export function registerHotelMPD(hotelId: string, mpd: number): void {
   if (!hotelId || isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return;
   const current = hotelMpdRegistry.get(hotelId) || 0;
@@ -227,6 +282,7 @@ export function clearHotelMpdRegistry(): void {
   hotelMpdRegistry.clear();
   hotelDataRegistry.clear();
   hotelPriceRegistry.clear();
+  searchTotalResults = null;
   activeSearchId = null;
   activeDates = null;
   currentPageHotelIds = [];
@@ -235,6 +291,7 @@ export function clearHotelMpdRegistry(): void {
       sessionStorage.removeItem(MPD_STORAGE_KEY);
       sessionStorage.removeItem(DATA_STORAGE_KEY);
       sessionStorage.removeItem(PRICE_STORAGE_KEY);
+      sessionStorage.removeItem(TOTAL_STORAGE_KEY);
     }
   } catch {
     // Ignore storage errors

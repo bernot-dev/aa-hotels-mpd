@@ -191,7 +191,8 @@ describe("search-query module", () => {
       ingestHotelRates([hotelRate as any], "status_cardmember", true);
 
       updateAllSearchBanners();
-      expect(banner.innerHTML).toContain("Best earn rate for this location: <b>30.0 miles/$</b>.");
+      expect(banner.innerHTML).toContain("Best earn rate for this location: <b>30.0 miles/$</b>");
+      expect(banner.innerHTML).toContain("(considering 1 properties)");
     });
   });
 

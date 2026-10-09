@@ -7,6 +7,7 @@ import { extractRatesFromSearchCards } from "./capture/rates";
 import { extractSearchCriteria } from "./capture/criteria";
 import { setupMpdSort } from "./sort";
 import { abortBackgroundSearchQueries } from "./search-query";
+import { getSearchTotalResults } from "./registry";
 
 export interface SearchExpansionOptions {
   expandSearchResults: boolean;
@@ -35,10 +36,13 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
   let waitTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   let isWaitingForNewCards = false;
   let totalClicks = 0;
+  let totalScrollSteps = 0;
   let consecutiveNoChange = 0;
   let lastCardCount = 0;
   let initialPollElapsedMs = 0;
   const INITIAL_POLL_STEP_MS = 250;
+  let initialScrollY = typeof window !== "undefined" ? window.scrollY : 0;
+  let isScrollTargeting = false;
 
   const clearScheduledTimer = () => {
     if (scheduledTimer !== null) {
@@ -112,65 +116,133 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
 
   const checkAndExpand = () => {
     if (!expandSearchResults || isDisposed) return;
-    if (totalClicks >= maxClicks) return;
+    if (totalClicks >= maxClicks || totalScrollSteps >= maxClicks) return;
 
     const moreButton = findLoadMoreButton();
-    if (!moreButton) {
-      if (totalClicks > 0) {
-        clearInitialPoll();
+    if (moreButton) {
+      clearInitialPoll();
+
+      const currentCount = countCards();
+
+      if (isWaitingForNewCards) {
+        if (currentCount > lastCardCount) {
+          isWaitingForNewCards = false;
+          consecutiveNoChange = 0;
+          clearWaitTimeout();
+        } else {
+          // Still waiting for network response or DOM hydration; keep polling
+          scheduleCheck(pollIntervalMs);
+          return;
+        }
       }
-      return;
-    }
 
-    clearInitialPoll();
-
-    const currentCount = countCards();
-
-    if (isWaitingForNewCards) {
-      if (currentCount > lastCardCount) {
-        isWaitingForNewCards = false;
-        consecutiveNoChange = 0;
-        clearWaitTimeout();
-      } else {
-        // Still waiting for network response or DOM hydration; keep polling
+      if (isButtonBusy(moreButton)) {
         scheduleCheck(pollIntervalMs);
         return;
       }
+
+      lastCardCount = currentCount;
+      totalClicks++;
+      isWaitingForNewCards = true;
+
+      clearWaitTimeout();
+      waitTimeoutTimer = setTimeout(() => {
+        if (isWaitingForNewCards && !isDisposed) {
+          consecutiveNoChange++;
+          isWaitingForNewCards = false;
+          if (consecutiveNoChange < maxConsecutiveNoChange) {
+            scheduleCheck(pollIntervalMs);
+          } else {
+            console.warn(
+              "[AA-Hotels-MPD] Stopped search expansion: no new hotels appeared after multiple attempts."
+            );
+          }
+        }
+      }, waitTimeoutMs);
+
+      try {
+        moreButton.click();
+      } catch (err) {
+        console.warn("[AA-Hotels-MPD] Error clicking Load more button:", err);
+        isWaitingForNewCards = false;
+        clearWaitTimeout();
+      }
+
+      scheduleCheck(postClickDelayMs);
+      return;
     }
 
-    if (isButtonBusy(moreButton)) {
+    // Modern Agoda platform uses infinite scroll (no Load more button).
+    // Automatically trigger loading all hotel tiles on the current page while leaving viewport at top.
+    const currentCount = countCards();
+    const totalExpected = getSearchTotalResults();
+
+    if (typeof totalExpected === "number" && totalExpected > 0 && currentCount >= totalExpected) {
+      if (isScrollTargeting && typeof window !== "undefined") {
+        try {
+          window.scrollTo({ top: initialScrollY, behavior: "instant" });
+        } catch {}
+        isScrollTargeting = false;
+      }
+      clearInitialPoll();
+      return;
+    }
+
+    if (isScrollTargeting) {
+      // Step B: Viewport was triggered towards bottom; now restore to initial scroll position (top)
+      if (typeof window !== "undefined") {
+        try {
+          window.scrollTo({ top: initialScrollY, behavior: "instant" });
+          window.dispatchEvent(new Event("scroll"));
+        } catch {}
+      }
+      isScrollTargeting = false;
+
+      if (currentCount > lastCardCount) {
+        consecutiveNoChange = 0;
+        lastCardCount = currentCount;
+      } else {
+        consecutiveNoChange++;
+        if (consecutiveNoChange >= maxConsecutiveNoChange) {
+          clearInitialPoll();
+          return;
+        }
+      }
       scheduleCheck(pollIntervalMs);
       return;
     }
 
-    lastCardCount = currentCount;
-    totalClicks++;
-    isWaitingForNewCards = true;
+    // Step A: Trigger scroll towards bottom / pagination panel to hydrate more tiles
+    const pagination = document.querySelector(
+      '[data-selenium="pagination-panel"], #paginationContainer, [data-element-name*="pagination" i]'
+    );
+    const cards = document.querySelectorAll(CARD_SELECTOR);
+    const targetElement = pagination || (cards.length > 0 ? cards[cards.length - 1] : null);
 
-    clearWaitTimeout();
-    waitTimeoutTimer = setTimeout(() => {
-      if (isWaitingForNewCards && !isDisposed) {
-        consecutiveNoChange++;
-        isWaitingForNewCards = false;
-        if (consecutiveNoChange < maxConsecutiveNoChange) {
-          scheduleCheck(pollIntervalMs);
-        } else {
-          console.warn(
-            "[AA-Hotels-MPD] Stopped search expansion: no new hotels appeared after multiple attempts."
-          );
-        }
+    if (targetElement && typeof targetElement.scrollIntoView === "function") {
+      if (typeof window !== "undefined") {
+        initialScrollY = window.scrollY;
       }
-    }, waitTimeoutMs);
+      lastCardCount = currentCount;
+      totalScrollSteps++;
+      isScrollTargeting = true;
 
-    try {
-      moreButton.click();
-    } catch (err) {
-      console.warn("[AA-Hotels-MPD] Error clicking Load more button:", err);
-      isWaitingForNewCards = false;
-      clearWaitTimeout();
+      try {
+        targetElement.scrollIntoView({ behavior: "instant", block: "end" });
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("scroll"));
+        }
+      } catch (err) {
+        console.debug("[AA-Hotels-MPD] Error triggering scrollIntoView:", err);
+        isScrollTargeting = false;
+      }
+      scheduleCheck(pollIntervalMs);
+      return;
     }
 
-    scheduleCheck(postClickDelayMs);
+    if (totalClicks > 0 || totalScrollSteps > 0) {
+      clearInitialPoll();
+    }
   };
 
   const scheduleCheck = (delayMs: number) => {
@@ -205,6 +277,12 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
     clearScheduledTimer();
     clearInitialPoll();
     clearWaitTimeout();
+    if (isScrollTargeting && typeof window !== "undefined") {
+      try {
+        window.scrollTo({ top: initialScrollY, behavior: "instant" });
+      } catch {}
+      isScrollTargeting = false;
+    }
   };
 
   return { onMutation, teardown };

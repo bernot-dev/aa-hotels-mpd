@@ -4,7 +4,14 @@ import { processDetailsPage } from "./details";
 import { processSearchPage } from "./search";
 import { mountDebugButton } from "./debug";
 import { loadPricingSettings, loadSearchSettings, milesForEarningLevel } from "./settings";
-import { ingestHotelRates, RawHotelRate, hotelMpdRegistry, getCurrentPageBestMPD } from "./registry";
+import {
+  ingestHotelRates,
+  RawHotelRate,
+  hotelMpdRegistry,
+  getCurrentPageBestMPD,
+  getLocationBestMPD,
+  setSearchTotalResults,
+} from "./registry";
 import { updateMapPins } from "./map";
 import { ingestRoomRates } from "./allin";
 import type { RoomRate } from "./interceptor";
@@ -24,8 +31,11 @@ import { CapturedRate } from "./types";
 
 // Listen for intercepted network data dispatched by the MAIN world interceptor
 if (typeof window !== "undefined") {
-  const handleIncomingRates = async (hotels: RawHotelRate[] | undefined) => {
+  const handleIncomingRates = async (hotels: RawHotelRate[] | undefined, totalHotels?: number | null) => {
     if (isSensitiveCheckoutPage(window.location.href)) return;
+    if (typeof totalHotels === "number") {
+      setSearchTotalResults(totalHotels);
+    }
     if (!hotels || hotels.length === 0) return;
 
     const { includeBonusMiles, useAllInPricing, earningLevel } = await loadPricingSettings();
@@ -49,7 +59,7 @@ if (typeof window !== "undefined") {
     if (updated > 0 || hotelMpdRegistry.size > 0) {
       updateMapPins(document.body, useAllInPricing);
       const summaryBanner = document.getElementById("aa-mpd-search-summary");
-      const highest = Math.max(bestCardMpd, getCurrentPageBestMPD());
+      const highest = Math.max(bestCardMpd, getLocationBestMPD(), getCurrentPageBestMPD());
       if (summaryBanner && highest > 0) {
         updateSummaryBanner(summaryBanner, highest);
       }
@@ -125,7 +135,7 @@ if (typeof window !== "undefined") {
   // 1. Listen for postMessage (cross-world MAIN -> ISOLATED)
   window.addEventListener("message", async (event) => {
     if (event.data?.type === "AA_HOTELS_MPD_NETWORK_DATA") {
-      handleIncomingRates(event.data.hotels);
+      handleIncomingRates(event.data.hotels, event.data.totalHotels);
       handleIncomingRooms(event.data.rooms);
     } else if (event.data?.type === "AA_HOTELS_CAPTURED_SEARCH_REQUEST") {
       try {
@@ -148,13 +158,20 @@ if (typeof window !== "undefined") {
 
   // 2. Also listen for CustomEvent
   window.addEventListener("AA_HOTELS_MPD_NETWORK_DATA", (e: Event) => {
-    const customEvent = e as CustomEvent<{ hotels: RawHotelRate[] }>;
-    handleIncomingRates(customEvent.detail?.hotels);
+    const customEvent = e as CustomEvent<{ hotels: RawHotelRate[]; totalHotels?: number }>;
+    handleIncomingRates(customEvent.detail?.hotels, customEvent.detail?.totalHotels);
   });
 
   // 3. Hydrate immediately from shared sessionStorage if data arrived before scripts loaded
   try {
     if (typeof sessionStorage !== "undefined") {
+      const cachedTotal = sessionStorage.getItem("aa_hotels_latest_total");
+      if (cachedTotal) {
+        const parsedTotal = Number(cachedTotal);
+        if (!isNaN(parsedTotal) && parsedTotal > 0) {
+          setSearchTotalResults(parsedTotal);
+        }
+      }
       const cached = sessionStorage.getItem("aa_hotels_latest_rates");
       if (cached) {
         const parsed = JSON.parse(cached);

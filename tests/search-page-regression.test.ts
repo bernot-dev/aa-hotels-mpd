@@ -70,7 +70,8 @@ describe('Search Page Presentation Regression Tests', () => {
     const summary = document.getElementById('aa-mpd-search-summary');
     expect(summary).not.toBeNull();
     expect(summary?.style.display).toBe('block');
-    expect(summary?.innerHTML).toContain('Best earn rate for this location: <b>20.0 miles/$</b>.');
+    expect(summary?.innerHTML).toContain('Best earn rate for this location: <b>20.0 miles/$</b>');
+    expect(summary?.innerHTML).toContain('(considering 2 properties)');
     expect(summary?.nextElementSibling).toBe(container);
 
     // 2. Verify both cards received badges
@@ -235,7 +236,7 @@ describe('Search Page Presentation Regression Tests', () => {
     const banner = document.getElementById('aa-mpd-search-summary');
     expect(banner).not.toBeNull();
     expect(banner?.style.display).toBe('block');
-    expect(banner?.innerHTML).toContain('Best earn rate for this location: <b>17.5 miles/$</b>.');
+    expect(banner?.innerHTML).toContain('Best earn rate for this location: <b>17.5 miles/$</b>');
 
     const badges = fixtureContainer!.querySelectorAll('.aa-mpd-badge');
     expect(badges.length).toBeGreaterThanOrEqual(42);
