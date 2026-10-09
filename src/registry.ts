@@ -6,9 +6,11 @@ export type RawHotelRate = EnrichedHotelRate;
 
 export const hotelMpdRegistry = new Map<string, number>();
 export const hotelDataRegistry = new Map<string, EnrichedHotelRate>();
+export const hotelPriceRegistry = new Map<string, number>();
 
 const MPD_STORAGE_KEY = "aa_hotels_mpd_registry";
 const DATA_STORAGE_KEY = "aa_hotels_data_registry";
+const PRICE_STORAGE_KEY = "aa_hotels_price_registry";
 
 let activeSearchId: string | null = null;
 let activeDates: string | null = null;
@@ -44,6 +46,20 @@ try {
         });
       }
     }
+
+    // 3. Restore price registry
+    const rawPrices = sessionStorage.getItem(PRICE_STORAGE_KEY);
+    if (rawPrices) {
+      const parsed = JSON.parse(rawPrices);
+      if (typeof parsed === "object" && parsed !== null) {
+        for (const id of Object.keys(parsed)) {
+          const price = (parsed as Record<string, number>)[id];
+          if (typeof price === "number" && price > 0) {
+            hotelPriceRegistry.set(id, price);
+          }
+        }
+      }
+    }
   }
 } catch {
   // Ignore storage access errors
@@ -60,6 +76,12 @@ function persistToStorage(): void {
 
       const dataArray = Array.from(hotelDataRegistry.values());
       sessionStorage.setItem(DATA_STORAGE_KEY, JSON.stringify(dataArray));
+
+      const priceObj: Record<string, number> = {};
+      hotelPriceRegistry.forEach((price, id) => {
+        priceObj[id] = price;
+      });
+      sessionStorage.setItem(PRICE_STORAGE_KEY, JSON.stringify(priceObj));
     }
   } catch {
     // Ignore storage write errors
@@ -91,6 +113,7 @@ export function ingestHotelRates(
   ) {
     hotelMpdRegistry.clear();
     hotelDataRegistry.clear();
+    hotelPriceRegistry.clear();
   }
 
   if (thisSearchId) activeSearchId = thisSearchId;
@@ -112,6 +135,13 @@ export function ingestHotelRates(
 
     if (price <= 0) return;
 
+    const nightlyPrice = (useAllInPricing && rate.nightlyPrice > 0)
+      ? rate.nightlyPrice
+      : (rate.nights && rate.nights > 0 ? price / rate.nights : price);
+    if (nightlyPrice > 0) {
+      hotelPriceRegistry.set(hotelId, nightlyPrice);
+    }
+
     const miles = milesForEarningLevel(baseMiles, tieredMiles, earningLevel);
 
     if (miles <= 0) return;
@@ -126,7 +156,7 @@ export function ingestHotelRates(
     }
   });
 
-  if (updatedCount > 0 || hotelDataRegistry.size > 0) {
+  if (updatedCount > 0 || hotelDataRegistry.size > 0 || hotelPriceRegistry.size > 0) {
     persistToStorage();
   }
   return updatedCount;
@@ -196,6 +226,7 @@ export function getBaseMPD(
 export function clearHotelMpdRegistry(): void {
   hotelMpdRegistry.clear();
   hotelDataRegistry.clear();
+  hotelPriceRegistry.clear();
   activeSearchId = null;
   activeDates = null;
   currentPageHotelIds = [];
@@ -203,6 +234,7 @@ export function clearHotelMpdRegistry(): void {
     if (typeof sessionStorage !== "undefined") {
       sessionStorage.removeItem(MPD_STORAGE_KEY);
       sessionStorage.removeItem(DATA_STORAGE_KEY);
+      sessionStorage.removeItem(PRICE_STORAGE_KEY);
     }
   } catch {
     // Ignore storage errors
@@ -297,3 +329,44 @@ export function getMpdDot(mpd: number, minMpd?: number, maxMpd?: number): "🟢"
   if (ratio <= 0.33) return "🔴";
   return "🟡";
 }
+
+export function registerHotelPrice(hotelId: string, nightlyPrice: number): void {
+  if (!hotelId || isNaN(nightlyPrice) || !isFinite(nightlyPrice) || nightlyPrice <= 0) return;
+  hotelPriceRegistry.set(hotelId, nightlyPrice);
+  persistToStorage();
+}
+
+export function getSearchSetPriceRange(): { minPrice: number; maxPrice: number } {
+  const values = Array.from(hotelPriceRegistry.values()).filter((v) => typeof v === "number" && v > 0);
+  if (values.length === 0) return { minPrice: 0, maxPrice: 0 };
+  return {
+    minPrice: Math.min(...values),
+    maxPrice: Math.max(...values),
+  };
+}
+
+/**
+ * Rates a hotel with 1-3 dollar sign emojis (💲, 💲💲, 💲💲💲).
+ * The most expensive options in the search have 3 dollar signs. The least expensive have 1 dollar sign.
+ */
+export function getPriceDollarSigns(
+  nightlyPrice: number,
+  minPrice?: number,
+  maxPrice?: number
+): "💲" | "💲💲" | "💲💲💲" {
+  if (minPrice === undefined || maxPrice === undefined || maxPrice <= 0) {
+    const range = getSearchSetPriceRange();
+    minPrice = range.minPrice;
+    maxPrice = range.maxPrice;
+  }
+
+  if (maxPrice <= minPrice || minPrice <= 0) {
+    return "💲";
+  }
+
+  const ratio = (nightlyPrice - minPrice) / (maxPrice - minPrice);
+  if (ratio <= 0.33) return "💲";
+  if (ratio <= 0.66) return "💲💲";
+  return "💲💲💲";
+}
+

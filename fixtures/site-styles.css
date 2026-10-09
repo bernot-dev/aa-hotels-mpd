@@ -835,13 +835,11 @@ a {
   display: inline-flex !important;
   align-items: center !important;
   vertical-align: middle !important;
-  gap: 7px !important;
-  padding: 6px 14px !important;
-  border-radius: 9999px !important;
+  border-radius: 12px !important;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
   font-size: 13px !important;
   font-weight: 600 !important;
-  line-height: 1.2 !important;
+  line-height: 1.3 !important;
   white-space: nowrap !important;
   text-decoration: none !important;
   box-sizing: border-box !important;
@@ -856,15 +854,18 @@ a {
 }
 
 [data-element-name="property-card-info"] .aa-mpd-chip {
-  margin-top: 12px !important;
-  margin-bottom: 4px !important;
+  margin-top: 10px !important;
+  margin-bottom: 6px !important;
+  padding: 8px 14px !important;
 }
 
 [data-testid="upc_caption"] .aa-mpd-chip,
 [data-selenium^="points-max"] .aa-mpd-chip {
   margin-left: 6px !important;
   padding: 3px 10px !important;
+  border-radius: 9999px !important;
   font-size: 12px !important;
+  gap: 7px !important;
 }
 
 .aa-mpd-badge:hover,
@@ -879,23 +880,67 @@ a {
   border-color: #86efac !important;
 }
 
+.aa-mpd-chip-inner {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
 .aa-mpd-chip-icon {
-  width: 18px !important;
-  height: 18px !important;
+  width: 40px !important;
+  height: 40px !important;
   object-fit: contain !important;
   flex-shrink: 0 !important;
   display: inline-block !important;
   vertical-align: middle !important;
 }
 
-.aa-mpd-chip-price {
-  font-weight: 700 !important;
-  color: #0d2440 !important;
+.aa-mpd-chip-icon-sm {
+  width: 16px !important;
+  height: 16px !important;
 }
 
-.aa-mpd-chip-sep {
-  opacity: 0.4 !important;
+.aa-mpd-chip-rows {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+}
+
+.aa-mpd-chip-row {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
   font-size: 12px !important;
+  font-weight: 600 !important;
+  color: #0d2440 !important;
+  line-height: 1.3 !important;
+}
+
+.aa-mpd-chip-indicator {
+  min-width: 42px !important;
+  text-align: center !important;
+  display: inline-block !important;
+  font-size: 13px !important;
+  flex-shrink: 0 !important;
+}
+
+.aa-mpd-chip-dollars {
+  font-size: 12px !important;
+  letter-spacing: -1px !important;
+}
+
+.aa-mpd-chip-divider {
+  opacity: 0.35 !important;
+  color: #0b3558 !important;
+  font-weight: 300 !important;
+  user-select: none !important;
+  flex-shrink: 0 !important;
+}
+
+.aa-mpd-chip-value {
+  font-weight: 600 !important;
+  color: #0d2440 !important;
+  white-space: nowrap !important;
 }
 
 .aa-mpd-chip-rate {

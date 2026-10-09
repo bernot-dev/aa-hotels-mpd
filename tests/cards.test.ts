@@ -9,9 +9,17 @@ import {
   isTotalPriceText,
   processCard,
   updateCards,
+  createOrUpdateChip,
+  calculateNightlyPrice,
+  calculateCPM,
   CARD_SELECTOR,
   ROOM_CARD_SELECTOR,
 } from '../src/cards';
+import {
+  getPriceDollarSigns,
+  registerHotelPrice,
+  clearHotelMpdRegistry,
+} from '../src/registry';
 import { getNights } from '../src/nights';
 import { getRouteType } from '../src/router';
 
@@ -146,14 +154,15 @@ describe('Search Fixture Processing (search-guest.html)', () => {
     // Badges go into property-card-info
     badges.forEach((b) => expect(b.parentElement!.getAttribute('data-element-name')).toBe('property-card-info'));
 
-    // First card: chip includes all-in price and mpd
+    // First card: chip includes 3-row layout with miles per dollar, cpm, and nightly rate
     const first = pricedCards[0];
-    const price = Number(first.querySelector('[data-element-name="fpc-room-price"]')!.getAttribute('data-fpc-value'));
     const firstInfo = first.querySelector('[data-element-name="property-card-info"]')!;
     const chip = firstInfo.querySelector('.aa-mpd-badge')!;
     expect(chip).not.toBeNull();
-    expect(chip.textContent).toContain(`$${price} all-in`);
-    expect(chip.textContent).toContain('mpd');
+    expect(chip.textContent).toContain('miles per dollar');
+    expect(chip.textContent).toContain('¢ per mile');
+    expect(chip.textContent).toContain('/nt');
+    expect(chip.textContent).toMatch(/💲+/);
 
     // Idempotency: running processCard again should not create duplicate badges
     cards.forEach((card) => processCard(card, 2, false));
@@ -226,3 +235,94 @@ describe('End-to-End updateCards Runner', () => {
     });
   });
 });
+
+describe('3-Row MPD Chip & Price Rating Tests', () => {
+  beforeEach(() => {
+    clearHotelMpdRegistry();
+  });
+
+  it('renders 3-row chip with single logo, MPD, CPM, and dollar-sign rating', () => {
+    const dom = new JSDOM('<!DOCTYPE html><html><body><div id="info"></div></body></html>');
+    const container = dom.window.document.getElementById('info')!;
+
+    // Hotel with 16.3 MPD, $700.22 all-in for 2 nights ($350/nt), CPM ~ 6.1
+    const enrichedSample = {
+      hotelId: 'omni-dallas',
+      hotelName: 'Omni Dallas Hotel',
+      price: 700.22,
+      basePrice: 611.68,
+      allInPrice: 700.22,
+      nightlyPrice: 350.11,
+      fees: 88.54,
+      baseMiles: 500,
+      tieredMiles: 11400,
+      city: 'Dallas',
+      state: 'TX',
+      location: 'Dallas, TX',
+      nights: 2,
+    };
+
+    // Pre-register hotel prices to set range: cheap ($150), mid ($250), expensive ($350)
+    registerHotelPrice('cheap-1', 150);
+    registerHotelPrice('mid-1', 250);
+    registerHotelPrice('omni-dallas', 350);
+
+    const chip = createOrUpdateChip(
+      container,
+      16.3,
+      700.22,
+      enrichedSample,
+      true,
+      undefined,
+      undefined,
+      true,
+      2
+    );
+
+    expect(chip).not.toBeNull();
+    // One single logo image
+    const icons = chip.querySelectorAll('.aa-mpd-chip-icon');
+    expect(icons.length).toBe(1);
+    expect(icons[0].getAttribute('width')).toBe('40');
+    expect(icons[0].getAttribute('height')).toBe('40');
+
+    // 3 rows
+    const rows = chip.querySelectorAll('.aa-mpd-chip-row');
+    expect(rows.length).toBe(3);
+
+    // Row 1: MPD
+    expect(rows[0].querySelector('.aa-mpd-chip-value')?.textContent).toBe('16.3 miles per dollar');
+    expect(rows[0].querySelector('.aa-mpd-chip-indicator')?.textContent).toMatch(/[🟢🟡🔴]/);
+    expect(rows[0].querySelector('.aa-mpd-chip-divider')?.textContent).toBe('|');
+
+    // Row 2: CPM (100 / 16.3 = 6.1¢ per mile)
+    expect(rows[1].querySelector('.aa-mpd-chip-value')?.textContent).toBe('6.1¢ per mile');
+    expect(rows[1].querySelector('.aa-mpd-chip-indicator')?.textContent).toMatch(/[🟢🟡🔴]/);
+    expect(rows[1].querySelector('.aa-mpd-chip-divider')?.textContent).toBe('|');
+
+    // Row 3: Dollar rating and nightly price
+    expect(rows[2].querySelector('.aa-mpd-chip-value')?.textContent).toBe('$350/nt');
+    expect(rows[2].querySelector('.aa-mpd-chip-indicator')?.textContent).toBe('💲💲💲');
+    expect(rows[2].querySelector('.aa-mpd-chip-divider')?.textContent).toBe('|');
+  });
+
+  it('assigns 1 dollar sign to least expensive and 3 to most expensive', () => {
+    registerHotelPrice('h1', 100);
+    registerHotelPrice('h2', 200);
+    registerHotelPrice('h3', 300);
+
+    expect(getPriceDollarSigns(100)).toBe('💲');
+    expect(getPriceDollarSigns(200)).toBe('💲💲');
+    expect(getPriceDollarSigns(300)).toBe('💲💲💲');
+  });
+
+  it('calculates nightly price and CPM correctly', () => {
+    expect(calculateCPM(16.3)).toBe(6.1);
+    expect(calculateCPM(10.0)).toBe(10.0);
+    expect(calculateCPM(20.0)).toBe(5.0);
+
+    expect(calculateNightlyPrice(700, undefined, 2)).toBe(350);
+    expect(calculateNightlyPrice(300, undefined, 1)).toBe(300);
+  });
+});
+

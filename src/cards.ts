@@ -1,11 +1,14 @@
 import { getNights } from "./nights";
 import {
   registerHotelMPD,
+  registerHotelPrice,
   getHotelIdFromCard,
   getCurrentPageBestMPD,
   getEnrichedHotel,
   getMpdDot,
   getSearchSetMpdRange,
+  getSearchSetPriceRange,
+  getPriceDollarSigns,
 } from "./registry";
 import {
   applyAllInPrice,
@@ -88,6 +91,30 @@ export const innermostCards = (cards: ArrayLike<Element>): Element[] => {
 
 export const CHIP_STYLE_ID = "aa-mpd-chip-styles";
 
+export function calculateNightlyPrice(
+  price: number,
+  enriched: EnrichedHotelRate | undefined,
+  nights: number = 1,
+  useAllInPricing: boolean = true
+): number {
+  if (enriched && useAllInPricing && enriched.nightlyPrice > 0) {
+    return enriched.nightlyPrice;
+  }
+  const stayNights = (enriched?.nights && enriched.nights > 0) ? enriched.nights : (nights > 0 ? nights : 1);
+  const effectiveTotalPrice = (enriched && useAllInPricing && enriched.allInPrice > 0)
+    ? enriched.allInPrice
+    : (enriched && enriched.basePrice > 0 ? enriched.basePrice : price);
+  if (effectiveTotalPrice > 0 && stayNights > 0) {
+    return effectiveTotalPrice / stayNights;
+  }
+  return 0;
+}
+
+export function calculateCPM(mpd: number): number {
+  if (isNaN(mpd) || !isFinite(mpd) || mpd <= 0) return 0;
+  return Number((100 / mpd).toFixed(1));
+}
+
 export function ensureChipStyles(): void {
   if (typeof document === "undefined") return;
   if (document.getElementById(CHIP_STYLE_ID)) return;
@@ -101,13 +128,11 @@ export function ensureChipStyles(): void {
       display: inline-flex !important;
       align-items: center !important;
       vertical-align: middle !important;
-      gap: 7px !important;
-      padding: 6px 14px !important;
-      border-radius: 9999px !important;
+      border-radius: 12px !important;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
       font-size: 13px !important;
       font-weight: 600 !important;
-      line-height: 1.2 !important;
+      line-height: 1.3 !important;
       white-space: nowrap !important;
       text-decoration: none !important;
       box-sizing: border-box !important;
@@ -124,15 +149,18 @@ export function ensureChipStyles(): void {
     }
 
     [data-element-name="property-card-info"] .aa-mpd-chip {
-      margin-top: 12px !important;
-      margin-bottom: 4px !important;
+      margin-top: 10px !important;
+      margin-bottom: 6px !important;
+      padding: 8px 14px !important;
     }
 
     [data-testid="upc_caption"] .aa-mpd-chip,
     [data-selenium^="points-max"] .aa-mpd-chip {
       margin-left: 6px !important;
       padding: 3px 10px !important;
+      border-radius: 9999px !important;
       font-size: 12px !important;
+      gap: 7px !important;
     }
 
     .aa-mpd-badge:hover,
@@ -147,23 +175,67 @@ export function ensureChipStyles(): void {
       border-color: #86efac !important;
     }
 
+    .aa-mpd-chip-inner {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+    }
+
     .aa-mpd-chip-icon {
-      width: 18px !important;
-      height: 18px !important;
+      width: 40px !important;
+      height: 40px !important;
       object-fit: contain !important;
       flex-shrink: 0 !important;
       display: inline-block !important;
       vertical-align: middle !important;
     }
 
-    .aa-mpd-chip-price {
-      font-weight: 700 !important;
-      color: #0d2440 !important;
+    .aa-mpd-chip-icon-sm {
+      width: 16px !important;
+      height: 16px !important;
     }
 
-    .aa-mpd-chip-sep {
-      opacity: 0.4 !important;
+    .aa-mpd-chip-rows {
+      display: flex !important;
+      flex-direction: column !important;
+      gap: 2px !important;
+    }
+
+    .aa-mpd-chip-row {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
       font-size: 12px !important;
+      font-weight: 600 !important;
+      color: #0d2440 !important;
+      line-height: 1.3 !important;
+    }
+
+    .aa-mpd-chip-indicator {
+      min-width: 42px !important;
+      text-align: center !important;
+      display: inline-block !important;
+      font-size: 13px !important;
+      flex-shrink: 0 !important;
+    }
+
+    .aa-mpd-chip-dollars {
+      font-size: 12px !important;
+      letter-spacing: -1px !important;
+    }
+
+    .aa-mpd-chip-divider {
+      opacity: 0.35 !important;
+      color: #0b3558 !important;
+      font-weight: 300 !important;
+      user-select: none !important;
+      flex-shrink: 0 !important;
+    }
+
+    .aa-mpd-chip-value {
+      font-weight: 600 !important;
+      color: #0d2440 !important;
+      white-space: nowrap !important;
     }
 
     .aa-mpd-chip-rate {
@@ -227,14 +299,15 @@ export function createOrUpdateChip(
   useAllInPricing: boolean,
   minMpd?: number,
   maxMpd?: number,
-  includePrice: boolean = true
+  includePrice: boolean = true,
+  nights: number = 1
 ): HTMLElement {
   ensureChipStyles();
 
   const formattedMPD = mpd.toFixed(1);
   const dot = getMpdDot(mpd, minMpd, maxMpd);
-  const logoUrl = getLogoUrl(32);
   const allInPrice = (enriched && enriched.allInPrice > 0) ? enriched.allInPrice : price;
+  const nightlyPrice = calculateNightlyPrice(price, enriched, nights, useAllInPricing);
 
   let chip = container.querySelector<HTMLElement>(':scope > .aa-mpd-badge') ||
              container.querySelector<HTMLElement>('.aa-mpd-badge');
@@ -247,15 +320,24 @@ export function createOrUpdateChip(
 
   chip.dataset.rate = formattedMPD;
   chip.dataset.dot = dot;
+  if (nightlyPrice > 0) {
+    chip.dataset.nightlyPrice = String(nightlyPrice);
+  }
+
+  const cpm = calculateCPM(mpd);
+  const formattedCPM = cpm > 0 ? cpm.toFixed(1) : '0.0';
+  chip.dataset.cpm = formattedCPM;
 
   if (enriched) {
     chip.removeAttribute('data-pending-api');
     chip.setAttribute('data-pricing-type', useAllInPricing ? 'all-in' : 'base');
-    if (enriched.allInPrice > 0 && enriched.allInPrice !== enriched.basePrice) {
-      chip.title = `Total with taxes & fees: $${enriched.allInPrice.toFixed(2)} (Base: $${enriched.basePrice.toFixed(2)})`;
-    }
+    const baseP = enriched.basePrice > 0 ? enriched.basePrice : price;
+    chip.title = `Earn: ${formattedMPD} miles per dollar (${formattedCPM}¢/mile)\nNightly: $${Math.round(nightlyPrice)}/night\nTotal with taxes & fees: $${enriched.allInPrice.toFixed(2)} (Base: $${baseP.toFixed(2)})`;
   } else {
     chip.setAttribute('data-pending-api', 'true');
+    if (mpd > 0) {
+      chip.title = `Earn: ${formattedMPD} miles per dollar (${formattedCPM}¢/mile)\nNightly: $${Math.round(nightlyPrice)}/night`;
+    }
   }
 
   if (mpd >= 20) {
@@ -268,18 +350,41 @@ export function createOrUpdateChip(
     chip.classList.remove('aa-mpd-high-rate');
   }
 
-  const priceFormatted = (includePrice && allInPrice > 0)
-    ? `$${allInPrice % 1 === 0 ? allInPrice.toLocaleString() : allInPrice.toFixed(2)} all-in`
-    : '';
+  let newHtml: string;
+  if (includePrice) {
+    const logoUrl = getLogoUrl(48);
+    const dollarSigns = getPriceDollarSigns(nightlyPrice);
+    const nightlyFormatted = nightlyPrice > 0 ? `$${Math.round(nightlyPrice).toLocaleString()}/nt` : '$0/nt';
 
-  const newHtml = [
-    `<img class="aa-mpd-chip-icon" src="${logoUrl}" alt="" aria-hidden="true" width="18" height="18" />`,
-    priceFormatted ? `<span class="aa-mpd-chip-price">${priceFormatted}</span>` : '',
-    priceFormatted ? `<span class="aa-mpd-chip-sep">•</span>` : '',
-    `<span class="aa-mpd-chip-rate">${dot} ${formattedMPD} mpd</span>`,
-  ]
-    .filter(Boolean)
-    .join(' ');
+    newHtml = [
+      `<div class="aa-mpd-chip-inner">`,
+      `  <img class="aa-mpd-chip-icon" src="${logoUrl}" alt="" aria-hidden="true" width="40" height="40" />`,
+      `  <div class="aa-mpd-chip-rows">`,
+      `    <div class="aa-mpd-chip-row">`,
+      `      <span class="aa-mpd-chip-indicator">${dot}</span>`,
+      `      <span class="aa-mpd-chip-divider">|</span>`,
+      `      <span class="aa-mpd-chip-value">${formattedMPD} miles per dollar</span>`,
+      `    </div>`,
+      `    <div class="aa-mpd-chip-row">`,
+      `      <span class="aa-mpd-chip-indicator">${dot}</span>`,
+      `      <span class="aa-mpd-chip-divider">|</span>`,
+      `      <span class="aa-mpd-chip-value">${formattedCPM}¢ per mile</span>`,
+      `    </div>`,
+      `    <div class="aa-mpd-chip-row">`,
+      `      <span class="aa-mpd-chip-indicator aa-mpd-chip-dollars">${dollarSigns}</span>`,
+      `      <span class="aa-mpd-chip-divider">|</span>`,
+      `      <span class="aa-mpd-chip-value">${nightlyFormatted}</span>`,
+      `    </div>`,
+      `  </div>`,
+      `</div>`,
+    ].join('\n');
+  } else {
+    const logoUrl = getLogoUrl(32);
+    newHtml = [
+      `<img class="aa-mpd-chip-icon aa-mpd-chip-icon-sm" src="${logoUrl}" alt="" aria-hidden="true" width="16" height="16" />`,
+      `<span class="aa-mpd-chip-rate">${dot} ${formattedMPD} mpd</span>`,
+    ].join(' ');
+  }
 
   if (chip.innerHTML !== newHtml) {
     chip.innerHTML = newHtml;
@@ -288,21 +393,43 @@ export function createOrUpdateChip(
   return chip;
 }
 
-export function updateCardDots(card: Element, minMpd: number, maxMpd: number): void {
+export function updateCardDots(
+  card: Element,
+  minMpd: number,
+  maxMpd: number,
+  minPrice?: number,
+  maxPrice?: number
+): void {
   const chips = card.querySelectorAll<HTMLElement>('.aa-mpd-badge');
   chips.forEach((chip) => {
     const rate = Number(chip.dataset.rate);
     if (isNaN(rate) || rate <= 0) return;
 
     const dot = getMpdDot(rate, minMpd, maxMpd);
-    if (chip.dataset.dot === dot) return;
     chip.dataset.dot = dot;
 
+    // Compact chip single rate text
     const rateSpan = chip.querySelector('.aa-mpd-chip-rate');
     if (rateSpan) {
       const newText = `${dot} ${rate.toFixed(1)} mpd`;
       if (rateSpan.textContent !== newText) {
         rateSpan.textContent = newText;
+      }
+    }
+
+    // 3-row chip indicators
+    const indicators = chip.querySelectorAll<HTMLElement>('.aa-mpd-chip-indicator');
+    if (indicators.length >= 2) {
+      if (indicators[0].textContent !== dot) indicators[0].textContent = dot;
+      if (indicators[1].textContent !== dot) indicators[1].textContent = dot;
+    }
+
+    // 3-row chip dollar sign rating
+    const nightlyPrice = Number(chip.dataset.nightlyPrice);
+    if (nightlyPrice > 0 && indicators.length >= 3) {
+      const dollars = getPriceDollarSigns(nightlyPrice, minPrice, maxPrice);
+      if (indicators[2].textContent !== dollars) {
+        indicators[2].textContent = dollars;
       }
     }
   });
@@ -415,6 +542,10 @@ export const processCard = (
       tier.querySelectorAll('.aa-mpd-badge').forEach((b) => b.remove());
     });
     if (cardMaxMPD > 0) {
+      const nightlyPrice = calculateNightlyPrice(effectivePrice, enriched, nights, useAllInPricing);
+      if (hotelId && nightlyPrice > 0) {
+        registerHotelPrice(hotelId, nightlyPrice);
+      }
       createOrUpdateChip(
         infoContainer,
         cardMaxMPD,
@@ -423,7 +554,8 @@ export const processCard = (
         useAllInPricing,
         undefined,
         undefined,
-        true
+        true,
+        nights
       );
     }
   } else {
@@ -441,7 +573,8 @@ export const processCard = (
         useAllInPricing,
         undefined,
         undefined,
-        false
+        false,
+        nights
       );
     });
   }
@@ -498,8 +631,9 @@ export const updateCards = (
 
     // Update relative dots on all cards based on current search set range
     const { minMpd, maxMpd: rangeMax } = getSearchSetMpdRange();
-    if (minMpd > 0 && rangeMax > 0) {
-      cards.forEach((card) => updateCardDots(card, minMpd, rangeMax));
+    const { minPrice, maxPrice } = getSearchSetPriceRange();
+    if ((minMpd > 0 && rangeMax > 0) || (minPrice > 0 && maxPrice > 0)) {
+      cards.forEach((card) => updateCardDots(card, minMpd, rangeMax, minPrice, maxPrice));
     }
 
     // Cards render lazily, so the intercepted payload may know about better rates on this page
