@@ -48,7 +48,7 @@ export function getColorForRatio(ratio: number): string {
  */
 export function updateMapPins(root: Element = document.body): void {
   const pins = root.querySelectorAll<HTMLElement>(
-    'button[data-testid^="hotel-pin-"], [data-testid^="hotel-pin-"]'
+    'button[data-selenium*="pin"], [data-selenium*="pin"], .static-map-pin, [class*="map-pin"]'
   );
   if (pins.length === 0) return;
 
@@ -96,18 +96,14 @@ export function processMapPreviewCards(
   nights: number = 1,
   includeBonusMiles: boolean = false
 ): void {
-  // Preview cards may have data-testid="hotel-card-pricing" or contain earn-price + tier-earn-rewards
   const previewCards = root.querySelectorAll(
-    '[data-testid="hotel-card-pricing"], [data-testid="earn-price"]'
+    'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]'
   );
 
   let newRatesFound = false;
 
   previewCards.forEach((elem) => {
-    const card = elem.matches('[data-testid="hotel-card-pricing"]')
-      ? elem
-      : elem.closest('[data-testid="hotel-card-pricing"]') || elem.parentElement;
-
+    const card = elem;
     if (!card) return;
 
     const { cardMaxMPD } = processCard(card, nights, includeBonusMiles);

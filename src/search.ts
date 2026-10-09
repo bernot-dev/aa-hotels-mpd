@@ -1,7 +1,9 @@
 import { updateCards } from "./cards";
 import { getNights } from "./nights";
 import { processMapPreviewCards, updateMapPins } from "./map";
-import { resetRateCollector } from "./capture/collector";
+import { resetRateCollector, queueRatesForDispatch } from "./capture/collector";
+import { extractRatesFromSearchCards } from "./capture/rates";
+import { extractSearchCriteria } from "./capture/criteria";
 
 export interface SearchExpansionOptions {
   expandSearchResults: boolean;
@@ -57,15 +59,15 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
   };
 
   const findLoadMoreButton = (): HTMLButtonElement | null => {
-    // 1. Check aria-label="Load more" or data-testid
+    // 1. Check data-selenium, data-element-name, or pagination-next-btn
     const byAttr = document.querySelector<HTMLButtonElement>(
-      'button[aria-label*="load more" i], [data-testid*="load-more" i], [data-testid="load-more-button"]'
+      'button[data-selenium="pagination-next-btn"], [data-element-name="pagination-next-btn"], a[data-selenium="pagination-next-btn"], button[aria-label*="next" i], button[aria-label*="load more" i]'
     );
     if (byAttr) return byAttr;
 
     // 2. Check by text content across all button and role=button elements
     const allButtons = document.querySelectorAll<HTMLButtonElement>(
-      'button, [role="button"]'
+      'button, [role="button"], a[data-selenium*="pagination"]'
     );
     for (let i = 0; i < allButtons.length; i++) {
       const btn = allButtons[i];
@@ -74,6 +76,8 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
         text === "load more" ||
         text === "show more" ||
         text === "see more" ||
+        text === "next" ||
+        text === "next page" ||
         text === "load more hotels" ||
         text === "show more hotels" ||
         text === "view more hotels" ||
@@ -88,7 +92,7 @@ export function setupSearchExpansion(options: SearchExpansionOptions) {
 
   const countCards = (): number => {
     return document.querySelectorAll(
-      '[data-testid="hotel-card-pricing"], [data-testid^="hotel-card-"], section[data-testid^="hotel-card-"]'
+      'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]'
     ).length;
   };
 
@@ -276,7 +280,7 @@ export const processSearchPage = async (
 
   container.insertAdjacentElement("beforebegin", maxMPDElem);
 
-  const cardSelector = '[data-testid="hotel-card-pricing"]';
+  const cardSelector = 'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]';
   const observeRoot = document.body;
 
   const callback = updateCards(
@@ -301,8 +305,10 @@ export const processSearchPage = async (
     const currentBanner = document.getElementById("aa-mpd-search-summary");
     if (!currentBanner || !currentBanner.parentElement) {
       const activeContainer =
-        document.querySelector('[data-testid="hotel-results-list-container"]') ||
-        document.querySelector('[data-testid="search-results-map"]');
+        document.querySelector('#searchPageRightColumn') ||
+        document.querySelector('#contentContainer') ||
+        document.querySelector('[data-selenium="pagination-panel"]') ||
+        document.querySelector('#searchPageReactRoot');
       if (activeContainer) {
         activeContainer.insertAdjacentElement("beforebegin", maxMPDElem);
       }
@@ -315,6 +321,15 @@ export const processSearchPage = async (
     // 2. Process map preview cards and pins anywhere in the page
     processMapPreviewCards(document.body, nights, includeBonusMiles);
     updateMapPins(document.body);
+
+    // 3. Capture newly resolved rates into database
+    try {
+      const criteria = extractSearchCriteria();
+      const domRates = extractRatesFromSearchCards(document.body, nights, includeBonusMiles);
+      if (domRates.length > 0) {
+        queueRatesForDispatch(criteria, domRates);
+      }
+    } catch {}
   };
 
   const scheduleDomUpdate = () => {

@@ -1,4 +1,4 @@
-import { initRouter, RouteInfo } from "./router";
+import { initRouter, RouteInfo, isSensitiveCheckoutPage } from "./router";
 import { waitForElement } from "./wait";
 import { processDetailsPage } from "./details";
 import { processSearchPage } from "./search";
@@ -7,10 +7,11 @@ import { ingestHotelRates, RawHotelRate, hotelMpdRegistry } from "./registry";
 import { updateMapPins } from "./map";
 
 const SEARCH_SELECTOR =
-  '[data-testid="hotel-results-list-container"], [data-testid="search-results-map"]';
-const DETAILS_SELECTOR = 'div[data-testid="room-group"]';
+  '#searchPageRightColumn, #contentContainer, [data-selenium="pagination-panel"], #searchPageReactRoot';
+const DETAILS_SELECTOR =
+  '#property-room-grid-root, [data-element-name="property-room-grid-root"], #property-critical-root, [data-selenium="room-grid"]';
 
-import { processCard } from "./cards";
+import { processCard, CARD_SELECTOR } from "./cards";
 import { getNights } from "./nights";
 import { extractSearchCriteria, isValidLocation, normalizeLocation } from "./capture/criteria";
 import { queueRatesForDispatch } from "./capture/collector";
@@ -19,6 +20,7 @@ import { CapturedRate } from "./types";
 // Listen for intercepted network data dispatched by the MAIN world interceptor
 if (typeof window !== "undefined") {
   const handleIncomingRates = async (hotels: RawHotelRate[] | undefined) => {
+    if (isSensitiveCheckoutPage(window.location.href)) return;
     if (!hotels || hotels.length === 0) return;
 
     let includeBonusMiles = false;
@@ -44,7 +46,7 @@ if (typeof window !== "undefined") {
     const updated = ingestHotelRates(hotels, includeBonusMiles, useAllInPricing);
 
     // 1. Reactive Upgrade: Immediately re-evaluate any visible hotel cards
-    const cards = document.querySelectorAll('[data-testid="hotel-card-pricing"]');
+    const cards = document.querySelectorAll(CARD_SELECTOR);
     if (cards.length > 0) {
       const nights = getNights();
       cards.forEach((card) => {
@@ -166,7 +168,10 @@ async function handleRouteChange(routeInfo: RouteInfo) {
     activeTeardown = null;
   }
 
-  // 2. Ensure debug button is mounted
+  // 2. Ensure debug button is mounted (never on checkout pages)
+  if (isSensitiveCheckoutPage(routeInfo.url) || routeInfo.route === "other") {
+    return;
+  }
   mountDebugButton().catch(console.error);
 
   // 3. Mount appropriate controller for the current route

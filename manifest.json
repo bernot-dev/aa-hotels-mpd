@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AA Hotels MPD",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "options_page": "options.html",
   "action": {
     "default_title": "AA Hotels MPD",
@@ -17,7 +17,7 @@
     "tabs"
   ],
   "host_permissions": [
-    "*://www.aadvantagehotels.com/*"
+    "https://search.aadvantagehotels.com/*"
   ],
   "background": {
     "service_worker": "dist/background.js"
@@ -35,7 +35,18 @@
         "dist/interceptor.js"
       ],
       "matches": [
-        "*://www.aadvantagehotels.com/*"
+        "https://search.aadvantagehotels.com/*"
+      ],
+      "exclude_matches": [
+        "https://search.aadvantagehotels.com/checkout*",
+        "https://search.aadvantagehotels.com/book*",
+        "https://search.aadvantagehotels.com/booking*",
+        "https://search.aadvantagehotels.com/payment*",
+        "https://search.aadvantagehotels.com/accom/checkout*",
+        "https://search.aadvantagehotels.com/accom/book*",
+        "https://search.aadvantagehotels.com/accom/booking*",
+        "https://search.aadvantagehotels.com/*checkout*",
+        "https://search.aadvantagehotels.com/*payment*"
       ],
       "run_at": "document_start",
       "world": "MAIN"
@@ -45,7 +56,18 @@
         "dist/content.js"
       ],
       "matches": [
-        "*://www.aadvantagehotels.com/*"
+        "https://search.aadvantagehotels.com/*"
+      ],
+      "exclude_matches": [
+        "https://search.aadvantagehotels.com/checkout*",
+        "https://search.aadvantagehotels.com/book*",
+        "https://search.aadvantagehotels.com/booking*",
+        "https://search.aadvantagehotels.com/payment*",
+        "https://search.aadvantagehotels.com/accom/checkout*",
+        "https://search.aadvantagehotels.com/accom/book*",
+        "https://search.aadvantagehotels.com/accom/booking*",
+        "https://search.aadvantagehotels.com/*checkout*",
+        "https://search.aadvantagehotels.com/*payment*"
       ],
       "run_at": "document_end"
     }
@@ -56,7 +78,7 @@
         "dist/interceptor.js"
       ],
       "matches": [
-        "*://www.aadvantagehotels.com/*"
+        "https://search.aadvantagehotels.com/*"
       ]
     }
   ]

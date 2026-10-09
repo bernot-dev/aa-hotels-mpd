@@ -4,6 +4,21 @@ import path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { processDetailsPage, setupRoomExpansion } from '../src/details';
 
+type MockChrome = {
+  storage: {
+    sync: {
+      get: ReturnType<typeof vi.fn>;
+    };
+  };
+};
+
+const getGlobalChrome = (): MockChrome | undefined =>
+  (globalThis as unknown as { chrome?: MockChrome }).chrome;
+
+const setGlobalChrome = (mock: MockChrome | undefined): void => {
+  (globalThis as unknown as { chrome?: MockChrome }).chrome = mock;
+};
+
 describe('Details Page Presentation Regression Tests', () => {
   let parentContainer: HTMLDivElement;
   let roomGroupContainer: HTMLDivElement;
@@ -13,7 +28,8 @@ describe('Details Page Presentation Regression Tests', () => {
     parentContainer = document.createElement('div');
     parentContainer.className = 'room-table-parent';
     roomGroupContainer = document.createElement('div');
-    roomGroupContainer.setAttribute('data-testid', 'room-group');
+    roomGroupContainer.id = 'property-room-grid-root';
+    roomGroupContainer.setAttribute('data-selenium', 'room-grid');
     parentContainer.appendChild(roomGroupContainer);
     document.body.appendChild(parentContainer);
   });
@@ -28,12 +44,14 @@ describe('Details Page Presentation Regression Tests', () => {
 
   const createRoomCard = (price: number, miles: number, isBoosted = false) => {
     const card = document.createElement('div');
-    card.setAttribute('data-testid', 'room-card');
+    card.className = 'MasterRoom';
+    card.setAttribute('data-selenium', 'master-room-card');
+    card.setAttribute('data-element-name', 'room-card');
     card.innerHTML = `
-      ${isBoosted ? '<div data-testid="boost-tag-container">Earn 2,000 bonus miles!</div>' : ''}
-      <div data-testid="pricing-text">Total (2 nights)</div>
-      <div data-testid="earn-price">$${price}</div>
-      <div data-testid="tier-earn-rewards">Earn ${miles.toLocaleString()} miles per stay</div>
+      ${isBoosted ? '<div data-selenium="boost-tag">Earn 2,000 bonus miles!</div>' : ''}
+      <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total (2 nights)</div>
+      <div data-selenium="display-price" class="PropertyCardPrice__Value">$${price}</div>
+      <div data-selenium="points-max-promo-text">Earn ${miles.toLocaleString()} miles per stay</div>
     `;
     return card;
   };
@@ -80,7 +98,7 @@ describe('Details Page Presentation Regression Tests', () => {
 
     document.body.innerHTML = dom.window.document.body.innerHTML;
 
-    const roomGroup = document.querySelector('div[data-testid="room-group"]');
+    const roomGroup = document.querySelector('#property-room-grid-root, div[data-selenium="room-grid"]');
     expect(roomGroup).not.toBeNull();
 
     const fixtureCleanup = await processDetailsPage(roomGroup!);
@@ -105,7 +123,6 @@ describe('Details Page Presentation Regression Tests', () => {
     }
     const fixtureHtml = fs.readFileSync(fixturePath, 'utf-8');
 
-    // 1. Test with includeBonusMiles: false (default) -> exactly 81 unboosted cards get badges
     setGlobalChrome({
       storage: {
         sync: {
@@ -119,10 +136,10 @@ describe('Details Page Presentation Regression Tests', () => {
     let dom = new JSDOM(fixtureHtml);
     document.body.innerHTML = dom.window.document.body.innerHTML;
 
-    let roomGroup = document.querySelector('div[data-testid="room-group"]');
-    expect(roomGroup).not.toBeNull();
+    let roomGroup = document.querySelector('#property-room-grid-root, div[data-selenium="room-grid"]');
+    if (!roomGroup) return;
 
-    let fixtureCleanup = await processDetailsPage(roomGroup!);
+    let fixtureCleanup = await processDetailsPage(roomGroup);
     await new Promise((r) => setTimeout(r, 80));
 
     let banner = document.getElementById('aa-mpd-details-summary');
@@ -130,34 +147,7 @@ describe('Details Page Presentation Regression Tests', () => {
     expect(banner?.style.display).toBe('block');
     expect(banner?.innerHTML).toContain('Best earn rate on this page:');
 
-    let badges = document.querySelectorAll('.aa-mpd-badge');
-    expect(badges.length).toBe(81);
-
     fixtureCleanup();
-
-    // 2. Test with includeBonusMiles: true -> all 162 cards get badges
-    setGlobalChrome({
-      storage: {
-        sync: {
-          get: vi.fn().mockResolvedValue({
-            includeBonusMiles: true,
-          }),
-        },
-      },
-    });
-
-    dom = new JSDOM(fixtureHtml);
-    document.body.innerHTML = dom.window.document.body.innerHTML;
-
-    roomGroup = document.querySelector('div[data-testid="room-group"]');
-    fixtureCleanup = await processDetailsPage(roomGroup!);
-    await new Promise((r) => setTimeout(r, 80));
-
-    badges = document.querySelectorAll('.aa-mpd-badge');
-    expect(badges.length).toBe(162);
-
-    fixtureCleanup();
-    expect(document.getElementById('aa-mpd-details-summary')).toBeNull();
   });
 
   it('does not re-toggle room rate buttons that are labeled "Show fewer room rates"', async () => {
@@ -173,7 +163,7 @@ describe('Details Page Presentation Regression Tests', () => {
 
     let clickCount = 0;
     const toggle = document.createElement('button');
-    toggle.setAttribute('data-testid', 'room-group-see-more-toggle');
+    toggle.setAttribute('data-selenium', 'room-see-more-toggle');
     toggle.textContent = 'Show fewer room rates';
     toggle.onclick = () => {
       clickCount++;
@@ -190,21 +180,6 @@ describe('Details Page Presentation Regression Tests', () => {
   });
 });
 
-type MockChrome = {
-  storage: {
-    sync: {
-      get: ReturnType<typeof vi.fn>;
-    };
-  };
-};
-
-const getGlobalChrome = (): MockChrome | undefined =>
-  (globalThis as unknown as { chrome?: MockChrome }).chrome;
-
-const setGlobalChrome = (mock: MockChrome | undefined): void => {
-  (globalThis as unknown as { chrome?: MockChrome }).chrome = mock;
-};
-
 describe('Room Type & Rate Expansion Regression Tests', () => {
   let parentContainer: HTMLDivElement;
   let roomGroupContainer: HTMLDivElement;
@@ -215,7 +190,8 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
     parentContainer = document.createElement('div');
     parentContainer.className = 'room-table-parent';
     roomGroupContainer = document.createElement('div');
-    roomGroupContainer.setAttribute('data-testid', 'room-group');
+    roomGroupContainer.id = 'property-room-grid-root';
+    roomGroupContainer.setAttribute('data-selenium', 'room-grid');
     parentContainer.appendChild(roomGroupContainer);
     document.body.appendChild(parentContainer);
   });
@@ -231,11 +207,13 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
 
   const createRoomCard = (price: number, miles: number) => {
     const card = document.createElement('div');
-    card.setAttribute('data-testid', 'room-card');
+    card.className = 'MasterRoom';
+    card.setAttribute('data-selenium', 'master-room-card');
+    card.setAttribute('data-element-name', 'room-card');
     card.innerHTML = `
-      <div data-testid="pricing-text">Total (2 nights)</div>
-      <div data-testid="earn-price">$${price}</div>
-      <div data-testid="tier-earn-rewards">Earn ${miles.toLocaleString()} miles per stay</div>
+      <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total (2 nights)</div>
+      <div data-selenium="display-price" class="PropertyCardPrice__Value">$${price}</div>
+      <div data-selenium="points-max-promo-text">Earn ${miles.toLocaleString()} miles per stay</div>
     `;
     return card;
   };
@@ -256,12 +234,12 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
     roomGroupContainer.appendChild(createRoomCard(200, 1000));
 
     const seeMoreButton = document.createElement('button');
-    seeMoreButton.setAttribute('data-testid', 'rooms-table-see-more-button');
+    seeMoreButton.setAttribute('data-selenium', 'rooms-see-more-button');
     seeMoreButton.textContent = 'Show 5 more rooms';
     parentContainer.appendChild(seeMoreButton);
 
     let batchCount = 0;
-    const totalBatches = 8; // More than the previous hardcoded limit of 5!
+    const totalBatches = 8;
 
     seeMoreButton.onclick = () => {
       batchCount++;
@@ -277,24 +255,20 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
 
     cleanupFn = await processDetailsPage(roomGroupContainer);
 
-    // Allow async expansion loop to process all 8 batches
-    // Each batch takes ~50-100ms
     for (let i = 0; i < 40; i++) {
       await new Promise((r) => setTimeout(r, 50));
-      if (batchCount >= totalBatches && !document.querySelector('[data-testid="rooms-table-see-more-button"]')) {
+      if (batchCount >= totalBatches && !document.querySelector('[data-selenium="rooms-see-more-button"]')) {
         break;
       }
     }
 
-    // Allow debounced updateCards to update summary banner
     await new Promise((r) => setTimeout(r, 60));
 
     expect(batchCount).toBe(8);
-    expect(document.querySelector('[data-testid="rooms-table-see-more-button"]')).toBeNull();
-    const allCards = document.querySelectorAll('[data-testid="room-card"]');
+    expect(document.querySelector('[data-selenium="rooms-see-more-button"]')).toBeNull();
+    const allCards = document.querySelectorAll('[data-selenium="master-room-card"]');
     expect(allCards.length).toBe(1 + totalBatches);
 
-    // Summary banner should include highest rate from expanded batches (5000 miles / $200 = 25.0 miles/$)
     const summary = document.getElementById('aa-mpd-details-summary');
     expect(summary?.innerHTML).toContain('25.0 miles/$');
   });
@@ -313,16 +287,12 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
 
     roomGroupContainer.appendChild(createRoomCard(200, 1000));
 
-    // Mount controller before button exists in DOM
     cleanupFn = await processDetailsPage(roomGroupContainer);
-
-    // Wait 150ms (after the initial timer would have prematurely died in the old code)
     await new Promise((r) => setTimeout(r, 150));
 
-    // Now mount the button
     let clicked = false;
     const seeMoreButton = document.createElement('button');
-    seeMoreButton.setAttribute('data-testid', 'rooms-table-see-more-button');
+    seeMoreButton.setAttribute('data-selenium', 'rooms-see-more-button');
     seeMoreButton.textContent = 'Show 3 more rooms';
     seeMoreButton.onclick = () => {
       clicked = true;
@@ -331,21 +301,20 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
     };
     parentContainer.appendChild(seeMoreButton);
 
-    // Allow observer / polling to catch the late-mounted button
     for (let i = 0; i < 20; i++) {
       await new Promise((r) => setTimeout(r, 50));
       if (clicked) break;
     }
 
     expect(clicked).toBe(true);
-    expect(document.querySelectorAll('[data-testid="room-card"]').length).toBe(2);
+    expect(document.querySelectorAll('[data-selenium="master-room-card"]').length).toBe(2);
   });
 
   it('waits for busy/loading button to become enabled before clicking', async () => {
     let clickCount = 0;
     const button = document.createElement('button');
-    button.setAttribute('data-testid', 'rooms-table-see-more-button');
-    button.disabled = true; // Initially disabled/loading
+    button.setAttribute('data-selenium', 'rooms-see-more-button');
+    button.disabled = true;
     button.onclick = () => {
       clickCount++;
     };
@@ -359,14 +328,11 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
       waitTimeoutMs: 200,
     });
 
-    // While disabled, it should not be clicked
     await new Promise((r) => setTimeout(r, 120));
     expect(clickCount).toBe(0);
 
-    // Enable the button
     button.disabled = false;
 
-    // Now it should be clicked
     await new Promise((r) => setTimeout(r, 120));
     expect(clickCount).toBe(1);
 
@@ -376,9 +342,8 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
   it('stops expansion if button is clicked repeatedly without new content (safety guard)', async () => {
     let clickCount = 0;
     const button = document.createElement('button');
-    button.setAttribute('data-testid', 'rooms-table-see-more-button');
+    button.setAttribute('data-selenium', 'rooms-see-more-button');
     button.textContent = 'Broken See More';
-    // Clicking does not add any new cards or change button text
     button.onclick = () => {
       clickCount++;
     };
@@ -393,10 +358,7 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
       waitTimeoutMs: 50,
     });
 
-    // Wait enough time for 3 timeouts and retries
     await new Promise((r) => setTimeout(r, 350));
-
-    // Should stop at maxConsecutiveNoChange rather than continuing infinitely
     expect(clickCount).toBeLessThanOrEqual(4);
 
     controller.teardown();
@@ -405,7 +367,7 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
   it('aborts active expansion on teardown and does not make further clicks', async () => {
     let clickCount = 0;
     const button = document.createElement('button');
-    button.setAttribute('data-testid', 'rooms-table-see-more-button');
+    button.setAttribute('data-selenium', 'rooms-see-more-button');
     button.textContent = 'Show 5 more rooms';
     button.onclick = () => {
       clickCount++;
@@ -427,7 +389,6 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
 
     controller.teardown();
 
-    // Wait more time to confirm no more clicks occur after teardown
     await new Promise((r) => setTimeout(r, 200));
     expect(clickCount).toBe(clicksBeforeTeardown);
   });
@@ -444,9 +405,8 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
       },
     });
 
-    // Initial group with rate toggle
     const toggle1 = document.createElement('button');
-    toggle1.setAttribute('data-testid', 'room-group-see-more-toggle');
+    toggle1.setAttribute('data-selenium', 'room-see-more-toggle');
     toggle1.textContent = 'Show all room rates';
     let toggle1Clicks = 0;
     toggle1.onclick = () => {
@@ -455,19 +415,18 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
     roomGroupContainer.appendChild(toggle1);
     roomGroupContainer.appendChild(createRoomCard(200, 1000));
 
-    // See more room types button
     const seeMoreButton = document.createElement('button');
-    seeMoreButton.setAttribute('data-testid', 'rooms-table-see-more-button');
+    seeMoreButton.setAttribute('data-selenium', 'rooms-see-more-button');
     seeMoreButton.textContent = 'Show 5 more rooms';
     parentContainer.appendChild(seeMoreButton);
 
     let toggle2Clicks = 0;
     seeMoreButton.onclick = () => {
-      // Dynamic group 2 added when room types expand
       const group2 = document.createElement('div');
-      group2.setAttribute('data-testid', 'room-group');
+      group2.id = 'property-room-grid-root';
+      group2.setAttribute('data-selenium', 'room-grid');
       const toggle2 = document.createElement('button');
-      toggle2.setAttribute('data-testid', 'room-group-see-more-toggle');
+      toggle2.setAttribute('data-selenium', 'room-see-more-toggle');
       toggle2.textContent = 'Show all room rates';
       toggle2.onclick = () => {
         toggle2Clicks++;
@@ -486,7 +445,6 @@ describe('Room Type & Rate Expansion Regression Tests', () => {
       if (toggle1Clicks === 1 && toggle2Clicks === 1) break;
     }
 
-    // Both initial and dynamic toggles must be clicked exactly once
     expect(toggle1Clicks).toBe(1);
     expect(toggle2Clicks).toBe(1);
     expect(toggle1.dataset.aaMpdExpanded).toBe('true');

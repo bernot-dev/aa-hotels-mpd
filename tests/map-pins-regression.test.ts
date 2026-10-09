@@ -54,19 +54,23 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
       // Pin 2: 10.0 miles/$ (middle)
       // Pin 3: 15.0 miles/$ (best)
       const pin1 = document.createElement('button');
-      pin1.setAttribute('data-testid', 'hotel-pin-101');
+      pin1.setAttribute('data-selenium', 'map-pin-101');
+      pin1.setAttribute('data-hotel-id', '101');
       pin1.textContent = '$200';
 
       const pin2 = document.createElement('button');
-      pin2.setAttribute('data-testid', 'hotel-pin-102');
+      pin2.setAttribute('data-selenium', 'map-pin-102');
+      pin2.setAttribute('data-hotel-id', '102');
       pin2.textContent = '$150';
 
       const pin3 = document.createElement('button');
-      pin3.setAttribute('data-testid', 'hotel-pin-103');
+      pin3.setAttribute('data-selenium', 'map-pin-103');
+      pin3.setAttribute('data-hotel-id', '103');
       pin3.textContent = '$100';
 
       const pinUnknown = document.createElement('button');
-      pinUnknown.setAttribute('data-testid', 'hotel-pin-999');
+      pinUnknown.setAttribute('data-selenium', 'map-pin-999');
+      pinUnknown.setAttribute('data-hotel-id', '999');
       pinUnknown.textContent = '$300';
 
       mapContainer.appendChild(pin1);
@@ -103,7 +107,8 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
 
     it('handles single pin gracefully without NaN or crashing', () => {
       const pin = document.createElement('button');
-      pin.setAttribute('data-testid', 'hotel-pin-201');
+      pin.setAttribute('data-selenium', 'map-pin-201');
+      pin.setAttribute('data-hotel-id', '201');
       pin.textContent = '$150';
       document.body.appendChild(pin);
 
@@ -294,7 +299,8 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
 
       // Add pin 301 to map
       const pin = document.createElement('button');
-      pin.setAttribute('data-testid', 'hotel-pin-301');
+      pin.setAttribute('data-selenium', 'map-pin-301');
+      pin.setAttribute('data-hotel-id', '301');
       pin.textContent = '$499';
       mapContainer.appendChild(pin);
 
@@ -307,15 +313,15 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
 
       // Simulate user clicking pin 301: preview card mounts inside map view (like in screenshot)
       const previewCard = document.createElement('div');
-      previewCard.setAttribute('data-testid', 'hotel-card-301');
+      previewCard.className = 'PropertyCardItem';
+      previewCard.setAttribute('data-selenium', 'hotel-item');
+      previewCard.setAttribute('data-hotel-id', '301');
       previewCard.innerHTML = `
         <div class="preview-card-body">
-          <div data-testid="hotel-name">Masquerade Tower at Rio Hotel & Casino</div>
-          <div data-testid="hotel-card-pricing">
-            <div data-testid="pricing-text">Total (6 nights)</div>
-            <div data-testid="earn-price">$499</div>
-            <div data-testid="tier-earn-rewards">Earn 4,200 miles per stay</div>
-          </div>
+          <div data-selenium="hotel-name">Masquerade Tower at Rio Hotel & Casino</div>
+          <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total (6 nights)</div>
+          <div data-selenium="display-price" class="PropertyCardPrice__Value">$499</div>
+          <div data-selenium="points-max-promo-text">Earn 4,200 miles per stay</div>
         </div>
       `;
       mapContainer.appendChild(previewCard);

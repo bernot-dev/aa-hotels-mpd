@@ -21,17 +21,17 @@ describe("All-In Pricing & Race Condition Safeguards", () => {
   });
 
   const createSampleCard = (hotelId: string, domPrice: number = 298, miles: number = 4500): HTMLElement => {
-    const card = doc.createElement("section");
-    card.setAttribute("data-testid", `hotel-card-${hotelId}`);
+    const card = doc.createElement("div");
+    card.className = "PropertyCardItem";
+    card.setAttribute("data-selenium", "hotel-item");
+    card.setAttribute("data-hotel-id", hotelId);
     card.innerHTML = `
-      <div data-testid="hotel-card-pricing">
-        <span data-testid="pricing-text">Total</span>
-        <span data-testid="earn-price">$${domPrice}</span>
-        <div data-testid="base-tier-earn-rewards">Earn ${miles} miles</div>
-      </div>
+      <span data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total</span>
+      <span data-selenium="display-price" class="PropertyCardPrice__Value">$${domPrice}</span>
+      <div data-selenium="points-max-promo-text">Earn ${miles} miles</div>
     `;
     doc.body.appendChild(card);
-    return card.querySelector('[data-testid="hotel-card-pricing"]')!;
+    return card;
   };
 
   const sampleEnrichedHotel: EnrichedHotelRate = {

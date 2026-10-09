@@ -14,11 +14,58 @@ let lastRoute: RouteType = 'other';
 const listeners: RouteChangeCallback[] = [];
 let isInitialized = false;
 
-export function getRouteType(urlStr: string = window.location.href): RouteType {
+export function isSensitiveCheckoutPage(urlStr: string = typeof window !== 'undefined' ? window.location.href : ''): boolean {
   try {
-    const url = new URL(urlStr, window.location.origin);
-    if (url.pathname.startsWith('/search')) return 'search';
-    if (url.pathname.startsWith('/details')) return 'details';
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://search.aadvantagehotels.com';
+    const url = new URL(urlStr, origin);
+    const path = url.pathname.toLowerCase();
+    return (
+      path.includes('/checkout') ||
+      path.includes('/payment') ||
+      path.includes('/book') ||
+      path.includes('/booking')
+    );
+  } catch {
+    const lower = (urlStr || '').toLowerCase();
+    return (
+      lower.includes('/checkout') ||
+      lower.includes('/payment') ||
+      lower.includes('/book') ||
+      lower.includes('/booking')
+    );
+  }
+}
+
+export function getRouteType(urlStr: string = typeof window !== 'undefined' ? window.location.href : ''): RouteType {
+  try {
+    if (isSensitiveCheckoutPage(urlStr)) {
+      return 'other';
+    }
+
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://search.aadvantagehotels.com';
+    const url = new URL(urlStr, origin);
+
+    // Property details routes on search.aadvantagehotels.com
+    if (
+      url.pathname.includes('/accom/property') ||
+      url.pathname.includes('/property') ||
+      url.searchParams.has('propertyId') ||
+      url.searchParams.has('hotelId')
+    ) {
+      return 'details';
+    }
+
+    // Search page routes on search.aadvantagehotels.com
+    if (
+      url.pathname.startsWith('/search') ||
+      url.pathname === '/' ||
+      url.pathname === '' ||
+      url.searchParams.has('destination') ||
+      url.searchParams.has('city')
+    ) {
+      return 'search';
+    }
+
     return 'other';
   } catch {
     return 'other';

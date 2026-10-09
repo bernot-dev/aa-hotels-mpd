@@ -8,16 +8,16 @@ export function extractRatesFromSearchCards(
   nights: number,
   includeBonusMiles: boolean
 ): CapturedRate[] {
-  const cardSelector = '[data-testid="hotel-card-pricing"]';
-  const priceSelector = '[data-testid="earn-price"]';
-  const priceTypeSelector = '[data-testid="pricing-text"]';
-  const tierSelector = '[data-testid$="tier-earn-rewards"]';
+  const cardSelector = 'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]';
+  const priceSelector = '[data-selenium="display-price"], .PropertyCardPrice__Value';
+  const priceTypeSelector = '[data-selenium="hotel-currency"], .PropertyCardPrice__Currency';
+  const tierSelector = '[data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"]';
 
   const cards = container.querySelectorAll(cardSelector);
   const captured: CapturedRate[] = [];
 
   cards.forEach((card) => {
-    const hasBoostTag = !!card.querySelector('[data-testid="boost-tag-container"]');
+    const hasBoostTag = !!card.querySelector('[data-selenium="boost-tag"], [data-element-name="boost-tag"]');
     if (hasBoostTag && !includeBonusMiles) {
       return;
     }
@@ -29,7 +29,9 @@ export function extractRatesFromSearchCards(
     if (!dollars || dollars <= 0) return;
 
     const pricingTextElem = card.querySelector(priceTypeSelector);
-    const isTotalPrice = pricingTextElem?.textContent?.trim().startsWith("Total") ?? false;
+    const textContent = pricingTextElem?.textContent?.trim().toLowerCase() || "";
+    const isNightly = textContent.includes("night") || textContent.includes("/nt");
+    const isTotalPrice = !isNightly || textContent.includes("total");
 
     // Extract hotel name, hotel ID, and destination by walking up container
     let hotelName = "Unknown Hotel";
@@ -41,14 +43,19 @@ export function extractRatesFromSearchCards(
     for (let i = 0; i < 8; i++) {
       if (!parent) break;
       if (hotelName === "Unknown Hotel") {
-        const nameEl = parent.querySelector('[data-testid="hotel-name"]');
+        const nameEl = parent.querySelector(
+          '[data-selenium="hotel-name"], [data-element-name="property-card-title"], .PropertyCardItem__Name, [data-testid="hotel-name"], h3:not([data-selenium="display-price"]):not(.PropertyCardPrice__Value)'
+        );
         if (nameEl && nameEl.textContent) {
-          hotelName = nameEl.textContent.trim();
+          const candidate = nameEl.textContent.trim();
+          if (candidate && !/^\$\d+/.test(candidate)) {
+            hotelName = candidate;
+          }
         }
       }
 
       if (!cardNeighborhood) {
-        const neighborhoodEl = parent.querySelector('[data-testid="hotel-neighborhood"]');
+        const neighborhoodEl = parent.querySelector('[data-selenium="area-city-name"], [data-element-name="area-city-name"]');
         if (neighborhoodEl && neighborhoodEl.textContent) {
           cardNeighborhood = neighborhoodEl.textContent.trim();
         }
@@ -56,7 +63,7 @@ export function extractRatesFromSearchCards(
 
       const allLinks = Array.from(
         parent.querySelectorAll<HTMLAnchorElement>(
-          'a[href*="id="], a[href*="destination="], a[href*="/details"]'
+          'a[href*="propertyId="], a[href*="hotelId="], a[data-selenium="hotel-item-link"], a[href*="destination="], a[href*="/accom/property"]'
         )
       );
       if (parent.tagName === "A") {
@@ -66,7 +73,7 @@ export function extractRatesFromSearchCards(
       for (const linkEl of allLinks) {
         const href = linkEl.getAttribute("href") || "";
         if (!hotelId) {
-          const idMatch = href.match(/[?&]id=([^&]+)/);
+          const idMatch = href.match(/[?&](?:propertyId|hotelId|id)=([^&]+)/);
           if (idMatch) {
             hotelId = idMatch[1];
           }
@@ -147,10 +154,10 @@ export function extractRatesFromDetailsCards(
   includeBonusMiles: boolean,
   hotelNameFallback: string = "Hotel Details"
 ): CapturedRate[] {
-  const cardSelector = '[data-testid="room-card"]';
-  const priceSelector = '[data-testid="earn-price"]';
-  const priceTypeSelector = '[data-testid="pricing-text"]';
-  const tierSelector = '[data-testid$="tier-earn-rewards"]';
+  const cardSelector = '[data-selenium="master-room-card"], [data-selenium="room-card"], [data-element-name="room-card"], .MasterRoom';
+  const priceSelector = '[data-selenium="display-price"], .PropertyCardPrice__Value';
+  const priceTypeSelector = '[data-selenium="hotel-currency"], .PropertyCardPrice__Currency';
+  const tierSelector = '[data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"]';
 
   // Try extracting hotel name from document headings
   let hotelName = hotelNameFallback;
@@ -166,7 +173,7 @@ export function extractRatesFromDetailsCards(
   if (typeof window !== "undefined") {
     try {
       const url = new URL(window.location.href);
-      hotelId = url.searchParams.get("id") || undefined;
+      hotelId = url.searchParams.get("propertyId") || url.searchParams.get("hotelId") || url.searchParams.get("id") || undefined;
       const destParam = url.searchParams.get("destination");
       if (destParam && destParam.trim()) {
         detailsLocation = decodeURIComponent(destParam.trim().replace(/\+/g, " "));
@@ -188,7 +195,9 @@ export function extractRatesFromDetailsCards(
   const captured: CapturedRate[] = [];
 
   cards.forEach((card) => {
-    const hasBoostTag = !!card.querySelector('[data-testid="boost-tag-container"]');
+    const hasBoostTag = !!card.querySelector(
+      '[data-selenium="boost-tag"], [data-element-name="boost-tag"]'
+    );
     if (hasBoostTag && !includeBonusMiles) {
       return;
     }
@@ -200,7 +209,9 @@ export function extractRatesFromDetailsCards(
     if (!dollars || dollars <= 0) return;
 
     const pricingTextElem = card.querySelector(priceTypeSelector);
-    const isTotalPrice = pricingTextElem?.textContent?.trim().startsWith("Total") ?? false;
+    const textContent = pricingTextElem?.textContent?.trim().toLowerCase() || "";
+    const isNightly = textContent.includes("night") && !textContent.includes("total");
+    const isTotalPrice = !isNightly || textContent.includes("total");
 
     const tiers = card.querySelectorAll(tierSelector);
     tiers.forEach((tier) => {

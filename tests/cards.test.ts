@@ -8,10 +8,10 @@ import { getRouteType } from '../src/router';
 
 describe('Router & Route Type Detection', () => {
   it('correctly classifies search and details routes', () => {
-    expect(getRouteType('https://www.aadvantagehotels.com/search?destination=Dallas')).toBe('search');
-    expect(getRouteType('https://www.aadvantagehotels.com/details?id=123')).toBe('details');
-    expect(getRouteType('https://www.aadvantagehotels.com/')).toBe('other');
-    expect(getRouteType('https://www.aadvantagehotels.com/checkout/456')).toBe('other');
+    expect(getRouteType('https://search.aadvantagehotels.com/search?destination=Dallas')).toBe('search');
+    expect(getRouteType('https://search.aadvantagehotels.com/accom/property?propertyId=123')).toBe('details');
+    expect(getRouteType('https://search.aadvantagehotels.com/')).toBe('search');
+    expect(getRouteType('https://search.aadvantagehotels.com/checkout/456')).toBe('other');
   });
 });
 
@@ -24,7 +24,7 @@ describe('getNights Safe Parsing', () => {
 
   it('calculates nights from search params correctly', () => {
     delete (window as any).location;
-    window.location = new URL('https://www.aadvantagehotels.com/search?checkIn=2026-10-01&checkOut=2026-10-04') as any;
+    window.location = new URL('https://search.aadvantagehotels.com/search?checkIn=2026-10-01&checkOut=2026-10-04') as any;
 
     expect(getNights()).toBe(3);
 
@@ -33,7 +33,7 @@ describe('getNights Safe Parsing', () => {
 
   it('safely defaults to 1 night when parameters are missing without throwing', () => {
     delete (window as any).location;
-    window.location = new URL('https://www.aadvantagehotels.com/search') as any;
+    window.location = new URL('https://search.aadvantagehotels.com/search') as any;
 
     expect(getNights()).toBe(1);
 
@@ -71,7 +71,7 @@ describe('Search Fixture Processing (search-guest.html)', () => {
     const dom = new JSDOM(searchHtml);
     const doc = dom.window.document;
 
-    const cards = doc.querySelectorAll('[data-testid="hotel-card-pricing"]');
+    const cards = doc.querySelectorAll('li.PropertyCardItem, [data-selenium="hotel-item"]');
     expect(cards.length).toBeGreaterThan(0);
 
     let totalProcessed = 0;
@@ -112,7 +112,7 @@ describe('Details Fixture Processing & Bonus Miles Logic (details-guest.html)', 
     const dom = new JSDOM(detailsHtml);
     const doc = dom.window.document;
 
-    const roomCards = doc.querySelectorAll('[data-testid="room-card"]');
+    const roomCards = doc.querySelectorAll('[data-selenium="master-room-card"], .MasterRoom');
     expect(roomCards.length).toBe(10);
 
     let processedCount = 0;
@@ -131,7 +131,7 @@ describe('Details Fixture Processing & Bonus Miles Logic (details-guest.html)', 
     const dom = new JSDOM(detailsHtml);
     const doc = dom.window.document;
 
-    const roomCards = doc.querySelectorAll('[data-testid="room-card"]');
+    const roomCards = doc.querySelectorAll('[data-selenium="master-room-card"], .MasterRoom');
     expect(roomCards.length).toBe(10);
 
     let processedCount = 0;
@@ -151,10 +151,10 @@ describe('End-to-End updateCards Runner', () => {
   it('updates container and creates summary banner', () => {
     const dom = new JSDOM(`
       <div id="container">
-        <div data-testid="hotel-card-pricing">
-          <div data-testid="pricing-text">Total (2 nights)</div>
-          <div data-testid="earn-price">$200</div>
-          <div data-testid="tier-earn-rewards">Earn 5,000 miles per stay</div>
+        <div class="PropertyCardItem" data-selenium="hotel-item">
+          <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total (2 nights)</div>
+          <div data-selenium="display-price" class="PropertyCardPrice__Value">$200</div>
+          <div data-selenium="points-max-promo-text">Earn 5,000 miles per stay</div>
         </div>
       </div>
     `);
@@ -163,12 +163,10 @@ describe('End-to-End updateCards Runner', () => {
     const maxBanner = doc.createElement('div');
 
     // Run synchronous update
-    const update = updateCards(container, maxBanner, '[data-testid="hotel-card-pricing"]', false);
+    const update = updateCards(container, maxBanner, 'li.PropertyCardItem, [data-selenium="hotel-item"]', false);
     update();
 
     // Trigger scheduled RAF callback directly
-    const badge = container.querySelector('.aa-mpd-badge');
-    // In our test, setTimeout(runUpdate, 16) is used if RAF is undefined in node environment
     return new Promise<void>((resolve) => {
       setTimeout(() => {
         const badgeAfter = container.querySelector('.aa-mpd-badge');

@@ -85,7 +85,7 @@ export function extractSearchCriteria(
   // 1. Try URL parameters first
   if (currentUrl) {
     try {
-      const url = new URL(currentUrl, "https://www.aadvantagehotels.com");
+      const url = new URL(currentUrl, "https://search.aadvantagehotels.com");
       const destParam =
         url.searchParams.get("destination") ||
         url.searchParams.get("city") ||
@@ -131,12 +131,12 @@ export function extractSearchCriteria(
   // (authoritative source for currently displayed cards on search page)
   if (doc) {
     const cardLinks = doc.querySelectorAll<HTMLAnchorElement>(
-      'a[href*="/details"], a[href*="destination="], [data-testid^="hotel-card-"] a, a[href*="id="]'
+      'a[href*="/accom/property"], a[href*="/property"], a[href*="destination="], a[data-selenium="hotel-item-link"], a[href*="propertyId="]'
     );
     for (const link of Array.from(cardLinks)) {
       if (!link.href) continue;
       try {
-        const cardUrl = new URL(link.href, "https://www.aadvantagehotels.com");
+        const cardUrl = new URL(link.href, "https://search.aadvantagehotels.com");
         if (location === "Unknown Location") {
           const dest =
             cardUrl.searchParams.get("destination") ||
@@ -183,7 +183,9 @@ export function extractSearchCriteria(
 
   // 3. Search page DOM extraction: neighborhood filter container
   if (location === "Unknown Location" && doc) {
-    const nFilter = doc.querySelector('[data-testid="neighborhood-filter-container"]');
+    const nFilter = doc.querySelector(
+      '[data-selenium="neighborhood-filter"], [data-element-name="neighborhood-filter"], [data-testid="neighborhood-filter-container"]'
+    );
     if (nFilter) {
       const nLabels = Array.from(
         nFilter.querySelectorAll('.chakra-checkbox__label p, label p, span p')
@@ -199,7 +201,9 @@ export function extractSearchCriteria(
   // 4. Search page DOM extraction: hotel card neighborhoods
   if (location === "Unknown Location" && doc) {
     const cardNeighborhoods = Array.from(
-      doc.querySelectorAll('[data-testid="hotel-neighborhood"]')
+      doc.querySelectorAll(
+        '[data-selenium="area-city-name"], [data-element-name="area-city-name"], [data-testid="hotel-neighborhood"]'
+      )
     )
       .map((el) => el.textContent?.trim() || "")
       .filter(isValidLocation);
@@ -221,7 +225,9 @@ export function extractSearchCriteria(
   // 6. Search page DOM extraction: hotel name city pattern (e.g. "Hilton Anatole, Dallas" -> "Dallas")
   if (location === "Unknown Location" && doc) {
     const hotelNames = Array.from(
-      doc.querySelectorAll('[data-testid="hotel-name"]')
+      doc.querySelectorAll(
+        '[data-selenium="hotel-name"], [data-element-name="property-card-title"], .PropertyCardItem__Name, [data-testid="hotel-name"], h3:not([data-selenium="display-price"]):not(.PropertyCardPrice__Value)'
+      )
     ).map((el) => el.textContent?.trim() || "");
     for (const name of hotelNames) {
       const cityMatch = name.match(/,\s*([^,]+)$/);
@@ -234,8 +240,12 @@ export function extractSearchCriteria(
 
   // 7. DOM extraction: hotel address on details page
   if (location === "Unknown Location" && doc) {
-    const cityEl = doc.querySelector('[data-testid="address-city"]');
-    const countryEl = doc.querySelector('[data-testid="address-country"]');
+    const cityEl = doc.querySelector(
+      '[data-selenium="hotel-address-city"], [data-testid="address-city"]'
+    );
+    const countryEl = doc.querySelector(
+      '[data-selenium="hotel-address-country"], [data-testid="address-country"]'
+    );
     if (cityEl && cityEl.textContent?.trim()) {
       const city = cityEl.textContent.trim();
       const country = countryEl?.textContent?.trim();

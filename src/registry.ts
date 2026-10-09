@@ -197,25 +197,46 @@ export function clearHotelMpdRegistry(): void {
 }
 
 export function getHotelIdFromPin(pin: Element): string | null {
-  const testId = pin.getAttribute("data-testid");
-  if (!testId) return null;
-  const match = testId.match(/^hotel-pin-(\d+)$/);
+  const directId =
+    pin.getAttribute("data-property-id") ||
+    pin.getAttribute("data-propertyid") ||
+    pin.getAttribute("data-hotel-id") ||
+    pin.getAttribute("data-hotelid");
+  if (directId && /^\d+$/.test(directId)) return directId;
+
+  const pinId = pin.id || pin.getAttribute("data-selenium") || "";
+  const match = pinId.match(/(?:pin|hotel|property)[-_]?(\d+)/i);
   return match ? match[1] : null;
 }
 
 export function getHotelIdFromCard(card: Element): string | null {
   let current: Element | null = card;
   while (current) {
-    const testId = current.getAttribute("data-testid");
-    if (testId) {
-      const match = testId.match(/^hotel-card-(\d+)$/);
+    // 1. Direct attribute inspection
+    const directId =
+      current.getAttribute("data-property-id") ||
+      current.getAttribute("data-propertyid") ||
+      current.getAttribute("data-hotel-id") ||
+      current.getAttribute("data-hotelid");
+    if (directId && /^\d+$/.test(directId)) return directId;
+
+    // 2. Element ID e.g. hotel-12345, property-12345
+    const elemId = current.id;
+    if (elemId) {
+      const match = elemId.match(/(?:hotel|property)[-_]?(\d+)/i);
       if (match) return match[1];
     }
+
     current = current.parentElement;
   }
-  const link =
-    card.querySelector("[data-testid^=\"hotel-card-\"]") ||
-    card.closest("[data-testid^=\"hotel-card-\"]");
-  const match = link?.getAttribute("data-testid")?.match(/^hotel-card-(\d+)$/);
-  return match ? match[1] : null;
+
+  // 3. Child links e.g. /accom/property?propertyId=12345 or hotelId=12345
+  const links = card.querySelectorAll("a[href]");
+  for (let i = 0; i < links.length; i++) {
+    const href = links[i].getAttribute("href") || "";
+    const match = href.match(/(?:propertyId|hotelId|hotel_id)=(\d+)/i);
+    if (match) return match[1];
+  }
+
+  return null;
 }

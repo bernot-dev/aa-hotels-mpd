@@ -86,9 +86,10 @@ function renderTop3VisualCards(records: TopMpdRecord[]): void {
       const cpm = r.cpm ?? computeCpm(r.price, r.miles);
       const valScore = r.valueScore ?? computeValueScore(r.mpd, r.rating);
 
+      const fallbackSvg = `<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M3 7v14M21 7v14M6 7V3h12v4M9 10h2M13 10h2M9 14h2M13 14h2M9 18h2M13 18h2"/></svg>`;
       const imgHtml = r.imageUrl
-        ? `<img class="property-card-img" src="${escapeHtml(r.imageUrl)}" alt="${escapeHtml(r.hotelName)}" onerror="this.parentElement.innerHTML='<div style=\\\'width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:36px;\\\'>🏨</div>'"/>`
-        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#94a3b8;font-size:36px;background:linear-gradient(135deg, #1e293b 0%, #334155 100%);">🏨</div>`;
+        ? `<img class="property-card-img" src="${escapeHtml(r.imageUrl)}" alt="${escapeHtml(r.hotelName)}" loading="lazy"/>`
+        : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg, #1e293b 0%, #334155 100%);">${fallbackSvg}</div>`;
 
       const starsHtml = r.stars
         ? `<span class="star-rating" title="${r.stars} Stars">${"★".repeat(Math.min(5, Math.round(r.stars)))}</span>`

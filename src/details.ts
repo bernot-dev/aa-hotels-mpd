@@ -64,7 +64,7 @@ export function setupRoomExpansion(options: RoomExpansionOptions): {
   const expandRates = () => {
     if (!expandRoomRates || isDisposed) return;
     const toggles = document.querySelectorAll<HTMLButtonElement>(
-      'button[data-testid="room-group-see-more-toggle"], [data-testid="room-group-see-more-toggle"]'
+      'button[data-selenium="room-see-more-toggle"], [data-element-name="room-see-more-toggle"], button[aria-label*="more rates" i]'
     );
     toggles.forEach((button) => {
       if (button.dataset.aaMpdExpanded === "true") {
@@ -94,7 +94,7 @@ export function setupRoomExpansion(options: RoomExpansionOptions): {
     if (totalClicks >= maxClicks) return;
 
     const moreButton = document.querySelector<HTMLButtonElement>(
-      'button[data-testid="rooms-table-see-more-button"], [data-testid="rooms-table-see-more-button"]'
+      'button[data-selenium="rooms-see-more-button"], [data-element-name="rooms-see-more-button"], button[aria-label*="more rooms" i]'
     );
 
     if (!moreButton) {
@@ -107,7 +107,7 @@ export function setupRoomExpansion(options: RoomExpansionOptions): {
     clearInitialPoll();
 
     const currentCount = document.querySelectorAll(
-      '[data-testid="room-card"], [data-testid="room-group"]'
+      '[data-selenium="master-room-card"], [data-selenium="room-card"], [data-element-name="room-card"], .MasterRoom'
     ).length;
     const currentButtonText = moreButton.textContent?.trim() || "";
 
@@ -263,7 +263,8 @@ export const processDetailsPage = async (container: Element): Promise<() => void
     console.warn("[AA-Hotels-MPD] Failed to read storage options:", err);
   }
 
-  const cardSelector = '[data-testid="room-card"]';
+  const cardSelector =
+    '[data-selenium="master-room-card"], [data-selenium="room-card"], [data-element-name="room-card"], .MasterRoom';
 
   const callback = updateCards(
     targetContainer,

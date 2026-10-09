@@ -178,16 +178,33 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
   const processHotelItem = (item: any) => {
     if (!item || typeof item !== "object") return;
 
-    const rawId = item.hotel?.id ?? item.id ?? item.hotelId ?? item.propertyId ?? item.hotel?.propertyId;
+    const rawId = item.propertyId ?? item.hotelId ?? item.hotel?.id ?? item.id ?? item.hotel?.propertyId;
     if (rawId === null || rawId === undefined) return;
     const hotelId = String(rawId).trim();
     if (!hotelId) return;
 
-    const hotelName = item.hotel?.name || item.name || "Unknown Hotel";
+    const hotelName =
+      item.content?.informationSummary?.displayName ||
+      item.displayName ||
+      item.propertyName ||
+      item.hotel?.name ||
+      item.name ||
+      "Unknown Hotel";
     const economics = item.economics || item.roomTypeResultTeaser?.economics || item.rates?.[0]?.economics;
+    const pricing = item.pricing || {};
 
     let basePrice = 0;
-    if (item.totalPrice?.amount) {
+    if (pricing.displayPrice?.amount) {
+      basePrice = Number(pricing.displayPrice.amount);
+    } else if (pricing.displayPrice?.exclusive?.amount) {
+      basePrice = Number(pricing.displayPrice.exclusive.amount);
+    } else if (pricing.totalPrice?.amount) {
+      basePrice = Number(pricing.totalPrice.amount);
+    } else if (pricing.price?.amount) {
+      basePrice = Number(pricing.price.amount);
+    } else if (item.displayPrice) {
+      basePrice = Number(item.displayPrice);
+    } else if (item.totalPrice?.amount) {
       basePrice = Number(item.totalPrice.amount);
     } else if (economics?.total?.amount) {
       basePrice = Number(economics.total.amount);
@@ -197,7 +214,9 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
       basePrice = item.price;
     }
 
-    const nightlyPrice = item.lowestAveragePrice?.amount
+    const nightlyPrice = pricing.displayPrice?.perNight?.amount
+      ? Number(pricing.displayPrice.perNight.amount)
+      : item.lowestAveragePrice?.amount
       ? Number(item.lowestAveragePrice.amount)
       : economics?.pricePerNight?.amount
       ? Number(economics.pricePerNight.amount)
@@ -208,7 +227,13 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
     }
 
     let allInPrice = 0;
-    if (item.grandTotalPublishedPriceInclusive?.amount) {
+    if (pricing.displayPrice?.inclusive?.amount) {
+      allInPrice = Number(pricing.displayPrice.inclusive.amount);
+    } else if (pricing.inclusive?.amount) {
+      allInPrice = Number(pricing.inclusive.amount);
+    } else if (pricing.totalInclusive?.amount) {
+      allInPrice = Number(pricing.totalInclusive.amount);
+    } else if (item.grandTotalPublishedPriceInclusive?.amount) {
       allInPrice = Number(item.grandTotalPublishedPriceInclusive.amount);
     } else if (item.totalPriceInclusive?.amount) {
       allInPrice = Number(item.totalPriceInclusive.amount);
@@ -228,7 +253,16 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
     let baseMiles = 0;
     let tieredMiles = 0;
 
-    if (economics) {
+    if (item.loyaltyOfferSummary?.offers?.[0]?.earn?.points) {
+      baseMiles = Number(item.loyaltyOfferSummary.offers[0].earn.points);
+      tieredMiles = baseMiles;
+    } else if (item.pointsMax?.points || item.pointsMax?.point) {
+      baseMiles = Number(item.pointsMax.points || item.pointsMax.point);
+      tieredMiles = baseMiles;
+    } else if (pricing.pointmax?.point || pricing.pointmax?.points) {
+      baseMiles = Number(pricing.pointmax.point || pricing.pointmax.points);
+      tieredMiles = baseMiles;
+    } else if (economics) {
       baseMiles = Number(economics.rewardAmount || economics.baseRewardAmount || 0);
       tieredMiles = Number(economics.rewardAmountTiered || economics.tieredRewardAmount || baseMiles);
     } else {
@@ -323,10 +357,37 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
     }
   };
 
-  // 1. Check standard results array locations
+  // 1. Check standard results array locations and GraphQL responses
   const candidates: any[] = [];
   if (Array.isArray(payload)) {
     candidates.push(...payload);
+  }
+  if (Array.isArray(payload.data?.search?.properties)) {
+    candidates.push(...payload.data.search.properties);
+  }
+  if (Array.isArray(payload.data?.propertiesGql)) {
+    candidates.push(...payload.data.propertiesGql);
+  }
+  if (Array.isArray(payload.data?.search?.hotelList)) {
+    candidates.push(...payload.data.search.hotelList);
+  }
+  if (Array.isArray(payload.data?.propertyDetail?.rooms)) {
+    const parentProp = payload.data.propertyDetail;
+    const parentPropertyId = parentProp.propertyId ?? parentProp.id ?? parentProp.hotelId;
+    const parentPropertyName = parentProp.propertyName ?? parentProp.displayName ?? parentProp.name;
+    for (const room of parentProp.rooms) {
+      candidates.push({
+        ...room,
+        propertyId: room.propertyId ?? parentPropertyId,
+        displayName: room.displayName ?? room.name ?? parentPropertyName,
+      });
+    }
+  }
+  if (Array.isArray(payload.data?.properties)) {
+    candidates.push(...payload.data.properties);
+  }
+  if (Array.isArray(payload.propertiesGql)) {
+    candidates.push(...payload.propertiesGql);
   }
   if (Array.isArray(payload.searchResult?.results)) {
     candidates.push(...payload.searchResult.results);
@@ -349,6 +410,8 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
       } else if (val && typeof val === "object") {
         if (Array.isArray(val.results)) {
           val.results.forEach(processHotelItem);
+        } else if (Array.isArray(val.properties)) {
+          val.properties.forEach(processHotelItem);
         }
       }
     }
@@ -357,11 +420,27 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
   return Array.from(hotelMap.values());
 }
 
+export function isSensitiveCheckoutPage(url: string = typeof window !== 'undefined' ? window.location.href : ''): boolean {
+  const lower = (url || '').toLowerCase();
+  return (
+    lower.includes('/checkout') ||
+    lower.includes('/payment') ||
+    lower.includes('/book') ||
+    lower.includes('/booking')
+  );
+}
+
 export function shouldInspectUrl(url: string): boolean {
-  if (!url) return true;
+  if (!url) return false;
+  if (isSensitiveCheckoutPage(url) || (typeof window !== 'undefined' && isSensitiveCheckoutPage(window.location.href))) {
+    return false;
+  }
   const lower = url.toLowerCase();
   return (
+    lower.includes("/graphql") ||
     lower.includes("/search") ||
+    lower.includes("/accom") ||
+    lower.includes("/property") ||
     lower.includes("/results") ||
     lower.includes("/hotels") ||
     lower.includes("aadvantage-hotels") ||
@@ -377,6 +456,7 @@ let isInitialized = false;
 
 export function initNetworkInterceptor(): void {
   if (isInitialized || typeof window === "undefined") return;
+  if (isSensitiveCheckoutPage(window.location.href)) return;
   isInitialized = true;
 
   // 1. Monkey-patch window.fetch
@@ -399,6 +479,11 @@ export function initNetworkInterceptor(): void {
             .clone()
             .json()
             .then((data) => {
+              if (typeof window !== "undefined" && (window as any).__AA_RECORD_NETWORK__) {
+                try {
+                  (window as any).__AA_RECORD_NETWORK__({ url, method: 'FETCH', timestamp: Date.now(), payload: data });
+                } catch {}
+              }
               const rates = extractHotelRatesFromPayload(data);
               dispatchInterceptedRates(rates);
             })
@@ -435,6 +520,11 @@ export function initNetworkInterceptor(): void {
             const text = this.responseText;
             if (text && (text.startsWith("{") || text.startsWith("["))) {
               const data = JSON.parse(text);
+              if (typeof window !== "undefined" && (window as any).__AA_RECORD_NETWORK__) {
+                try {
+                  (window as any).__AA_RECORD_NETWORK__({ url, method: 'XHR', timestamp: Date.now(), payload: data });
+                } catch {}
+              }
               const rates = extractHotelRatesFromPayload(data);
               dispatchInterceptedRates(rates);
             }

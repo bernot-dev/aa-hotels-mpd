@@ -27,7 +27,8 @@ describe('Search Page Presentation Regression Tests', () => {
   beforeEach(() => {
     wrapper = document.createElement('div');
     container = document.createElement('div');
-    container.setAttribute('data-testid', 'hotel-results-list-container');
+    container.id = 'searchPageRightColumn';
+    container.setAttribute('data-selenium', 'pagination-panel');
     wrapper.appendChild(container);
     document.body.appendChild(wrapper);
   });
@@ -42,11 +43,12 @@ describe('Search Page Presentation Regression Tests', () => {
 
   const createHotelCard = (price: number, miles: number, isTotal = true) => {
     const card = document.createElement('div');
-    card.setAttribute('data-testid', 'hotel-card-pricing');
+    card.className = 'PropertyCardItem';
+    card.setAttribute('data-selenium', 'hotel-item');
     card.innerHTML = `
-      <div data-testid="pricing-text">${isTotal ? 'Total (2 nights)' : 'per night'}</div>
-      <div data-testid="earn-price">$${price}</div>
-      <div data-testid="tier-earn-rewards">Earn ${miles.toLocaleString()} miles per stay</div>
+      <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">${isTotal ? 'Total (2 nights)' : 'per night'}</div>
+      <div data-selenium="display-price" class="PropertyCardPrice__Value">$${price}</div>
+      <div data-selenium="points-max-promo-text">Earn ${miles.toLocaleString()} miles per stay</div>
     `;
     return card;
   };
@@ -102,6 +104,52 @@ describe('Search Page Presentation Regression Tests', () => {
     expect(summary.innerHTML).toContain('30.0 miles/$');
   });
 
+  it('gracefully handles lazy-loading hotel cards ("Loading best price") and badges them when they resolve', async () => {
+    // 1. Initial hotel card with resolved price
+    container.appendChild(createHotelCard(200, 2000)); // 10.0 MPD
+
+    // 2. Hotel card in loading state (like Americana Motor Hotel)
+    const loadingCard = document.createElement('div');
+    loadingCard.className = 'PropertyCardItem';
+    loadingCard.setAttribute('data-selenium', 'hotel-item');
+    loadingCard.innerHTML = `
+      <h3 data-selenium="hotel-name">Americana Motor Hotel</h3>
+      <div class="pricing-container">
+        <span class="loading-indicator">Loading best price •••••</span>
+      </div>
+    `;
+    container.appendChild(loadingCard);
+
+    cleanupFn = await processSearchPage(container);
+    await new Promise((r) => setTimeout(r, 60));
+
+    // Initially, loadingCard has no badges
+    expect(loadingCard.querySelector('.aa-mpd-badge')).toBeNull();
+
+    // Summary banner shows 10.0 MPD from the first card
+    const summary = document.getElementById('aa-mpd-search-summary')!;
+    expect(summary.innerHTML).toContain('10.0 miles/$');
+
+    // 3. The delayed price resolves in the DOM
+    const pricingContainer = loadingCard.querySelector('.pricing-container')!;
+    pricingContainer.innerHTML = `
+      <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total (2 nights)</div>
+      <div data-selenium="display-price" class="PropertyCardPrice__Value">$250</div>
+      <div data-selenium="points-max-promo-text">Earn 5,000 miles per stay</div>
+    `;
+
+    // Allow MutationObserver and RAF to fire
+    await new Promise((r) => setTimeout(r, 80));
+
+    // 4. Verify Americana Motor Hotel now received the MPD badge: 5,000 / 250 = 20.0 MPD
+    const badge = loadingCard.querySelector('.aa-mpd-badge');
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toBe(' (20.0\u00A0miles/$)');
+
+    // 5. Verify the summary banner updated to 20.0 MPD
+    expect(summary.innerHTML).toContain('20.0 miles/$');
+  });
+
   it('cleans up summary banner and observer on teardown', async () => {
     container.appendChild(createHotelCard(200, 2000));
     cleanupFn = await processSearchPage(container);
@@ -147,7 +195,7 @@ describe('Search Page Presentation Regression Tests', () => {
 
     document.body.innerHTML = dom.window.document.body.innerHTML;
 
-    const fixtureContainer = document.querySelector('[data-testid="hotel-results-list-container"]');
+    const fixtureContainer = document.querySelector('#searchPageRightColumn, #contentContainer, [data-selenium="pagination-panel"]');
     expect(fixtureContainer).not.toBeNull();
 
     const fixtureCleanup = await processSearchPage(fixtureContainer!);
@@ -176,7 +224,7 @@ describe('Search Page Presentation Regression Tests', () => {
 
     document.body.innerHTML = dom.window.document.body.innerHTML;
 
-    const fixtureContainer = document.querySelector('[data-testid="hotel-results-list-container"]');
+    const fixtureContainer = document.querySelector('#searchPageRightColumn, #contentContainer, [data-selenium="pagination-panel"]');
     expect(fixtureContainer).not.toBeNull();
 
     const fixtureCleanup = await processSearchPage(fixtureContainer!);
@@ -205,7 +253,8 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
     parentContainer = document.createElement('div');
     parentContainer.className = 'search-list-parent';
     listContainer = document.createElement('div');
-    listContainer.setAttribute('data-testid', 'hotel-results-list-container');
+    listContainer.id = 'searchPageRightColumn';
+    listContainer.setAttribute('data-selenium', 'pagination-panel');
     parentContainer.appendChild(listContainer);
     document.body.appendChild(parentContainer);
   });
@@ -221,11 +270,12 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
 
   const createCard = (price: number, miles: number) => {
     const card = document.createElement('div');
-    card.setAttribute('data-testid', 'hotel-card-pricing');
+    card.className = 'PropertyCardItem';
+    card.setAttribute('data-selenium', 'hotel-item');
     card.innerHTML = `
-      <div data-testid="pricing-text">Total (2 nights)</div>
-      <div data-testid="earn-price">$${price}</div>
-      <div data-testid="tier-earn-rewards">Earn ${miles.toLocaleString()} miles per stay</div>
+      <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total (2 nights)</div>
+      <div data-selenium="display-price" class="PropertyCardPrice__Value">$${price}</div>
+      <div data-selenium="points-max-promo-text">Earn ${miles.toLocaleString()} miles per stay</div>
     `;
     return card;
   };
@@ -247,8 +297,8 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
     let batchCount = 0;
 
     const loadMoreButton = document.createElement('button');
-    loadMoreButton.setAttribute('aria-label', 'Load more');
-    loadMoreButton.textContent = 'Load more';
+    loadMoreButton.setAttribute('data-selenium', 'pagination-next-btn');
+    loadMoreButton.textContent = 'Next';
     parentContainer.appendChild(loadMoreButton);
 
     loadMoreButton.onclick = () => {
@@ -266,7 +316,7 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
     // Allow async expansion loop to click through batches
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 50));
-      if (batchCount >= totalBatches && !document.querySelector('button[aria-label="Load more"]')) {
+      if (batchCount >= totalBatches && !document.querySelector('button[data-selenium="pagination-next-btn"]')) {
         break;
       }
     }
@@ -274,8 +324,8 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
     await new Promise((r) => setTimeout(r, 60));
 
     expect(batchCount).toBe(5);
-    expect(document.querySelector('button[aria-label="Load more"]')).toBeNull();
-    const allCards = document.querySelectorAll('[data-testid="hotel-card-pricing"]');
+    expect(document.querySelector('button[data-selenium="pagination-next-btn"]')).toBeNull();
+    const allCards = document.querySelectorAll('li.PropertyCardItem, [data-selenium="hotel-item"]');
     expect(allCards.length).toBe(1 + totalBatches);
 
     // Banner should reflect highest batch: (1000 + 5 * 500) = 3500 miles / $100 = 35.0 miles/$
@@ -286,7 +336,7 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
   it('waits for busy/loading Load more button to become enabled before clicking', async () => {
     let clickCount = 0;
     const button = document.createElement('button');
-    button.setAttribute('aria-label', 'Load more');
+    button.setAttribute('data-selenium', 'pagination-next-btn');
     button.disabled = true;
     button.onclick = () => {
       clickCount++;
@@ -313,7 +363,7 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
   it('stops expansion if button is clicked repeatedly without new content (safety guard)', async () => {
     let clickCount = 0;
     const button = document.createElement('button');
-    button.setAttribute('aria-label', 'Load more');
+    button.setAttribute('data-selenium', 'pagination-next-btn');
     button.onclick = () => {
       clickCount++;
     };
@@ -336,7 +386,7 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
   it('aborts active search expansion on teardown and does not make further clicks', async () => {
     let clickCount = 0;
     const button = document.createElement('button');
-    button.setAttribute('aria-label', 'Load more');
+    button.setAttribute('data-selenium', 'pagination-next-btn');
     button.onclick = () => {
       clickCount++;
       listContainer.appendChild(createCard(100, 1000));

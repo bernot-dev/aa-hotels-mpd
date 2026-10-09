@@ -6,14 +6,15 @@ describe('MPD Calculation Regression Tests', () => {
 
   beforeEach(() => {
     card = document.createElement('div');
-    card.setAttribute('data-testid', 'hotel-card-pricing');
+    card.className = 'PropertyCardItem';
+    card.setAttribute('data-selenium', 'hotel-item');
   });
 
   const setupCard = (priceText: string, pricingTypeText: string, tierMilesText: string) => {
     card.innerHTML = `
-      <div data-testid="pricing-text">${pricingTypeText}</div>
-      <div data-testid="earn-price">${priceText}</div>
-      <div data-testid="tier-earn-rewards">${tierMilesText}</div>
+      <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">${pricingTypeText}</div>
+      <div data-selenium="display-price" class="PropertyCardPrice__Value">${priceText}</div>
+      <div data-selenium="points-max-promo-text">${tierMilesText}</div>
     `;
   };
 
@@ -90,10 +91,10 @@ describe('MPD Calculation Regression Tests', () => {
   describe('Multiple Reward Tiers', () => {
     it('calculates MPD for each tier and returns the highest MPD', () => {
       card.innerHTML = `
-        <div data-testid="pricing-text">Total</div>
-        <div data-testid="earn-price">$200</div>
-        <div data-testid="non-tier-earn-rewards">Earn 400 miles per stay</div>
-        <div data-testid="tier-earn-rewards">Earn 5,000 miles per stay</div>
+        <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total</div>
+        <div data-selenium="display-price" class="PropertyCardPrice__Value">$200</div>
+        <div data-selenium="points-max">Earn 400 miles per stay</div>
+        <div data-selenium="points-max-promo-text">Earn 5,000 miles per stay</div>
       `;
 
       const { cardMaxMPD, processedTiers } = processCard(card, 1, false);
@@ -121,7 +122,7 @@ describe('MPD Calculation Regression Tests', () => {
       expect(badges[0].textContent).toBe(' (10.0\u00A0miles/$)');
 
       // Price decreases to $100 (e.g. promo or currency toggle)
-      card.querySelector('[data-testid="earn-price"]')!.textContent = '$100';
+      card.querySelector('[data-selenium="display-price"]')!.textContent = '$100';
 
       const { cardMaxMPD } = processCard(card, 1, false);
       expect(cardMaxMPD).toBeCloseTo(20.0, 1);
@@ -139,7 +140,7 @@ describe('MPD Calculation Regression Tests', () => {
 
       // Now card gains boost tag, and user turns off includeBonusMiles
       const boostTag = document.createElement('div');
-      boostTag.setAttribute('data-testid', 'boost-tag-container');
+      boostTag.setAttribute('data-selenium', 'boost-tag');
       card.appendChild(boostTag);
 
       processCard(card, 1, false);

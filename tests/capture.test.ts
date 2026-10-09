@@ -26,7 +26,7 @@ describe("Rate and Criteria Capture Pipeline", () => {
   describe("extractSearchCriteria", () => {
     it("extracts all parameters from full URL", () => {
       const url =
-        "https://www.aadvantagehotels.com/search?destination=Dallas%2C%20TX%2C%20USA&checkIn=2026-10-05&checkOut=2026-10-08&rooms=2&adults=3&children=1";
+        "https://search.aadvantagehotels.com/search?destination=Dallas%2C%20TX%2C%20USA&checkIn=2026-10-05&checkOut=2026-10-08&rooms=2&adults=3&children=1";
       const criteria = extractSearchCriteria(url);
 
       expect(criteria.location).toBe("Dallas, TX, USA");
@@ -41,14 +41,14 @@ describe("Rate and Criteria Capture Pipeline", () => {
     it("extracts criteria from card details link when URL destination param is missing", () => {
       const dom = new JSDOM(`
         <div>
-          <a href="/details?destination=Austin%2C%20TX&checkIn=2026-11-01&checkOut=2026-11-03&rooms=1&adults=2">
-            <div data-testid="hotel-card-pricing">Card</div>
+          <a data-selenium="hotel-item-link" href="/accom/property?destination=Austin%2C%20TX&checkIn=2026-11-01&checkOut=2026-11-03&rooms=1&adults=2">
+            <div class="PropertyCardItem" data-selenium="hotel-item">Card</div>
           </a>
         </div>
       `);
 
       const criteria = extractSearchCriteria(
-        "https://www.aadvantagehotels.com/search",
+        "https://search.aadvantagehotels.com/search",
         dom.window.document
       );
 
@@ -63,29 +63,29 @@ describe("Rate and Criteria Capture Pipeline", () => {
     it("never reads destination input box under any circumstances", () => {
       const dom = new JSDOM(`
         <div>
-          <input data-testid="search-destination" id="downshift-0-input" value="Chicago, IL" />
+          <input data-selenium="search-destination" id="downshift-0-input" value="Chicago, IL" />
         </div>
       `);
-      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      const criteria = extractSearchCriteria("https://search.aadvantagehotels.com/search", dom.window.document);
       expect(criteria.location).toBe("Unknown Location");
     });
 
     it("extracts destination from hotel card details links when URL parameter is missing", () => {
       const dom = new JSDOM(`
         <div>
-          <a href="/details?destination=San%20Diego%2C%20CA&checkIn=2026-10-05&checkOut=2026-10-07">
-            <div data-testid="hotel-card-pricing">Card</div>
+          <a data-selenium="hotel-item-link" href="/accom/property?destination=San%20Diego%2C%20CA&checkIn=2026-10-05&checkOut=2026-10-07">
+            <div class="PropertyCardItem" data-selenium="hotel-item">Card</div>
           </a>
         </div>
       `);
-      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      const criteria = extractSearchCriteria("https://search.aadvantagehotels.com/search", dom.window.document);
       expect(criteria.location).toBe("San Diego, CA");
     });
 
     it("extracts destination from neighborhood filter container on search page when links lack destination", () => {
       const dom = new JSDOM(`
         <div>
-          <div data-testid="neighborhood-filter-container">
+          <div data-selenium="neighborhood-filter">
             <label class="chakra-checkbox">
               <span class="chakra-checkbox__label"><p>Dallas City Center</p></span>
             </label>
@@ -93,12 +93,12 @@ describe("Rate and Criteria Capture Pipeline", () => {
               <span class="chakra-checkbox__label"><p>Stemmons Corridor</p></span>
             </label>
           </div>
-          <a href="/details?id=12345&checkIn=2026-10-05&checkOut=2026-10-07">
-            <div data-testid="hotel-card-pricing">Card</div>
+          <a data-selenium="hotel-item-link" href="/accom/property?propertyId=12345&checkIn=2026-10-05&checkOut=2026-10-07">
+            <div class="PropertyCardItem" data-selenium="hotel-item">Card</div>
           </a>
         </div>
       `);
-      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      const criteria = extractSearchCriteria("https://search.aadvantagehotels.com/search", dom.window.document);
       expect(criteria.location).toBe("Dallas City Center");
     });
 
@@ -106,14 +106,14 @@ describe("Rate and Criteria Capture Pipeline", () => {
       const dom = new JSDOM(`
         <div>
           <div>
-            <h4 data-testid="hotel-neighborhood">Back Bay</h4>
-            <a href="/details?id=12345&checkIn=2026-10-05&checkOut=2026-10-07">
-              <div data-testid="hotel-card-pricing">Card</div>
+            <h4 data-selenium="area-city-name">Back Bay</h4>
+            <a data-selenium="hotel-item-link" href="/accom/property?propertyId=12345&checkIn=2026-10-05&checkOut=2026-10-07">
+              <div class="PropertyCardItem" data-selenium="hotel-item">Card</div>
             </a>
           </div>
         </div>
       `);
-      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      const criteria = extractSearchCriteria("https://search.aadvantagehotels.com/search", dom.window.document);
       expect(criteria.location).toBe("Back Bay");
     });
 
@@ -122,13 +122,13 @@ describe("Rate and Criteria Capture Pipeline", () => {
         <html>
           <head><title>Hotels in Seattle, WA | AAdvantage Hotels</title></head>
           <body>
-            <a href="/details?id=12345&checkIn=2026-10-05&checkOut=2026-10-07">
-              <div data-testid="hotel-card-pricing">Card</div>
+            <a data-selenium="hotel-item-link" href="/accom/property?propertyId=12345&checkIn=2026-10-05&checkOut=2026-10-07">
+              <div class="PropertyCardItem" data-selenium="hotel-item">Card</div>
             </a>
           </body>
         </html>
       `);
-      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      const criteria = extractSearchCriteria("https://search.aadvantagehotels.com/search", dom.window.document);
       expect(criteria.location).toBe("Seattle, WA");
     });
 
@@ -136,12 +136,12 @@ describe("Rate and Criteria Capture Pipeline", () => {
       const dom = new JSDOM(`
         <div>
           <div>
-            <h3 data-testid="hotel-name">Hilton Anatole, Dallas</h3>
-            <div data-testid="hotel-card-pricing">Card</div>
+            <h3 data-selenium="hotel-name">Hilton Anatole, Dallas</h3>
+            <div class="PropertyCardItem" data-selenium="hotel-item">Card</div>
           </div>
         </div>
       `);
-      const criteria = extractSearchCriteria("https://www.aadvantagehotels.com/search", dom.window.document);
+      const criteria = extractSearchCriteria("https://search.aadvantagehotels.com/search", dom.window.document);
       expect(criteria.location).toBe("Dallas");
     });
 
@@ -162,7 +162,7 @@ describe("Rate and Criteria Capture Pipeline", () => {
       const fixtureHtml = fs.readFileSync(fixturePath, "utf-8");
       const dom = new JSDOM(fixtureHtml);
       const container = dom.window.document.querySelector(
-        '[data-testid="hotel-results-list-container"]'
+        '#searchPageRightColumn, [data-selenium="pagination-panel"], #contentContainer'
       );
       expect(container).not.toBeNull();
 
@@ -183,18 +183,18 @@ describe("Rate and Criteria Capture Pipeline", () => {
     it("filters boost/bonus tags when includeBonusMiles is false", () => {
       const dom = new JSDOM(`
         <div>
-          <div data-testid="hotel-card-pricing">
-            <div data-testid="hotel-name">Normal Hotel</div>
-            <div data-testid="pricing-text">Total</div>
-            <div data-testid="earn-price">$200</div>
-            <div data-testid="tier-earn-rewards">Earn 2,000 miles</div>
+          <div class="PropertyCardItem" data-selenium="hotel-item">
+            <h3 data-selenium="hotel-name">Normal Hotel</h3>
+            <span class="PropertyCardPrice__Currency" data-selenium="hotel-currency">Total</span>
+            <span class="PropertyCardPrice__Value" data-selenium="display-price">$200</span>
+            <span data-selenium="points-max">Earn 2,000 miles</span>
           </div>
-          <div data-testid="hotel-card-pricing">
-            <div data-testid="hotel-name">Bonus Hotel</div>
-            <div data-testid="boost-tag-container">Bonus Offer</div>
-            <div data-testid="pricing-text">Total</div>
-            <div data-testid="earn-price">$200</div>
-            <div data-testid="tier-earn-rewards">Earn 6,000 miles</div>
+          <div class="PropertyCardItem" data-selenium="hotel-item">
+            <h3 data-selenium="hotel-name">Bonus Hotel</h3>
+            <div data-selenium="boost-tag">Bonus Offer</div>
+            <span class="PropertyCardPrice__Currency" data-selenium="hotel-currency">Total</span>
+            <span class="PropertyCardPrice__Value" data-selenium="display-price">$200</span>
+            <span data-selenium="points-max">Earn 6,000 miles</span>
           </div>
         </div>
       `);
@@ -211,13 +211,13 @@ describe("Rate and Criteria Capture Pipeline", () => {
       const dom = new JSDOM(`
         <div>
           <div>
-            <h4 data-testid="hotel-neighborhood">French Quarter</h4>
-            <h3 data-testid="hotel-name">Bourbon Orleans Hotel</h3>
-            <a href="/details?id=9999&checkIn=2026-10-05&checkOut=2026-10-07">
-              <div data-testid="hotel-card-pricing">
-                <div data-testid="pricing-text">Total</div>
-                <div data-testid="earn-price">$300</div>
-                <div data-testid="tier-earn-rewards">Earn 6,000 miles</div>
+            <h4 data-selenium="area-city-name">French Quarter</h4>
+            <h3 data-selenium="hotel-name">Bourbon Orleans Hotel</h3>
+            <a data-selenium="hotel-item-link" href="/accom/property?propertyId=9999&checkIn=2026-10-05&checkOut=2026-10-07">
+              <div class="PropertyCardItem" data-selenium="hotel-item">
+                <span class="PropertyCardPrice__Currency" data-selenium="hotel-currency">Total</span>
+                <span class="PropertyCardPrice__Value" data-selenium="display-price">$300</span>
+                <span data-selenium="points-max">Earn 6,000 miles</span>
               </div>
             </a>
           </div>
@@ -239,7 +239,7 @@ describe("Rate and Criteria Capture Pipeline", () => {
       const dom = new JSDOM(fixtureHtml);
 
       const container = dom.window.document.querySelector(
-        'div[data-testid="room-group"]'
+        '#property-room-grid-root, [data-selenium="room-grid"], #rooms-table'
       );
       expect(container).not.toBeNull();
 

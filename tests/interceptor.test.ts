@@ -212,15 +212,91 @@ describe("Network Response Interceptor", () => {
       expect(hotel.nights).toBe(2);
       expect(hotel.searchId).toBe("529476cd-ae38-4b09-bffa-df7ff02156d0");
     });
+    it("extracts hotel rates from GraphQL search.properties schema", () => {
+      const payload = {
+        data: {
+          search: {
+            properties: [
+              {
+                propertyId: "99887",
+                displayName: "The Grand Hotel",
+                pricing: {
+                  displayPrice: { amount: 350 },
+                  inclusive: { amount: 410 },
+                },
+                loyaltyOfferSummary: {
+                  offers: [
+                    {
+                      earn: { points: 3500 },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      };
+
+      const rates = extractHotelRatesFromPayload(payload);
+      expect(rates).toHaveLength(1);
+      expect(rates[0].hotelId).toBe("99887");
+      expect(rates[0].hotelName).toBe("The Grand Hotel");
+      expect(rates[0].basePrice).toBe(350);
+      expect(rates[0].allInPrice).toBe(410);
+      expect(rates[0].price).toBe(410);
+      expect(rates[0].baseMiles).toBe(3500);
+      expect(rates[0].tieredMiles).toBe(3500);
+    });
+
+    it("extracts room rates from GraphQL propertyDetail schema", () => {
+      const payload = {
+        data: {
+          propertyDetail: {
+            propertyId: "12345",
+            propertyName: "Boutique Resort",
+            rooms: [
+              {
+                roomId: "r1",
+                pricing: {
+                  totalPrice: { amount: 600 },
+                },
+                loyaltyOfferSummary: {
+                  offers: [
+                    {
+                      earn: { points: 6000 },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      };
+
+      const rates = extractHotelRatesFromPayload(payload);
+      expect(rates).toHaveLength(1);
+      expect(rates[0].hotelId).toBe("12345");
+      expect(rates[0].hotelName).toBe("Boutique Resort");
+      expect(rates[0].price).toBe(600);
+      expect(rates[0].baseMiles).toBe(6000);
+    });
   });
 
   describe("shouldInspectUrl", () => {
-    it("returns true for search and hotel API endpoints", () => {
-      expect(shouldInspectUrl("/rest/aadvantage-hotels/search/uuid-123")).toBe(true);
-      expect(shouldInspectUrl("https://www.aadvantagehotels.com/rest/aadvantage-hotels/v2/search")).toBe(true);
+    it("returns true for search, property, and GraphQL API endpoints", () => {
+      expect(shouldInspectUrl("https://search.aadvantagehotels.com/graphql")).toBe(true);
+      expect(shouldInspectUrl("/graphql")).toBe(true);
       expect(shouldInspectUrl("/search?query=las+vegas")).toBe(true);
       expect(shouldInspectUrl("/results")).toBe(true);
-      expect(shouldInspectUrl("/hotels/12345/rooms")).toBe(true);
+      expect(shouldInspectUrl("/accom/property?propertyId=123")).toBe(true);
+    });
+
+    it("strictly excludes sensitive checkout, booking, and payment pages", () => {
+      expect(shouldInspectUrl("https://search.aadvantagehotels.com/checkout/step1")).toBe(false);
+      expect(shouldInspectUrl("https://search.aadvantagehotels.com/accom/checkout")).toBe(false);
+      expect(shouldInspectUrl("https://search.aadvantagehotels.com/book/reservation")).toBe(false);
+      expect(shouldInspectUrl("https://search.aadvantagehotels.com/booking/finalize")).toBe(false);
+      expect(shouldInspectUrl("https://search.aadvantagehotels.com/payment/card")).toBe(false);
     });
 
     it("returns false for non-hotel tracking/analytics endpoints", () => {

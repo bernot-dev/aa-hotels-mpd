@@ -7,14 +7,15 @@ describe('Edge Cases and Regression Guard Tests', () => {
 
   beforeEach(() => {
     card = document.createElement('div');
-    card.setAttribute('data-testid', 'hotel-card-pricing');
+    card.className = 'PropertyCardItem';
+    card.setAttribute('data-selenium', 'hotel-item');
   });
 
   describe('Incomplete and Broken Card Markup', () => {
     it('safely skips cards missing earn-price element without throwing', () => {
       card.innerHTML = `
-        <div data-testid="pricing-text">Total</div>
-        <div data-testid="tier-earn-rewards">Earn 5,000 miles per stay</div>
+        <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total</div>
+        <div data-selenium="points-max-promo-text">Earn 5,000 miles per stay</div>
       `;
 
       expect(() => {
@@ -27,11 +28,11 @@ describe('Edge Cases and Regression Guard Tests', () => {
     });
 
     it('gracefully handles missing pricing-text by falling back to per-night calculation', () => {
-      // Missing pricing-text defaults to isTotalPrice = false (per-night)
       // 2,000 miles / $100 / 2 nights = 10.0 miles/$
       card.innerHTML = `
-        <div data-testid="earn-price">$100</div>
-        <div data-testid="tier-earn-rewards">Earn 2,000 miles per stay</div>
+        <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">per night</div>
+        <div data-selenium="display-price" class="PropertyCardPrice__Value">$100</div>
+        <div data-selenium="points-max-promo-text">Earn 2,000 miles per stay</div>
       `;
 
       expect(() => {
@@ -46,9 +47,9 @@ describe('Edge Cases and Regression Guard Tests', () => {
 
     it('safely skips cards where price is 0 or non-numeric (e.g. Sold Out)', () => {
       card.innerHTML = `
-        <div data-testid="pricing-text">Total</div>
-        <div data-testid="earn-price">Sold Out</div>
-        <div data-testid="tier-earn-rewards">Earn 5,000 miles per stay</div>
+        <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total</div>
+        <div data-selenium="display-price" class="PropertyCardPrice__Value">Sold Out</div>
+        <div data-selenium="points-max-promo-text">Earn 5,000 miles per stay</div>
       `;
 
       const { cardMaxMPD, processedTiers } = processCard(card, 1, false);
@@ -59,9 +60,9 @@ describe('Edge Cases and Regression Guard Tests', () => {
 
     it('does not produce NaN or Infinity badges if dollars is $0', () => {
       card.innerHTML = `
-        <div data-testid="pricing-text">Total</div>
-        <div data-testid="earn-price">$0</div>
-        <div data-testid="tier-earn-rewards">Earn 5,000 miles per stay</div>
+        <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total</div>
+        <div data-selenium="display-price" class="PropertyCardPrice__Value">$0</div>
+        <div data-selenium="points-max-promo-text">Earn 5,000 miles per stay</div>
       `;
 
       const { cardMaxMPD, processedTiers } = processCard(card, 1, false);
@@ -72,9 +73,9 @@ describe('Edge Cases and Regression Guard Tests', () => {
 
     it('skips tiers with 0 or non-numeric miles', () => {
       card.innerHTML = `
-        <div data-testid="pricing-text">Total</div>
-        <div data-testid="earn-price">$200</div>
-        <div data-testid="tier-earn-rewards">Earn 0 miles</div>
+        <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total</div>
+        <div data-selenium="display-price" class="PropertyCardPrice__Value">$200</div>
+        <div data-selenium="points-max-promo-text">Earn 0 miles</div>
       `;
 
       const { cardMaxMPD, processedTiers } = processCard(card, 1, false);
@@ -95,21 +96,21 @@ describe('Edge Cases and Regression Guard Tests', () => {
 
     it('handles malformed date strings in URL by defaulting to 1', () => {
       delete (window as any).location;
-      window.location = new URL('https://www.aadvantagehotels.com/search?checkIn=not-a-date&checkOut=also-not-a-date') as any;
+      window.location = new URL('https://search.aadvantagehotels.com/search?checkIn=not-a-date&checkOut=also-not-a-date') as any;
 
       expect(getNights()).toBe(1);
     });
 
     it('handles checkOut before checkIn (negative duration) by defaulting to 1', () => {
       delete (window as any).location;
-      window.location = new URL('https://www.aadvantagehotels.com/search?checkIn=2026-10-10&checkOut=2026-10-05') as any;
+      window.location = new URL('https://search.aadvantagehotels.com/search?checkIn=2026-10-10&checkOut=2026-10-05') as any;
 
       expect(getNights()).toBe(1);
     });
 
     it('falls back to DOM input elements if URL search params are absent', () => {
       delete (window as any).location;
-      window.location = new URL('https://www.aadvantagehotels.com/search') as any;
+      window.location = new URL('https://search.aadvantagehotels.com/search') as any;
 
       document.body.innerHTML = `
         <input id="check-in-date" value="2026-10-01" />
@@ -124,7 +125,7 @@ describe('Edge Cases and Regression Guard Tests', () => {
     it('ignores MutationRecords that only contain our own .aa-mpd-badge elements', () => {
       const container = document.createElement('div');
       const maxBanner = document.createElement('div');
-      const updateCallback = updateCards(container, maxBanner, '[data-testid="hotel-card-pricing"]', false);
+      const updateCallback = updateCards(container, maxBanner, 'li.PropertyCardItem, [data-selenium="hotel-item"]', false);
 
       const fakeBadge = document.createElement('span');
       fakeBadge.className = 'aa-mpd-badge';

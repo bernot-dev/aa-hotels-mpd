@@ -1,28 +1,62 @@
-// Debug tool to export page DOM as a test fixture for aa-hotels-mpd
+// Developer Debug Tooling for AA Hotels MPD
+// NOTE FOR PUBLISHING: This debug mode is for local developer fixture capture only.
+// Set DEV_DEBUG_MODE = false or remove before publishing to Chrome Web Store.
+export const DEV_DEBUG_MODE = true;
+
+export interface CapturedNetworkRecord {
+  url: string;
+  method: string;
+  timestamp: number;
+  payload: any;
+}
+
+export function recordCapturedNetwork(record: CapturedNetworkRecord): void {
+  if (!DEV_DEBUG_MODE || typeof window === 'undefined') return;
+  if (!(window as any).__AA_CAPTURED_NETWORK__) {
+    (window as any).__AA_CAPTURED_NETWORK__ = [];
+  }
+  (window as any).__AA_CAPTURED_NETWORK__.push(record);
+  try {
+    sessionStorage.setItem(
+      'aa_hotels_captured_network',
+      JSON.stringify((window as any).__AA_CAPTURED_NETWORK__)
+    );
+  } catch {}
+}
+
+export function getCapturedNetworkRecords(): CapturedNetworkRecord[] {
+  if (typeof window === 'undefined') return [];
+  if ((window as any).__AA_CAPTURED_NETWORK__) {
+    return (window as any).__AA_CAPTURED_NETWORK__;
+  }
+  try {
+    const cached = sessionStorage.getItem('aa_hotels_captured_network');
+    if (cached) return JSON.parse(cached);
+  } catch {}
+  return [];
+}
 
 export function getFixtureFilename(): string {
-  const pathname = window.location.pathname;
+  const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+  const search = typeof window !== 'undefined' ? window.location.search : '';
   const isMapView = !!(
-    document.querySelector('[data-testid*="map"]') ||
-    document.querySelector('.map-container') ||
-    window.location.search.includes('view=map')
+    (typeof document !== 'undefined' && (document.querySelector('[data-selenium*="map"]') || document.querySelector('.map-container'))) ||
+    search.includes('view=map')
   );
 
-  if (pathname.startsWith('/search')) {
-    return isMapView ? 'search-map-authenticated.html' : 'search-authenticated.html';
+  if (pathname.includes('/accom/property') || pathname.includes('/property') || search.includes('propertyId=')) {
+    return 'details-new.html';
   }
-  if (pathname.startsWith('/details')) {
-    return 'details-authenticated.html';
-  }
-  if (pathname === '/' || pathname === '') {
-    return 'home-authenticated.html';
+  if (pathname.startsWith('/search') || pathname === '/' || pathname === '') {
+    return isMapView ? 'search-map-new.html' : 'search-new.html';
   }
 
   const cleanPath = pathname.replace(/^\/+|\/+$/g, '').replace(/[/\\]+/g, '-');
-  return `${cleanPath || 'page'}-authenticated.html`;
+  return `${cleanPath || 'page'}-new.html`;
 }
 
 export function showDebugToast(message: string): void {
+  if (typeof document === 'undefined') return;
   const existing = document.getElementById('aa-mpd-debug-toast');
   if (existing) {
     existing.remove();
@@ -33,7 +67,7 @@ export function showDebugToast(message: string): void {
   toast.textContent = message;
   Object.assign(toast.style, {
     position: 'fixed',
-    bottom: '64px',
+    bottom: '76px',
     right: '16px',
     backgroundColor: '#0f172a',
     color: '#38bdf8',
@@ -94,6 +128,7 @@ export function serializeDocumentWithStyles(doc: Document = document): string {
 }
 
 export function exportCurrentDomFixture(): void {
+  if (typeof document === 'undefined') return;
   const filename = getFixtureFilename();
   const html = serializeDocumentWithStyles();
 
@@ -122,68 +157,101 @@ export function exportCurrentDomFixture(): void {
   showDebugToast(`Exported "${filename}" & copied to clipboard! (Drop in fixtures/)`);
 }
 
-export async function mountDebugButton(): Promise<void> {
-  if (document.getElementById('aa-mpd-debug-btn')) {
-    return;
-  }
+export function exportNetworkJsonFixture(): void {
+  const records = getCapturedNetworkRecords();
+  const dataStr = JSON.stringify(records, null, 2);
+  const filename = 'search-graphql.json';
 
-  let showButton = true;
   try {
-    if (typeof chrome !== 'undefined' && chrome.storage?.sync) {
-      const res = await chrome.storage.sync.get(['showDebugButton']);
-      if (typeof res.showDebugButton === 'boolean') {
-        showButton = res.showDebugButton;
-      }
-    }
-  } catch {
-    // Default to true if storage is unreachable
+    const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('[AA-Hotels-MPD] Failed to download network fixture:', err);
   }
 
-  if (!showButton) {
+  try {
+    navigator.clipboard.writeText(dataStr);
+  } catch {}
+
+  showDebugToast(`Exported "${filename}" (${records.length} records) & copied to clipboard!`);
+}
+
+export async function mountDebugButton(): Promise<void> {
+  if (!DEV_DEBUG_MODE || typeof document === 'undefined') {
     return;
   }
 
-  const btn = document.createElement('button');
-  btn.id = 'aa-mpd-debug-btn';
-  btn.title = 'Save DOM snapshot as test fixture for aa-hotels-mpd';
-  btn.innerHTML = '📸 <span>Export Fixture</span>';
+  if (document.getElementById('aa-mpd-debug-panel')) {
+    return;
+  }
 
-  Object.assign(btn.style, {
+  const panel = document.createElement('div');
+  panel.id = 'aa-mpd-debug-panel';
+  Object.assign(panel.style, {
     position: 'fixed',
     bottom: '16px',
     right: '16px',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    display: 'flex',
+    gap: '8px',
+    zIndex: '9999998',
+    backgroundColor: 'rgba(15, 23, 42, 0.92)',
+    padding: '6px 10px',
+    borderRadius: '24px',
+    backdropFilter: 'blur(8px)',
+    border: '1px solid rgba(255, 255, 255, 0.2)',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.35)',
+  });
+
+  // 1. Export DOM Fixture Button
+  const domBtn = document.createElement('button');
+  domBtn.title = 'Save live DOM snapshot as HTML test fixture';
+  domBtn.innerHTML = '📸 <span>DOM Fixture</span>';
+  Object.assign(domBtn.style, {
+    background: 'transparent',
     color: '#ffffff',
-    border: '1px solid rgba(255, 255, 255, 0.15)',
-    borderRadius: '20px',
-    padding: '7px 14px',
+    border: 'none',
     fontSize: '12px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     fontWeight: '600',
     cursor: 'pointer',
-    zIndex: '9999998',
-    backdropFilter: 'blur(8px)',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
-    transition: 'all 0.2s ease',
+    padding: '4px 8px',
+    borderRadius: '12px',
   });
-
-  btn.addEventListener('mouseenter', () => {
-    btn.style.backgroundColor = 'rgba(15, 23, 42, 1)';
-    btn.style.transform = 'scale(1.05)';
-  });
-  btn.addEventListener('mouseleave', () => {
-    btn.style.backgroundColor = 'rgba(15, 23, 42, 0.85)';
-    btn.style.transform = 'scale(1)';
-  });
-
-  btn.addEventListener('click', (e) => {
+  domBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     exportCurrentDomFixture();
   });
 
-  document.body.appendChild(btn);
+  // 2. Export GraphQL / Network JSON Button
+  const netBtn = document.createElement('button');
+  netBtn.title = 'Save intercepted GraphQL / REST responses as JSON fixture';
+  netBtn.innerHTML = '🌐 <span>Network JSON</span>';
+  Object.assign(netBtn.style, {
+    background: 'transparent',
+    color: '#38bdf8',
+    border: 'none',
+    fontSize: '12px',
+    fontFamily: 'system-ui, -apple-system, sans-serif',
+    fontWeight: '600',
+    cursor: 'pointer',
+    padding: '4px 8px',
+    borderRadius: '12px',
+  });
+  netBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    exportNetworkJsonFixture();
+  });
+
+  panel.appendChild(domBtn);
+  panel.appendChild(netBtn);
+  document.body.appendChild(panel);
 }

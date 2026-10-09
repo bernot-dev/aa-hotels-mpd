@@ -16,6 +16,11 @@ export const extractNumber = (e: Element): number | null => {
   return match ? Number(match) : null;
 };
 
+export const CARD_SELECTOR = 'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]';
+export const PRICE_SELECTOR = '[data-selenium="display-price"], .PropertyCardPrice__Value';
+export const PRICE_TYPE_SELECTOR = '[data-selenium="hotel-currency"], .PropertyCardPrice__Currency';
+export const TIER_SELECTOR = '[data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"]';
+
 export interface CardProcessResult {
   cardMaxMPD: number;
   processedTiers: number;
@@ -27,15 +32,15 @@ export const processCard = (
   includeBonusMiles: boolean,
   useAllInPricing: boolean = true
 ): CardProcessResult => {
-  const priceSelector = '[data-testid="earn-price"]';
-  const priceTypeSelector = '[data-testid="pricing-text"]';
-  const tierSelector = '[data-testid$="tier-earn-rewards"]';
+  const priceSelector = PRICE_SELECTOR;
+  const priceTypeSelector = PRICE_TYPE_SELECTOR;
+  const tierSelector = TIER_SELECTOR;
 
   let cardMaxMPD = 0;
   let processedTiers = 0;
 
   // Respect user preference for bonus miles / boost tags
-  const hasBoostTag = !!card.querySelector('[data-testid="boost-tag-container"]');
+  const hasBoostTag = !!card.querySelector('[data-selenium="boost-tag"], [data-element-name="boost-tag"]');
   if (hasBoostTag && !includeBonusMiles) {
     // If bonus miles are excluded, remove any previously injected badges and skip
     card.querySelectorAll('.aa-mpd-badge').forEach((b) => b.remove());
@@ -54,7 +59,9 @@ export const processCard = (
   }
 
   const pricingTextElem = card.querySelector(priceTypeSelector);
-  const isTotalPrice = pricingTextElem?.textContent?.trim().startsWith("Total") ?? false;
+  const textContent = pricingTextElem?.textContent?.trim().toLowerCase() || "";
+  const isNightly = textContent.includes("night") || textContent.includes("/nt");
+  const isTotalPrice = !isNightly || textContent.includes("total");
 
   // Determine authoritative pricing
   const effectivePrice = enriched
