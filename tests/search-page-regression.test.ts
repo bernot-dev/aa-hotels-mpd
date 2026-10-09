@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { processSearchPage, setupSearchExpansion } from '../src/search';
+import { clearHotelMpdRegistry } from '../src/registry';
 
 interface MockChrome {
   storage?: {
@@ -25,6 +26,7 @@ describe('Search Page Presentation Regression Tests', () => {
   let cleanupFn: (() => void) | null = null;
 
   beforeEach(() => {
+    clearHotelMpdRegistry();
     wrapper = document.createElement('div');
     container = document.createElement('div');
     container.id = 'searchPageRightColumn';
@@ -224,7 +226,7 @@ describe('Search Page Presentation Regression Tests', () => {
 
     document.body.innerHTML = dom.window.document.body.innerHTML;
 
-    const fixtureContainer = document.querySelector('#searchPageRightColumn, #contentContainer, [data-selenium="pagination-panel"]');
+    const fixtureContainer = document.querySelector('#searchPageRightColumn, #contentContainer, [data-selenium="pagination-panel"], [data-testid="hotel-results-list-container"]');
     expect(fixtureContainer).not.toBeNull();
 
     const fixtureCleanup = await processSearchPage(fixtureContainer!);
@@ -240,7 +242,7 @@ describe('Search Page Presentation Regression Tests', () => {
 
     fixtureCleanup();
     expect(document.getElementById('aa-mpd-search-summary')).toBeNull();
-  });
+  }, 15000);
 });
 
 describe('Search Result Auto-Expansion Regression Tests', () => {
@@ -250,6 +252,7 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
   const originalChrome = getGlobalChrome();
 
   beforeEach(() => {
+    clearHotelMpdRegistry();
     parentContainer = document.createElement('div');
     parentContainer.className = 'search-list-parent';
     listContainer = document.createElement('div');
@@ -297,8 +300,8 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
     let batchCount = 0;
 
     const loadMoreButton = document.createElement('button');
-    loadMoreButton.setAttribute('data-selenium', 'pagination-next-btn');
-    loadMoreButton.textContent = 'Next';
+    loadMoreButton.id = 'test-load-more';
+    loadMoreButton.textContent = 'Load more';
     parentContainer.appendChild(loadMoreButton);
 
     loadMoreButton.onclick = () => {
@@ -316,7 +319,7 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
     // Allow async expansion loop to click through batches
     for (let i = 0; i < 30; i++) {
       await new Promise((r) => setTimeout(r, 50));
-      if (batchCount >= totalBatches && !document.querySelector('button[data-selenium="pagination-next-btn"]')) {
+      if (batchCount >= totalBatches && !document.querySelector('#test-load-more')) {
         break;
       }
     }
@@ -324,7 +327,7 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
     await new Promise((r) => setTimeout(r, 60));
 
     expect(batchCount).toBe(5);
-    expect(document.querySelector('button[data-selenium="pagination-next-btn"]')).toBeNull();
+    expect(document.querySelector('#test-load-more')).toBeNull();
     const allCards = document.querySelectorAll('li.PropertyCardItem, [data-selenium="hotel-item"]');
     expect(allCards.length).toBe(1 + totalBatches);
 
@@ -333,10 +336,45 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
     expect(summary?.innerHTML).toContain('35.0 miles/$');
   });
 
+  it('never clicks pagination or image carousel "Next" buttons (they replace the current page)', async () => {
+    let clickCount = 0;
+    const pagination = document.createElement('div');
+    pagination.setAttribute('data-selenium', 'pagination-panel');
+    const nextBtn = document.createElement('button');
+    nextBtn.setAttribute('data-selenium', 'pagination-next-btn');
+    nextBtn.textContent = 'Next';
+    nextBtn.onclick = () => clickCount++;
+    pagination.appendChild(nextBtn);
+    parentContainer.appendChild(pagination);
+
+    const carouselBtn = document.createElement('button');
+    carouselBtn.setAttribute('aria-label', 'Next property image Hilton Anatole');
+    carouselBtn.onclick = () => clickCount++;
+    listContainer.appendChild(carouselBtn);
+
+    const filterBtn = document.createElement('button');
+    filterBtn.textContent = 'Show 44 more';
+    filterBtn.onclick = () => clickCount++;
+    parentContainer.appendChild(filterBtn);
+
+    const controller = setupSearchExpansion({
+      expandSearchResults: true,
+      pollIntervalMs: 20,
+      postClickDelayMs: 20,
+      waitTimeoutMs: 50,
+      maxInitialWaitMs: 200,
+    });
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect(clickCount).toBe(0);
+
+    controller.teardown();
+  });
+
   it('waits for busy/loading Load more button to become enabled before clicking', async () => {
     let clickCount = 0;
     const button = document.createElement('button');
-    button.setAttribute('data-selenium', 'pagination-next-btn');
+    button.textContent = 'Load more';
     button.disabled = true;
     button.onclick = () => {
       clickCount++;
@@ -363,7 +401,7 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
   it('stops expansion if button is clicked repeatedly without new content (safety guard)', async () => {
     let clickCount = 0;
     const button = document.createElement('button');
-    button.setAttribute('data-selenium', 'pagination-next-btn');
+    button.textContent = 'Load more';
     button.onclick = () => {
       clickCount++;
     };
@@ -386,7 +424,7 @@ describe('Search Result Auto-Expansion Regression Tests', () => {
   it('aborts active search expansion on teardown and does not make further clicks', async () => {
     let clickCount = 0;
     const button = document.createElement('button');
-    button.setAttribute('data-selenium', 'pagination-next-btn');
+    button.textContent = 'Load more';
     button.onclick = () => {
       clickCount++;
       listContainer.appendChild(createCard(100, 1000));

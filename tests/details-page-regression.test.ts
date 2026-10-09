@@ -70,7 +70,7 @@ describe('Details Page Presentation Regression Tests', () => {
     expect(summary).not.toBeNull();
     expect(summary?.style.display).toBe('block');
     expect(summary?.innerHTML).toContain('Best earn rate on this page: <b>20.0 miles/$</b>.');
-    expect(summary?.nextElementSibling).toBe(parentContainer);
+    expect(summary?.nextElementSibling).toBe(roomGroupContainer);
 
     const badges = roomGroupContainer.querySelectorAll('.aa-mpd-badge');
     expect(badges.length).toBe(2);

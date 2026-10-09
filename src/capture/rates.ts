@@ -1,19 +1,37 @@
 import { CapturedRate } from "../types";
-import { extractNumber } from "../cards";
+import {
+  extractNumber,
+  extractPrice,
+  getMilesElements,
+  innermostCards,
+  isTotalPriceText,
+  CARD_SELECTOR,
+  ROOM_CARD_SELECTOR,
+  PRICE_SELECTOR,
+  PRICE_TYPE_SELECTOR,
+} from "../cards";
 import { isValidLocation } from "./criteria";
 import { getEnrichedHotel, getHotelIdFromCard } from "../registry";
+
+/**
+ * Text of a hotel name element without nested extras such as star-rating screen-reader text.
+ */
+function getOwnHeadingText(nameEl: Element): string {
+  const heading = nameEl.matches("h1, h2, h3") ? nameEl : nameEl.querySelector("h1, h2, h3") || nameEl;
+  const ownText = Array.from(heading.childNodes)
+    .filter((n) => n.nodeType === 3)
+    .map((n) => n.textContent || "")
+    .join("")
+    .trim();
+  return ownText || heading.textContent?.trim() || "";
+}
 
 export function extractRatesFromSearchCards(
   container: Element,
   nights: number,
   includeBonusMiles: boolean
 ): CapturedRate[] {
-  const cardSelector = 'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]';
-  const priceSelector = '[data-selenium="display-price"], .PropertyCardPrice__Value';
-  const priceTypeSelector = '[data-selenium="hotel-currency"], .PropertyCardPrice__Currency';
-  const tierSelector = '[data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"]';
-
-  const cards = container.querySelectorAll(cardSelector);
+  const cards = innermostCards(container.querySelectorAll(CARD_SELECTOR));
   const captured: CapturedRate[] = [];
 
   cards.forEach((card) => {
@@ -22,32 +40,32 @@ export function extractRatesFromSearchCards(
       return;
     }
 
-    const dollarsElem = card.querySelector(priceSelector);
+    const dollarsElem = card.querySelector(PRICE_SELECTOR);
     if (!dollarsElem) return;
 
-    const dollars = extractNumber(dollarsElem);
+    const dollars = extractPrice(dollarsElem);
     if (!dollars || dollars <= 0) return;
 
-    const pricingTextElem = card.querySelector(priceTypeSelector);
-    const textContent = pricingTextElem?.textContent?.trim().toLowerCase() || "";
-    const isNightly = textContent.includes("night") || textContent.includes("/nt");
-    const isTotalPrice = !isNightly || textContent.includes("total");
+    const pricingTextElem = card.querySelector(PRICE_TYPE_SELECTOR);
+    const isTotalPrice = isTotalPriceText(pricingTextElem?.textContent || "");
 
     // Extract hotel name, hotel ID, and destination by walking up container
     let hotelName = "Unknown Hotel";
-    let hotelId: string | undefined = undefined;
+    let hotelId: string | undefined = getHotelIdFromCard(card) || undefined;
     let cardLocation: string | undefined = undefined;
     let cardNeighborhood: string | undefined = undefined;
 
     let parent: Element | null = card;
     for (let i = 0; i < 8; i++) {
       if (!parent) break;
+      // Stop at shared containers: anything above holds other hotels' names and links
+      if (parent !== card && parent.querySelectorAll(CARD_SELECTOR).length > 1) break;
       if (hotelName === "Unknown Hotel") {
         const nameEl = parent.querySelector(
           '[data-selenium="hotel-name"], [data-element-name="property-card-title"], .PropertyCardItem__Name, [data-testid="hotel-name"], h3:not([data-selenium="display-price"]):not(.PropertyCardPrice__Value)'
         );
         if (nameEl && nameEl.textContent) {
-          const candidate = nameEl.textContent.trim();
+          const candidate = getOwnHeadingText(nameEl);
           if (candidate && !/^\$\d+/.test(candidate)) {
             hotelName = candidate;
           }
@@ -58,6 +76,15 @@ export function extractRatesFromSearchCards(
         const neighborhoodEl = parent.querySelector('[data-selenium="area-city-name"], [data-element-name="area-city-name"]');
         if (neighborhoodEl && neighborhoodEl.textContent) {
           cardNeighborhood = neighborhoodEl.textContent.trim();
+        }
+      }
+
+      if (!cardLocation) {
+        // e.g. "Grand Prairie, Dallas (TX) - 14.48 mi to center" -> "Dallas, TX"
+        const areaText = parent.querySelector('[data-selenium="area-city-text"]')?.textContent || "";
+        const cityState = areaText.match(/([^,()]+?)\s*\(([A-Z]{2})\)/);
+        if (cityState) {
+          cardLocation = `${cityState[1].trim()}, ${cityState[2]}`;
         }
       }
 
@@ -106,7 +133,7 @@ export function extractRatesFromSearchCards(
     let finalLocation = cardLocation;
     const enriched = hotelId ? getEnrichedHotel(hotelId) : undefined;
     if (enriched) {
-      if (enriched.hotelName && hotelName === "Unknown Hotel") {
+      if (enriched.hotelName && enriched.hotelName !== "Unknown Hotel") {
         hotelName = enriched.hotelName;
       }
       if (enriched.location && isValidLocation(enriched.location)) {
@@ -124,7 +151,7 @@ export function extractRatesFromSearchCards(
       }
     }
 
-    const tiers = card.querySelectorAll(tierSelector);
+    const tiers = getMilesElements(card);
     tiers.forEach((tier) => {
       const miles = extractNumber(tier);
       if (!miles || miles <= 0) return;
@@ -154,15 +181,11 @@ export function extractRatesFromDetailsCards(
   includeBonusMiles: boolean,
   hotelNameFallback: string = "Hotel Details"
 ): CapturedRate[] {
-  const cardSelector = '[data-selenium="master-room-card"], [data-selenium="room-card"], [data-element-name="room-card"], .MasterRoom';
-  const priceSelector = '[data-selenium="display-price"], .PropertyCardPrice__Value';
-  const priceTypeSelector = '[data-selenium="hotel-currency"], .PropertyCardPrice__Currency';
-  const tierSelector = '[data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"]';
 
   // Try extracting hotel name from document headings
   let hotelName = hotelNameFallback;
   const doc = container.ownerDocument || (typeof document !== "undefined" ? document : null);
-  const heading = doc?.querySelector("h1, h2");
+  const heading = doc?.querySelector('[data-selenium="hotel-header-name"], h1, h2');
   if (heading && heading.textContent && heading.textContent.trim()) {
     hotelName = heading.textContent.trim();
   }
@@ -191,7 +214,7 @@ export function extractRatesFromDetailsCards(
     }
   }
 
-  const cards = container.querySelectorAll(cardSelector);
+  const cards = innermostCards(container.querySelectorAll(ROOM_CARD_SELECTOR));
   const captured: CapturedRate[] = [];
 
   cards.forEach((card) => {
@@ -202,18 +225,16 @@ export function extractRatesFromDetailsCards(
       return;
     }
 
-    const dollarsElem = card.querySelector(priceSelector);
+    const dollarsElem = card.querySelector(PRICE_SELECTOR);
     if (!dollarsElem) return;
 
-    const dollars = extractNumber(dollarsElem);
+    const dollars = extractPrice(dollarsElem);
     if (!dollars || dollars <= 0) return;
 
-    const pricingTextElem = card.querySelector(priceTypeSelector);
-    const textContent = pricingTextElem?.textContent?.trim().toLowerCase() || "";
-    const isNightly = textContent.includes("night") && !textContent.includes("total");
-    const isTotalPrice = !isNightly || textContent.includes("total");
+    const pricingTextElem = card.querySelector(PRICE_TYPE_SELECTOR);
+    const isTotalPrice = isTotalPriceText(pricingTextElem?.textContent || "");
 
-    const tiers = card.querySelectorAll(tierSelector);
+    const tiers = getMilesElements(card);
     tiers.forEach((tier) => {
       const miles = extractNumber(tier);
       if (!miles || miles <= 0) return;

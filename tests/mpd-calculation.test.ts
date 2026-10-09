@@ -89,7 +89,7 @@ describe('MPD Calculation Regression Tests', () => {
   });
 
   describe('Multiple Reward Tiers', () => {
-    it('calculates MPD for each tier and returns the highest MPD', () => {
+    it('badges every tier; headline MPD is the member tier unless bonus miles are included', () => {
       card.innerHTML = `
         <div data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Total</div>
         <div data-selenium="display-price" class="PropertyCardPrice__Value">$200</div>
@@ -99,7 +99,8 @@ describe('MPD Calculation Regression Tests', () => {
 
       const { cardMaxMPD, processedTiers } = processCard(card, 1, false);
       expect(processedTiers).toBe(2);
-      expect(cardMaxMPD).toBeCloseTo(25.0, 1);
+      expect(cardMaxMPD).toBeCloseTo(2.0, 1);
+      expect(processCard(card, 1, true).cardMaxMPD).toBeCloseTo(25.0, 1);
 
       const badges = card.querySelectorAll('.aa-mpd-badge');
       expect(badges.length).toBe(2);

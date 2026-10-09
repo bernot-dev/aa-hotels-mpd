@@ -11,6 +11,8 @@ const DATA_STORAGE_KEY = "aa_hotels_data_registry";
 
 let activeSearchId: string | null = null;
 let activeDates: string | null = null;
+// Hotel IDs from the most recent results payload (one page of search results)
+let currentPageHotelIds: string[] = [];
 
 // Initialize from sessionStorage if available
 try {
@@ -92,6 +94,7 @@ export function ingestHotelRates(
 
   if (thisSearchId) activeSearchId = thisSearchId;
   if (thisDates) activeDates = thisDates;
+  currentPageHotelIds = rates.map((r) => r.hotelId).filter(Boolean);
 
   let updatedCount = 0;
 
@@ -128,6 +131,20 @@ export function ingestHotelRates(
     persistToStorage();
   }
   return updatedCount;
+}
+
+/**
+ * Best MPD among hotels in the most recent results payload, falling back to the whole registry
+ * when no payload has been seen yet (e.g. DOM-only processing).
+ */
+export function getCurrentPageBestMPD(): number {
+  const ids = currentPageHotelIds.length > 0 ? currentPageHotelIds : Array.from(hotelMpdRegistry.keys());
+  let best = 0;
+  for (const id of ids) {
+    const mpd = hotelMpdRegistry.get(id) || 0;
+    if (mpd > best) best = mpd;
+  }
+  return best;
 }
 
 export function registerHotelMPD(hotelId: string, mpd: number): void {
@@ -186,6 +203,7 @@ export function clearHotelMpdRegistry(): void {
   hotelDataRegistry.clear();
   activeSearchId = null;
   activeDates = null;
+  currentPageHotelIds = [];
   try {
     if (typeof sessionStorage !== "undefined") {
       sessionStorage.removeItem(MPD_STORAGE_KEY);
@@ -201,11 +219,17 @@ export function getHotelIdFromPin(pin: Element): string | null {
     pin.getAttribute("data-property-id") ||
     pin.getAttribute("data-propertyid") ||
     pin.getAttribute("data-hotel-id") ||
-    pin.getAttribute("data-hotelid");
+    pin.getAttribute("data-hotelid") ||
+    pin.getAttribute("data-id");
   if (directId && /^\d+$/.test(directId)) return directId;
 
-  const pinId = pin.id || pin.getAttribute("data-selenium") || "";
-  const match = pinId.match(/(?:pin|hotel|property)[-_]?(\d+)/i);
+  const testId = pin.getAttribute("data-testid") || "";
+  const testIdMatch = testId.match(/^hotel-pin-(\d+)$/);
+  if (testIdMatch) return testIdMatch[1];
+
+  // e.g. pin-123, hotel_123, propertyMarkerIcon-123
+  const pinId = pin.id || pin.getAttribute("data-selenium") || testId;
+  const match = pinId.match(/(?:pin|hotel|property(?:MarkerIcon)?)[-_]?(\d+)/i);
   return match ? match[1] : null;
 }
 
@@ -220,7 +244,14 @@ export function getHotelIdFromCard(card: Element): string | null {
       current.getAttribute("data-hotelid");
     if (directId && /^\d+$/.test(directId)) return directId;
 
-    // 2. Element ID e.g. hotel-12345, property-12345
+    // 2. data-testid inspection e.g. hotel-card-12345
+    const testId = current.getAttribute("data-testid");
+    if (testId) {
+      const match = testId.match(/^hotel-card-(\d+)$/);
+      if (match) return match[1];
+    }
+
+    // 3. Element ID e.g. hotel-12345, property-12345
     const elemId = current.id;
     if (elemId) {
       const match = elemId.match(/(?:hotel|property)[-_]?(\d+)/i);
@@ -230,7 +261,14 @@ export function getHotelIdFromCard(card: Element): string | null {
     current = current.parentElement;
   }
 
-  // 3. Child links e.g. /accom/property?propertyId=12345 or hotelId=12345
+  // 4. Closest or child with data-testid^="hotel-card-"
+  const testIdElem =
+    card.querySelector('[data-testid^="hotel-card-"]') ||
+    card.closest('[data-testid^="hotel-card-"]');
+  const testIdMatch = testIdElem?.getAttribute("data-testid")?.match(/^hotel-card-(\d+)$/);
+  if (testIdMatch) return testIdMatch[1];
+
+  // 5. Child links e.g. /accom/property?propertyId=12345 or hotelId=12345
   const links = card.querySelectorAll("a[href]");
   for (let i = 0; i < links.length; i++) {
     const href = links[i].getAttribute("href") || "";

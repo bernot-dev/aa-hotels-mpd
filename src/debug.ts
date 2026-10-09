@@ -1,6 +1,6 @@
 // Developer Debug Tooling for AA Hotels MPD
-// NOTE FOR PUBLISHING: This debug mode is for local developer fixture capture only.
-// Set DEV_DEBUG_MODE = false or remove before publishing to Chrome Web Store.
+// The fixture export panel only mounts when "Show DOM Fixture Export Button" is enabled in the
+// options page. DEV_DEBUG_MODE is a build-time kill switch for all debug tooling.
 export const DEV_DEBUG_MODE = true;
 
 export interface CapturedNetworkRecord {
@@ -44,7 +44,7 @@ export function getFixtureFilename(): string {
     search.includes('view=map')
   );
 
-  if (pathname.includes('/accom/property') || pathname.includes('/property') || search.includes('propertyId=')) {
+  if (/\/hotel\/[^/]+\.html$/i.test(pathname) || pathname.includes('/accom/property') || pathname.includes('/property') || search.includes('propertyId=')) {
     return 'details-new.html';
   }
   if (pathname.startsWith('/search') || pathname === '/' || pathname === '') {
@@ -188,6 +188,19 @@ export async function mountDebugButton(): Promise<void> {
     return;
   }
 
+  if (document.getElementById('aa-mpd-debug-panel')) {
+    return;
+  }
+
+  try {
+    if (typeof chrome === 'undefined' || !chrome.storage?.sync) return;
+    const { showDebugButton } = await chrome.storage.sync.get({ showDebugButton: false });
+    if (!showDebugButton) return;
+  } catch {
+    return;
+  }
+
+  // Another call may have mounted the panel while storage was being read
   if (document.getElementById('aa-mpd-debug-panel')) {
     return;
   }

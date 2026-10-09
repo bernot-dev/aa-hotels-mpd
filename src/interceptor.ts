@@ -187,23 +187,163 @@ export function dispatchInterceptedRates(rates: EnrichedHotelRate[]): void {
 }
 
 /**
+ * Reads the stay criteria from an Agoda GraphQL search request body
+ * (variables.<X>SearchRequest.searchRequest.searchCriteria / searchContext).
+ */
+export function extractAgodaRequestCriteria(
+  requestBody: unknown
+): { checkInDate?: string; checkOutDate?: string; nights?: number; searchId?: string } {
+  let body: any = requestBody;
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return {};
+    }
+  }
+  const variables = body?.variables;
+  if (!variables || typeof variables !== "object") return {};
+
+  for (const key of Object.keys(variables)) {
+    const searchRequest = variables[key]?.searchRequest;
+    const criteria = searchRequest?.searchCriteria;
+    if (!criteria) continue;
+
+    const checkInDate: string | undefined =
+      criteria.localCheckInDate || (typeof criteria.checkInDate === "string" ? criteria.checkInDate.slice(0, 10) : undefined);
+    const nights = Number(criteria.los) > 0 ? Number(criteria.los) : undefined;
+    let checkOutDate: string | undefined;
+    if (checkInDate && nights) {
+      const out = new Date(`${checkInDate}T00:00:00Z`);
+      if (!isNaN(out.getTime())) {
+        out.setUTCDate(out.getUTCDate() + nights);
+        checkOutDate = out.toISOString().slice(0, 10);
+      }
+    }
+    return {
+      checkInDate,
+      checkOutDate,
+      nights,
+      searchId: searchRequest?.searchContext?.searchId || undefined,
+    };
+  }
+  return {};
+}
+
+/**
+ * Parses an Agoda "Dallas (TX)" style city name into city and state parts.
+ */
+function splitAgodaCityName(name: string): { city: string; state: string } {
+  const match = name.match(/^(.+?)\s*\(([A-Za-z]{2})\)$/);
+  if (match) return { city: match[1].trim(), state: match[2].toUpperCase() };
+  return { city: name.trim(), state: "" };
+}
+
+/**
+ * Extracts a property from the Agoda white-label GraphQL schema used by search.aadvantagehotels.com
+ * (data.citySearch.properties[]). Prices and miles live on the first displayed room offer:
+ * pricing.offers[0].roomOffers[0].room.pricing[0].price.perBook.{inclusive,exclusive}.
+ */
+function extractAgodaProperty(
+  item: any,
+  context: { checkInDate?: string; checkOutDate?: string; nights: number; searchId?: string }
+): EnrichedHotelRate | null {
+  const rawId = item.propertyId;
+  if (rawId === null || rawId === undefined) return null;
+  const hotelId = String(rawId).trim();
+  if (!hotelId) return null;
+
+  const roomPricing = item.pricing?.offers?.[0]?.roomOffers?.[0]?.room?.pricing?.[0];
+  const perBook = roomPricing?.price?.perBook;
+  if (!perBook) return null;
+
+  // Miles per dollar is only meaningful for USD prices
+  if (roomPricing.currency && roomPricing.currency !== "USD") return null;
+
+  const allInPrice = Number(perBook.inclusive?.display) || 0;
+  const basePrice = Number(perBook.exclusive?.display) || allInPrice;
+  const nightlyPrice = Number(roomPricing.price?.perNight?.inclusive?.display) || 0;
+  if (allInPrice <= 0 && basePrice <= 0) return null;
+
+  // Loyalty offers: the ENABLED offer is what this visitor earns; the others are higher tiers
+  // (e.g. "AAdvantage credit cardmembers with status").
+  const offers: any[] =
+    perBook.inclusive?.loyaltyOfferSummary?.offers || perBook.exclusive?.loyaltyOfferSummary?.offers || [];
+  const points = offers
+    .map((o) => ({ points: Number(o?.earn?.points) || 0, enabled: o?.status === "ENABLED" || o?.isSelected === true }))
+    .filter((o) => o.points > 0);
+  let baseMiles = points.find((o) => o.enabled)?.points || 0;
+  let tieredMiles = points.reduce((max, o) => Math.max(max, o.points), 0);
+  if (baseMiles <= 0) {
+    baseMiles = Number(roomPricing.externalLoyaltyPricing?.perBook?.pointsToEarn) || tieredMiles;
+  }
+  if (tieredMiles < baseMiles) tieredMiles = baseMiles;
+  if (baseMiles <= 0) return null;
+
+  const info = item.content?.informationSummary || {};
+  const address = info.address || {};
+  const cityName = typeof address.city?.name === "string" ? address.city.name : "";
+  const { city, state } = splitAgodaCityName(cityName);
+  const country = address.country?.name || address.countryCode || undefined;
+  const reviews = item.content?.reviews?.cumulative || {};
+  const rawImage = item.content?.images?.hotelImages?.[0]?.urls?.[0]?.value;
+  const imageUrl = typeof rawImage === "string" ? (rawImage.startsWith("//") ? `https:${rawImage}` : rawImage) : undefined;
+  const latitude = Number(info.geoInfo?.latitude);
+  const longitude = Number(info.geoInfo?.longitude);
+  const stars = Number(info.rating);
+  const rating = Number(reviews.score);
+  const reviewCount = Number(reviews.reviewCount);
+
+  return {
+    hotelId,
+    hotelName: info.displayName || info.defaultName || "Unknown Hotel",
+    price: allInPrice > 0 ? allInPrice : basePrice,
+    basePrice,
+    allInPrice: allInPrice > 0 ? allInPrice : basePrice,
+    nightlyPrice,
+    fees: allInPrice > basePrice ? Number((allInPrice - basePrice).toFixed(2)) : 0,
+    baseMiles,
+    tieredMiles,
+    city,
+    state,
+    location: getCanonicalLocation(city, state),
+    country: country === "US" ? "United States" : country,
+    neighborhood: address.area?.name || undefined,
+    latitude: isFinite(latitude) && latitude !== 0 ? latitude : undefined,
+    longitude: isFinite(longitude) && longitude !== 0 ? longitude : undefined,
+    stars: stars > 0 ? stars : undefined,
+    rating: rating > 0 ? rating : undefined,
+    reviewCount: reviewCount > 0 ? reviewCount : undefined,
+    imageUrl,
+    refundable: item.pricing?.payment?.cancellation?.cancellationType === "FreeCancellation",
+    checkInDate: context.checkInDate,
+    checkOutDate: context.checkOutDate,
+    nights: context.nights,
+    searchId: context.searchId,
+  };
+}
+
+/**
  * Extracts enriched hotel rates from arbitrary API response objects.
- * Handles Rocket Travel / Rocketmiles schema:
+ * Handles the Agoda white-label GraphQL schema (data.<x>Search.properties) and
+ * Rocket Travel / Rocketmiles schema:
  * - payload.searchResult.results
  * - payload.results
  * - payload.hotels
  * - payload (as an array of hotel objects)
+ * The optional request body supplies stay dates for Agoda responses, which omit them.
  */
-export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] {
+export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown): EnrichedHotelRate[] {
   if (!payload || typeof payload !== "object") {
     return [];
   }
 
-  const searchId = payload.id || "";
-  const checkInDate = payload.checkInDate || "";
-  const checkOutDate = payload.checkOutDate || "";
+  const requestCriteria = requestBody ? extractAgodaRequestCriteria(requestBody) : {};
+  const searchId = payload.id || requestCriteria.searchId || "";
+  const checkInDate = payload.checkInDate || requestCriteria.checkInDate || "";
+  const checkOutDate = payload.checkOutDate || requestCriteria.checkOutDate || "";
 
-  let nights = 1;
+  let nights = requestCriteria.nights || 1;
   if (checkInDate && checkOutDate) {
     const d1 = new Date(checkInDate);
     const d2 = new Date(checkOutDate);
@@ -219,8 +359,26 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
 
   const hotelMap = new Map<string, EnrichedHotelRate>();
 
+  const keepBest = (rate: EnrichedHotelRate) => {
+    const existing = hotelMap.get(rate.hotelId);
+    if (!existing || rate.tieredMiles / rate.price > existing.tieredMiles / existing.price) {
+      hotelMap.set(rate.hotelId, rate);
+    }
+  };
+
   const processHotelItem = (item: any) => {
     if (!item || typeof item !== "object") return;
+
+    if (Array.isArray(item.pricing?.offers) || item.content?.informationSummary) {
+      const agodaRate = extractAgodaProperty(item, {
+        checkInDate: checkInDate || undefined,
+        checkOutDate: checkOutDate || undefined,
+        nights: requestCriteria.nights || nights,
+        searchId: searchId || undefined,
+      });
+      if (agodaRate) keepBest(agodaRate);
+      return;
+    }
 
     const rawId = item.propertyId ?? item.hotelId ?? item.hotel?.id ?? item.id ?? item.hotel?.propertyId;
     if (rawId === null || rawId === undefined) return;
@@ -382,17 +540,8 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
       searchId: searchId || undefined,
     };
 
-    const existing = hotelMap.get(hotelId);
-    if (!existing) {
-      hotelMap.set(hotelId, enrichedRate);
-    } else {
-      // If hotel already registered, keep the best rate/miles
-      const existingMpd = existing.tieredMiles / existing.price;
-      const newMpd = tieredMiles / (allInPrice > 0 ? allInPrice : basePrice);
-      if (newMpd > existingMpd) {
-        hotelMap.set(hotelId, enrichedRate);
-      }
-    }
+    // If hotel already registered, keep the best rate/miles
+    keepBest(enrichedRate);
   };
 
   // 1. Check standard results array locations and GraphQL responses
@@ -405,6 +554,16 @@ export function extractHotelRatesFromPayload(payload: any): EnrichedHotelRate[] 
   }
   if (Array.isArray(payload.data?.propertiesGql)) {
     candidates.push(...payload.data.propertiesGql);
+  }
+  // Agoda GraphQL: data.citySearch.properties, data.areaSearch.properties, ...
+  if (payload.data && typeof payload.data === "object") {
+    for (const key of Object.keys(payload.data)) {
+      if (key === "search") continue;
+      const properties = payload.data[key]?.properties;
+      if (Array.isArray(properties)) {
+        candidates.push(...properties);
+      }
+    }
   }
   if (Array.isArray(payload.data?.search?.hotelList)) {
     candidates.push(...payload.data.search.hotelList);
@@ -512,22 +671,19 @@ export function dispatchInterceptedRooms(rooms: RoomRate[]): void {
   }
 }
 
-function inspectPayload(data: unknown, url?: string, method?: string): void {
-  if (typeof window !== "undefined" && (window as any).__AA_RECORD_NETWORK__) {
-    try {
-      (window as any).__AA_RECORD_NETWORK__({ url: url || '', method: method || '', timestamp: Date.now(), payload: data });
-    } catch {}
-  }
-  dispatchInterceptedRates(extractHotelRatesFromPayload(data));
-  dispatchInterceptedRooms(extractRoomRatesFromPayload(data));
-}
-
 export function shouldInspectUrl(url: string): boolean {
   if (!url) return false;
   if (isSensitiveCheckoutPage(url) || (typeof window !== 'undefined' && isSensitiveCheckoutPage(window.location.href))) {
     return false;
   }
-  const lower = url.toLowerCase();
+  // Match on the path only: the host itself (https://search.aadvantagehotels.com) contains "/search"
+  let lower = url.toLowerCase();
+  try {
+    const base = typeof window !== 'undefined' ? window.location.href : 'https://search.aadvantagehotels.com/';
+    lower = new URL(url, base).pathname.toLowerCase();
+  } catch {
+    // Fall back to the raw string
+  }
   return (
     lower.includes("/graphql") ||
     lower.includes("/search") ||
@@ -538,6 +694,88 @@ export function shouldInspectUrl(url: string): boolean {
     lower.includes("aadvantage-hotels") ||
     lower.includes("/rest/")
   );
+}
+
+const WRAPPED = Symbol.for("aa-hotels-mpd.wrappedFetch");
+const tappedResponses = new WeakSet<Response>();
+
+function inspectPayload(url: string, method: string, data: unknown, requestBody?: unknown): void {
+  try {
+    if (typeof window !== "undefined" && (window as any).__AA_RECORD_NETWORK__) {
+      try {
+        (window as any).__AA_RECORD_NETWORK__({ url, method, timestamp: Date.now(), payload: data });
+      } catch {
+        // Debug recording is best effort
+      }
+    }
+    dispatchInterceptedRates(extractHotelRatesFromPayload(data, requestBody));
+    dispatchInterceptedRooms(extractRoomRatesFromPayload(data));
+  } catch {
+    // Ignore inspection errors to never interfere with page functionality
+  }
+}
+
+/**
+ * Taps the response's own json()/text() so the payload is inspected when the page reads it.
+ * Reading a clone instead doesn't work: the site aborts each GraphQL request after reading the
+ * body, which errors any clone that hasn't been consumed yet.
+ */
+function tapResponse(response: Response, url: string, requestBody?: unknown): void {
+  if (tappedResponses.has(response)) return;
+  tappedResponses.add(response);
+
+  const originalJson = response.json;
+  response.json = function (this: Response) {
+    return originalJson.call(this).then((data: unknown) => {
+      inspectPayload(url, "FETCH", data, requestBody);
+      return data;
+    });
+  };
+
+  const originalText = response.text;
+  response.text = function (this: Response) {
+    return originalText.call(this).then((text: string) => {
+      const trimmed = text.replace(/^\s+/, "");
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        try {
+          inspectPayload(url, "FETCH", JSON.parse(text), requestBody);
+        } catch {
+          // Not JSON after all
+        }
+      }
+      return text;
+    });
+  };
+}
+
+/**
+ * Wraps a fetch implementation so JSON responses from search/property endpoints are inspected.
+ */
+export function wrapFetch(originalFetch: typeof fetch): typeof fetch {
+  if ((originalFetch as any)[WRAPPED]) return originalFetch;
+  const wrapped = async function (
+    this: unknown,
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> {
+    const response = await originalFetch.call(this, input, init);
+    try {
+      const url =
+        typeof input === "string"
+          ? input
+          : "url" in input
+          ? input.url
+          : input.toString();
+      if (shouldInspectUrl(url)) {
+        tapResponse(response, url, init?.body);
+      }
+    } catch {
+      // Ignore inspection errors to never interfere with page functionality
+    }
+    return response;
+  };
+  Object.defineProperty(wrapped, WRAPPED, { value: true });
+  return wrapped as typeof fetch;
 }
 
 /**
@@ -551,33 +789,22 @@ export function initNetworkInterceptor(): void {
   if (isSensitiveCheckoutPage(window.location.href)) return;
   isInitialized = true;
 
-  // 1. Monkey-patch window.fetch
+  // 1. Monkey-patch window.fetch. The site reassigns window.fetch after load (with a bound
+  // native fetch), so the property is redefined with a setter that wraps whatever is assigned.
   if (typeof window.fetch === "function") {
-    const originalFetch = window.fetch;
-    window.fetch = async function (
-      input: RequestInfo | URL,
-      init?: RequestInit
-    ): Promise<Response> {
-      const response = await originalFetch.call(this, input, init);
-      try {
-        const url =
-          typeof input === "string"
-            ? input
-            : "url" in input
-            ? input.url
-            : input.toString();
-        if (shouldInspectUrl(url)) {
-          response
-            .clone()
-            .json()
-            .then((data) => inspectPayload(data, url, 'FETCH'))
-            .catch(() => {});
-        }
-      } catch {
-        // Ignore inspection errors to never interfere with page functionality
-      }
-      return response;
-    };
+    let currentFetch = wrapFetch(window.fetch);
+    try {
+      Object.defineProperty(window, "fetch", {
+        configurable: true,
+        enumerable: true,
+        get: () => currentFetch,
+        set: (value: typeof fetch) => {
+          currentFetch = typeof value === "function" ? wrapFetch(value) : value;
+        },
+      });
+    } catch {
+      window.fetch = currentFetch;
+    }
   }
 
   // 2. Monkey-patch XMLHttpRequest
@@ -597,13 +824,14 @@ export function initNetworkInterceptor(): void {
     XMLHttpRequest.prototype.send = function (
       body?: Document | XMLHttpRequestBodyInit | null
     ) {
+      const requestBody = typeof body === "string" ? body : undefined;
       this.addEventListener("load", function () {
         try {
           const url = (this as any)._aaMpdUrl || "";
           if (shouldInspectUrl(url)) {
             const text = this.responseText;
             if (text && (text.startsWith("{") || text.startsWith("["))) {
-              inspectPayload(JSON.parse(text), url, 'XHR');
+              inspectPayload(url, "XHR", JSON.parse(text), requestBody);
             }
           }
         } catch {
