@@ -1,39 +1,47 @@
 // Developer Debug Tooling for AA Hotels MPD
-// The fixture export panel only mounts when "Show DOM Fixture Export Button" is enabled in the
-// options page. DEV_DEBUG_MODE is a build-time kill switch for all debug tooling.
+// The fixture export panel only mounts when the `showDebugButton` sync setting is true. There's no
+// options page toggle; set it from the extension's service worker console with
+// `chrome.storage.sync.set({ showDebugButton: true })`. DEV_DEBUG_MODE is a build-time kill switch
+// for all debug tooling.
+import {
+  CapturedNetworkRecord,
+  DEBUG_NETWORK_FLAG,
+  DEBUG_RECORDS_REQUEST,
+  DEBUG_RECORDS_RESPONSE,
+} from './interceptor';
+
 export const DEV_DEBUG_MODE = true;
 
-export interface CapturedNetworkRecord {
-  url: string;
-  method: string;
-  timestamp: number;
-  payload: any;
+/** Turns network recording in the page's interceptor on or off for this and later page loads. */
+export function setNetworkRecording(enabled: boolean): void {
+  try {
+    if (enabled) {
+      localStorage.setItem(DEBUG_NETWORK_FLAG, '1');
+    } else {
+      localStorage.removeItem(DEBUG_NETWORK_FLAG);
+    }
+  } catch {
+    // Storage may be unavailable
+  }
 }
 
-export function recordCapturedNetwork(record: CapturedNetworkRecord): void {
-  if (!DEV_DEBUG_MODE || typeof window === 'undefined') return;
-  if (!(window as any).__AA_CAPTURED_NETWORK__) {
-    (window as any).__AA_CAPTURED_NETWORK__ = [];
-  }
-  (window as any).__AA_CAPTURED_NETWORK__.push(record);
-  try {
-    sessionStorage.setItem(
-      'aa_hotels_captured_network',
-      JSON.stringify((window as any).__AA_CAPTURED_NETWORK__)
-    );
-  } catch {}
-}
-
-export function getCapturedNetworkRecords(): CapturedNetworkRecord[] {
-  if (typeof window === 'undefined') return [];
-  if ((window as any).__AA_CAPTURED_NETWORK__) {
-    return (window as any).__AA_CAPTURED_NETWORK__;
-  }
-  try {
-    const cached = sessionStorage.getItem('aa_hotels_captured_network');
-    if (cached) return JSON.parse(cached);
-  } catch {}
-  return [];
+/** Asks the interceptor, which runs in the page's world, for the responses it has recorded. */
+export function requestCapturedNetworkRecords(timeoutMs = 2000): Promise<CapturedNetworkRecord[]> {
+  return new Promise((resolve) => {
+    const id = `${Date.now()}-${Math.random()}`;
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window || event.data?.type !== DEBUG_RECORDS_RESPONSE || event.data.id !== id) return;
+      finish(Array.isArray(event.data.records) ? event.data.records : []);
+    };
+    const timer = setTimeout(() => finish([]), timeoutMs);
+    const finish = (records: CapturedNetworkRecord[]) => {
+      clearTimeout(timer);
+      window.removeEventListener('message', onMessage);
+      resolve(records);
+    };
+    window.addEventListener('message', onMessage);
+    window.postMessage({ type: DEBUG_RECORDS_REQUEST, id }, '*');
+  });
 }
 
 export function getFixtureFilename(): string {
@@ -157,8 +165,12 @@ export function exportCurrentDomFixture(): void {
   showDebugToast(`Exported "${filename}" & copied to clipboard! (Drop in fixtures/)`);
 }
 
-export function exportNetworkJsonFixture(): void {
-  const records = getCapturedNetworkRecords();
+export async function exportNetworkJsonFixture(): Promise<void> {
+  const records = await requestCapturedNetworkRecords();
+  if (records.length === 0) {
+    showDebugToast('No network responses recorded yet. Reload the page to record from the start.');
+    return;
+  }
   const dataStr = JSON.stringify(records, null, 2);
   const filename = 'search-graphql.json';
 
@@ -195,6 +207,7 @@ export async function mountDebugButton(): Promise<void> {
   try {
     if (typeof chrome === 'undefined' || !chrome.storage?.sync) return;
     const { showDebugButton } = await chrome.storage.sync.get({ showDebugButton: false });
+    setNetworkRecording(Boolean(showDebugButton));
     if (!showDebugButton) return;
   } catch {
     return;
@@ -261,7 +274,7 @@ export async function mountDebugButton(): Promise<void> {
   netBtn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    exportNetworkJsonFixture();
+    exportNetworkJsonFixture().catch(console.error);
   });
 
   panel.appendChild(domBtn);
