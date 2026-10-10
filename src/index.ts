@@ -31,16 +31,25 @@ import { CapturedRate } from "./types";
 
 // Listen for intercepted network data dispatched by the MAIN world interceptor
 if (typeof window !== "undefined") {
-  const handleIncomingRates = async (hotels: RawHotelRate[] | undefined, totalHotels?: number | null) => {
+  const handleIncomingRates = async (
+    hotels: RawHotelRate[] | undefined,
+    totalHotels?: number | null,
+    searchKey?: string,
+    totalIsSettled?: boolean
+  ) => {
     if (isSensitiveCheckoutPage(window.location.href)) return;
-    if (typeof totalHotels === "number") {
-      setSearchTotalResults(totalHotels);
+    if (!hotels || hotels.length === 0) {
+      if (typeof totalHotels === "number") setSearchTotalResults(totalHotels, searchKey, totalIsSettled);
+      return;
     }
-    if (!hotels || hotels.length === 0) return;
 
     const { includeBonusMiles, useAllInPricing, earningLevel } = await loadPricingSettings();
 
+    // Ingest first: a new search clears the registry, including the previous search's total
     const updated = ingestHotelRates(hotels, earningLevel, useAllInPricing);
+    if (typeof totalHotels === "number") {
+      setSearchTotalResults(totalHotels, searchKey, totalIsSettled);
+    }
 
     // 1. Reactive Upgrade: Immediately re-evaluate any visible hotel cards
     let bestCardMpd = 0;
@@ -135,7 +144,7 @@ if (typeof window !== "undefined") {
   // 1. Listen for postMessage (cross-world MAIN -> ISOLATED)
   window.addEventListener("message", async (event) => {
     if (event.data?.type === "AA_HOTELS_MPD_NETWORK_DATA") {
-      handleIncomingRates(event.data.hotels, event.data.totalHotels);
+      handleIncomingRates(event.data.hotels, event.data.totalHotels, event.data.searchKey, event.data.totalIsSettled);
       handleIncomingRooms(event.data.rooms);
     } else if (event.data?.type === "AA_HOTELS_CAPTURED_SEARCH_REQUEST") {
       try {
@@ -146,7 +155,7 @@ if (typeof window !== "undefined") {
             { url, headers, body },
             {
               expandSearchResults: searchSettings.expandSearchResults,
-              maxSearchPages: searchSettings.maxSearchPages,
+              maxSearchResults: searchSettings.maxSearchResults,
             }
           );
         }
@@ -158,8 +167,14 @@ if (typeof window !== "undefined") {
 
   // 2. Also listen for CustomEvent
   window.addEventListener("AA_HOTELS_MPD_NETWORK_DATA", (e: Event) => {
-    const customEvent = e as CustomEvent<{ hotels: RawHotelRate[]; totalHotels?: number }>;
-    handleIncomingRates(customEvent.detail?.hotels, customEvent.detail?.totalHotels);
+    const customEvent = e as CustomEvent<{
+      hotels: RawHotelRate[];
+      totalHotels?: number;
+      searchKey?: string;
+      totalIsSettled?: boolean;
+    }>;
+    const { hotels, totalHotels, searchKey, totalIsSettled } = customEvent.detail || {};
+    handleIncomingRates(hotels, totalHotels, searchKey, totalIsSettled);
   });
 
   // 3. Hydrate immediately from shared sessionStorage if data arrived before scripts loaded

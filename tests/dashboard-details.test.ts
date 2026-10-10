@@ -59,17 +59,18 @@ describe('Rates read from search cards', () => {
     rates.forEach((r) => expect(r.imageUrl).toMatch(/^https:\/\/[^/]+\/.+/));
   });
 
-  it('take photo, stars, and rating from the API data when available', () => {
+  it('leave hotels in the API data to be captured from it', () => {
     const searchCall = JSON.parse(fs.readFileSync(path.join(fixturesDir, 'search-graphql-guest.json'), 'utf-8'));
     const apiRates = extractHotelRatesFromPayload(searchCall.response);
-    ingestHotelRates(apiRates);
+    const isInApi = (id?: string) => apiRates.some((a) => a.hotelId === id);
 
-    const rates = extractRatesFromSearchCards(doc().querySelector('#searchPageRightColumn')!, 2, false);
-    const matched = rates.filter((r) => apiRates.some((a) => a.hotelId === r.hotelId));
-    expect(matched.length).toBeGreaterThan(0);
-    matched.forEach((r) => {
-      const api = apiRates.find((a) => a.hotelId === r.hotelId)!;
-      expect(r).toMatchObject({ imageUrl: api.imageUrl, stars: api.stars, rating: api.rating });
-    });
+    const withoutApi = extractRatesFromSearchCards(doc().querySelector('#searchPageRightColumn')!, 2, false);
+    const coveredByApi = withoutApi.filter((r) => isInApi(r.hotelId));
+    expect(coveredByApi.length).toBeGreaterThan(0);
+
+    ingestHotelRates(apiRates);
+    const withApi = extractRatesFromSearchCards(doc().querySelector('#searchPageRightColumn')!, 2, false);
+    expect(withApi.some((r) => isInApi(r.hotelId))).toBe(false);
+    expect(withApi).toHaveLength(withoutApi.length - coveredByApi.length);
   });
 });

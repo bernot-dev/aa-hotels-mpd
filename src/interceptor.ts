@@ -2,6 +2,8 @@
 // Intercepts search and hotel API responses, parses enriched hotel rates and miles,
 // and dispatches CustomEvent / postMessage to ISOLATED world content scripts.
 
+import { initListExpander } from "./list-expander";
+
 export interface EnrichedHotelRate {
   hotelId: string;
   hotelName: string;
@@ -31,6 +33,8 @@ export interface EnrichedHotelRate {
   refundable?: boolean;
   imageUrl?: string;
   searchId?: string;
+  /** Identifies the search across its result pages (see getSearchKey); the site gives each page its own searchId. */
+  searchKey?: string;
 }
 
 export type RawHotelRate = EnrichedHotelRate;
@@ -179,7 +183,12 @@ export function extractTotalFilteredHotels(payload: any): number | null {
  * Dispatches intercepted hotel rates across the world boundary via CustomEvent and postMessage on window.
  * Also saves to sessionStorage to guarantee zero-drop sync across world initialization races.
  */
-export function dispatchInterceptedRates(rates: EnrichedHotelRate[], totalHotels?: number | null): void {
+export function dispatchInterceptedRates(
+  rates: EnrichedHotelRate[],
+  totalHotels?: number | null,
+  searchKey?: string,
+  totalIsSettled?: boolean
+): void {
   if (!rates || rates.length === 0) return;
   if (typeof window !== "undefined") {
     try {
@@ -202,6 +211,8 @@ export function dispatchInterceptedRates(rates: EnrichedHotelRate[], totalHotels
             type: EVENT_NAME,
             hotels: rates,
             totalHotels: typeof totalHotels === "number" ? totalHotels : undefined,
+            searchKey,
+            totalIsSettled,
           },
           "*"
         );
@@ -211,7 +222,12 @@ export function dispatchInterceptedRates(rates: EnrichedHotelRate[], totalHotels
       if (typeof window.dispatchEvent === "function") {
         window.dispatchEvent(
           new CustomEvent(EVENT_NAME, {
-            detail: { hotels: rates, totalHotels: typeof totalHotels === "number" ? totalHotels : undefined },
+            detail: {
+              hotels: rates,
+              totalHotels: typeof totalHotels === "number" ? totalHotels : undefined,
+              searchKey,
+              totalIsSettled,
+            },
           })
         );
       }
@@ -219,6 +235,63 @@ export function dispatchInterceptedRates(rates: EnrichedHotelRate[], totalHotels
       console.debug("[AA-Hotels-MPD] Failed to dispatch network rates event:", err);
     }
   }
+}
+
+// Request fields that change between the requests of one search: the page itself, a per-request
+// searchId, the time the request was made, and `synchronous`, set on the site's final
+// availability poll
+const PER_REQUEST_FIELDS = new Set(["page", "searchId", "bookingDate", "synchronous"]);
+
+const withoutPerRequestFields = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(withoutPerRequestFields);
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(value)) {
+    if (!PER_REQUEST_FIELDS.has(key)) out[key] = withoutPerRequestFields((value as Record<string, unknown>)[key]);
+  }
+  return out;
+};
+
+/**
+ * Identifies a search across its result pages: a hash of the GraphQL request variables without
+ * paging, the per-request searchId, or the request time. Undefined for other request bodies.
+ */
+export function getSearchKey(requestBody: unknown): string | undefined {
+  let body: any = requestBody;
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!body?.variables || typeof body.variables !== "object") return undefined;
+  const text = JSON.stringify(withoutPerRequestFields(body.variables));
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) + hash + text.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
+ * Whether a search request is the site's final availability poll (`synchronous: true`), whose
+ * total leaves out hotels with no rooms available. Earlier responses count every matching hotel.
+ */
+export function isFinalAvailabilityPoll(requestBody: unknown): boolean {
+  let body: any = requestBody;
+  if (typeof body === "string") {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return false;
+    }
+  }
+  const variables = body?.variables;
+  if (!variables || typeof variables !== "object") return false;
+  return Object.keys(variables).some(
+    (key) => variables[key]?.searchRequest?.searchCriteria?.synchronous === true
+  );
 }
 
 /**
@@ -647,7 +720,10 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
     }
   }
 
-  return Array.from(hotelMap.values());
+  const rates = Array.from(hotelMap.values());
+  const searchKey = requestBody ? getSearchKey(requestBody) : undefined;
+  if (searchKey) rates.forEach((rate) => (rate.searchKey = searchKey));
+  return rates;
 }
 
 export function isSensitiveCheckoutPage(url: string = typeof window !== 'undefined' ? window.location.href : ''): boolean {
@@ -742,7 +818,13 @@ function inspectPayload(url: string, method: string, data: unknown, requestBody?
       }
     }
     const totalHotels = extractTotalFilteredHotels(data);
-    dispatchInterceptedRates(extractHotelRatesFromPayload(data, requestBody), totalHotels);
+    const searchKey = requestBody ? getSearchKey(requestBody) : undefined;
+    dispatchInterceptedRates(
+      extractHotelRatesFromPayload(data, requestBody),
+      totalHotels,
+      searchKey,
+      isFinalAvailabilityPoll(requestBody)
+    );
     dispatchInterceptedRooms(extractRoomRatesFromPayload(data));
   } catch {
     // Ignore inspection errors to never interfere with page functionality
@@ -885,6 +967,9 @@ export function initNetworkInterceptor(): void {
   if (isSensitiveCheckoutPage(window.location.href)) return;
   isInitialized = true;
 
+  // Must run before the site creates its IntersectionObservers
+  initListExpander();
+
   // 1. Monkey-patch window.fetch. The site reassigns window.fetch after load (with a bound
   // native fetch), so the property is redefined with a setter that wraps whatever is assigned.
   if (typeof window.fetch === "function") {
@@ -952,9 +1037,4 @@ export function initNetworkInterceptor(): void {
       return originalSend.call(this, body);
     };
   }
-}
-
-// Auto-run interceptor when script is executed in MAIN world
-if (typeof window !== "undefined") {
-  initNetworkInterceptor();
 }

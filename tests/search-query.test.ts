@@ -9,6 +9,7 @@ import {
   isBackgroundSearchLoading,
   setBackgroundSearchLoading,
   CapturedSearchRequest,
+  BACKGROUND_PAGE_SIZE,
 } from "../src/search-query";
 import {
   clearHotelMpdRegistry,
@@ -224,7 +225,7 @@ describe("search-query module", () => {
       expect(isBackgroundSearchLoading()).toBe(false);
     });
 
-    it("does not run queries if body lacks searchRequest.page or maxSearchPages <= 1", async () => {
+    it("does not run queries if body lacks searchRequest.page or maxSearchResults covers only the site's page", async () => {
       const fetchFn = vi.fn();
       const invalidRequest: CapturedSearchRequest = {
         url: "https://test.com",
@@ -240,14 +241,14 @@ describe("search-query module", () => {
 
       const res2 = await runBackgroundSearchQueries(mockRequest, {
         expandSearchResults: true,
-        maxSearchPages: 1,
+        maxSearchResults: 90,
         fetchFn,
       });
       expect(res2).toEqual({ queriedPages: 0, totalHotelsFound: 0 });
       expect(fetchFn).not.toHaveBeenCalled();
     });
 
-    it("queries subsequent pages up to maxSearchPages, passes headers, and ingests rates", async () => {
+    it("queries subsequent pages up to maxSearchResults, passes headers, and ingests rates", async () => {
       const page2Hotels = [
         {
           hotel: { id: 101, name: "Page 2 Hotel" },
@@ -289,7 +290,7 @@ describe("search-query module", () => {
       const pagesLoaded: number[] = [];
       const result = await runBackgroundSearchQueries(mockRequest, {
         expandSearchResults: true,
-        maxSearchPages: 3,
+        maxSearchResults: 270,
         delayMs: 10,
         jitterMs: 0,
         fetchFn: fetchFn as any,
@@ -320,6 +321,80 @@ describe("search-query module", () => {
       expect(isBackgroundSearchLoading()).toBe(false);
     });
 
+    it("requests 90-hotel pages so background page 2 follows the site's first 90 hotels", async () => {
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ searchResult: { totalFilteredHotels: 0, results: [] } }),
+      });
+      await runBackgroundSearchQueries(mockRequest, {
+        expandSearchResults: true,
+        maxSearchResults: 270,
+        delayMs: 0,
+        jitterMs: 0,
+        fetchFn: fetchFn as any,
+      });
+      const page = JSON.parse(fetchFn.mock.calls[0][1].body).variables.CitySearchRequest.searchRequest.page;
+      expect(page).toEqual({ pageSize: BACKGROUND_PAGE_SIZE, pageNumber: 2, pageToken: "" });
+      expect(BACKGROUND_PAGE_SIZE).toBe(90);
+    });
+
+    it("stops once its pages cover the search's total", async () => {
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            searchResult: {
+              searchInfo: { totalFilteredHotels: 200 },
+              results: [{ hotel: { id: 7, name: "Hotel" }, economics: { total: { amount: 100 }, rewardAmount: 1000 } }],
+            },
+          }),
+      });
+      await runBackgroundSearchQueries(mockRequest, {
+        expandSearchResults: true,
+        maxSearchResults: 900,
+        delayMs: 0,
+        jitterMs: 0,
+        fetchFn: fetchFn as any,
+      });
+      // Pages 2 and 3 reach hotel 270, past the 200 the search reported; pages 4 to 10 are skipped
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    });
+
+    it("runs once per search, ignoring the site's re-requests until aborted", async () => {
+      const fetchFn = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ searchResult: { totalFilteredHotels: 0, results: [] } }),
+      });
+      const options = { expandSearchResults: true, maxSearchResults: 180, delayMs: 0, jitterMs: 0, fetchFn: fetchFn as any };
+      // The site gives each page of one search its own searchId
+      const sitePage = (pageNumber: number, searchId: string): CapturedSearchRequest => ({
+        ...mockRequest,
+        body: {
+          operationName: "CitySearch",
+          variables: {
+            CitySearchRequest: {
+              searchRequest: {
+                page: { pageSize: 45, pageNumber, pageToken: "" },
+                searchContext: { searchId },
+              },
+            },
+          },
+        },
+      });
+      const sitePage2 = sitePage(2, "page-2-id");
+
+      await runBackgroundSearchQueries(sitePage(1, "page-1-id"), options);
+      await runBackgroundSearchQueries(sitePage2, options);
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+
+      abortBackgroundSearchQueries();
+      await runBackgroundSearchQueries(sitePage2, options);
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+    });
+
     it("stops pagination early when a page returns 0 results", async () => {
       const fetchFn = vi.fn().mockImplementation(() =>
         Promise.resolve({
@@ -337,7 +412,7 @@ describe("search-query module", () => {
 
       const result = await runBackgroundSearchQueries(mockRequest, {
         expandSearchResults: true,
-        maxSearchPages: 5,
+        maxSearchResults: 450,
         delayMs: 10,
         jitterMs: 0,
         fetchFn: fetchFn as any,
@@ -359,7 +434,7 @@ describe("search-query module", () => {
 
       const result = await runBackgroundSearchQueries(mockRequest, {
         expandSearchResults: true,
-        maxSearchPages: 5,
+        maxSearchResults: 450,
         delayMs: 10,
         jitterMs: 0,
         fetchFn: fetchFn as any,
@@ -397,7 +472,7 @@ describe("search-query module", () => {
 
       const result = await runBackgroundSearchQueries(mockRequest, {
         expandSearchResults: true,
-        maxSearchPages: 5,
+        maxSearchResults: 450,
         delayMs: 15,
         jitterMs: 0,
         fetchFn: fetchFn as any,
@@ -450,7 +525,7 @@ describe("search-query module", () => {
 
       await runBackgroundSearchQueries(mockRequest, {
         expandSearchResults: true,
-        maxSearchPages: 2,
+        maxSearchResults: 180,
         delayMs: 10,
         jitterMs: 0,
         fetchFn: fetchFn as any,

@@ -338,6 +338,12 @@ export function ensureChipStyles(): void {
       color: #0d2440 !important;
     }
 
+    .aa-mpd-banner-total {
+      text-decoration: underline dotted !important;
+      text-underline-offset: 3px !important;
+      cursor: help !important;
+    }
+
     .aa-mpd-banner-text b,
     .aa-mpd-banner-text strong {
       color: #004b87 !important;
@@ -563,7 +569,23 @@ export const processCard = (
     card.style.display = includeBonusMiles ? "" : "none";
   }
 
-  // Respect user preference for bonus miles / boost tags
+  // Search data is authoritative for any card it covers: a rendered card may show a rounded price,
+  // or per-night prices and miles, so reading the card would change a hotel's rate (and its place in
+  // the MPD sort) once it renders. The card's text is only read for cards without search data, such
+  // as details page rooms.
+  if (enriched) {
+    const effectivePrice = getEnrichedPrice(enriched, useAllInPricing);
+    const miles = milesForEarningLevel(enriched.baseMiles, enriched.tieredMiles, earningLevel);
+    const mpd = effectivePrice > 0 ? miles / effectivePrice : 0;
+    if (isFinite(mpd) && mpd > 0) {
+      cardMaxMPD = mpd;
+      processedTiers = 1;
+    }
+    return badgeCard(card, hotelId, cardMaxMPD, processedTiers, effectivePrice, true, enriched, useAllInPricing, nights, earningLevel);
+  }
+
+  // Respect user preference for bonus miles / boost tags. Search data carries base miles only, so
+  // this only applies to rates read from the card.
   const hasBoost = isBonusOffer(card);
   if (hasBoost && !includeBonusMiles) {
     // If bonus miles are excluded, remove any previously injected badges, clear rate dataset and skip
@@ -575,39 +597,22 @@ export const processCard = (
     return { cardMaxMPD: 0, processedTiers: 0 };
   }
 
-  const domDollars = dollarsElem ? extractPrice(dollarsElem) : null;
-
-  // If no DOM price and no API price, cannot process
-  if ((!domDollars || domDollars <= 0) && !enriched) {
+  const effectivePrice = dollarsElem ? extractPrice(dollarsElem) || 0 : 0;
+  if (effectivePrice <= 0) {
     return { cardMaxMPD: 0, processedTiers: 0 };
   }
 
   const pricingTextElem = card.querySelector(PRICE_TYPE_SELECTOR);
   const isTotalPrice = isTotalPriceText(pricingTextElem?.textContent || "");
 
-  // Determine authoritative pricing
-  const effectivePrice = enriched
-    ? (useAllInPricing && enriched.allInPrice > 0
-        ? enriched.allInPrice
-        : (enriched.basePrice > 0 ? enriched.basePrice : (domDollars && domDollars > 0 ? domDollars : enriched.price)))
-    : (domDollars || 0);
-
-  if (effectivePrice <= 0) {
-    return { cardMaxMPD: 0, processedTiers: 0 };
-  }
-
-  // If we have API data with an all-in total or base total, it's inherently total stay price
-  const effectiveIsTotalPrice = enriched ? (enriched.allInPrice > 0 || enriched.basePrice > 0 || isTotalPrice) : isTotalPrice;
-
   const tierMpds: number[] = [];
-  const tiers = getMilesElements(card);
-  tiers.forEach((tier) => {
+  getMilesElements(card).forEach((tier) => {
     const miles = extractNumber(tier);
     if (!miles || miles <= 0) {
       return;
     }
 
-    const mpd = effectiveIsTotalPrice ? miles / effectivePrice : miles / effectivePrice / (nights || 1);
+    const mpd = isTotalPrice ? miles / effectivePrice : miles / effectivePrice / (nights || 1);
     if (isNaN(mpd) || !isFinite(mpd) || mpd <= 0) {
       return;
     }
@@ -618,17 +623,33 @@ export const processCard = (
   if (tierMpds.length > 0) {
     cardMaxMPD = earningLevel === "member" ? Math.min(...tierMpds) : Math.max(...tierMpds);
     processedTiers = tierMpds.length;
-  } else if (enriched) {
-    const miles = milesForEarningLevel(enriched.baseMiles, enriched.tieredMiles, earningLevel);
-    if (miles > 0) {
-      const mpd = miles / effectivePrice;
-      if (!isNaN(mpd) && isFinite(mpd) && mpd > 0) {
-        cardMaxMPD = mpd;
-        processedTiers = 1;
-      }
-    }
   }
 
+  return badgeCard(card, hotelId, cardMaxMPD, processedTiers, effectivePrice, isTotalPrice, undefined, useAllInPricing, nights, earningLevel);
+};
+
+/** Price used for MPD from search data: the all-in total when enabled, else the base total. */
+export const getEnrichedPrice = (enriched: EnrichedHotelRate, useAllInPricing: boolean): number =>
+  useAllInPricing && enriched.allInPrice > 0
+    ? enriched.allInPrice
+    : enriched.basePrice > 0
+    ? enriched.basePrice
+    : enriched.price;
+
+/** Records a card's rate and draws its badge (or, without a property-card-info box, one per tier). */
+function badgeCard(
+  card: Element,
+  hotelId: string | null,
+  cardMaxMPD: number,
+  processedTiers: number,
+  effectivePrice: number,
+  effectiveIsTotalPrice: boolean,
+  enriched: EnrichedHotelRate | undefined,
+  useAllInPricing: boolean,
+  nights: number,
+  earningLevel: EarningLevel
+): CardProcessResult {
+  const tiers = getMilesElements(card);
   (card as HTMLElement).dataset.aaMpdRate = String(cardMaxMPD);
 
   if (cardMaxMPD > 0 && hotelId) {
@@ -658,8 +679,22 @@ export const processCard = (
         nights
       );
     }
+  } else if (enriched) {
+    // Without a property-card-info box, the search-data rate goes on the miles line of the
+    // selected earning level (the lowest line for members, the highest for status)
+    const byMiles = tiers
+      .map((tier) => ({ tier, miles: extractNumber(tier) || 0 }))
+      .filter(({ miles }) => miles > 0)
+      .sort((a, b) => a.miles - b.miles);
+    const target = earningLevel === "member" ? byMiles[0]?.tier : byMiles[byMiles.length - 1]?.tier;
+    tiers.forEach((tier) => {
+      if (tier !== target) tier.querySelectorAll(".aa-mpd-badge").forEach((b) => b.remove());
+    });
+    if (target && cardMaxMPD > 0) {
+      createOrUpdateChip(target, cardMaxMPD, effectivePrice, enriched, useAllInPricing, undefined, undefined, false, nights);
+    }
   } else {
-    // For room rows or cards without property-card-info, badge each tier element
+    // For room rows or cards without property-card-info, badge each tier element read from the card
     tiers.forEach((tier) => {
       const miles = extractNumber(tier);
       if (!miles || miles <= 0) return;
@@ -680,7 +715,7 @@ export const processCard = (
   }
 
   return { cardMaxMPD, processedTiers };
-};
+}
 
 export interface UpdateCardsOptions {
   // Use intercepted API data for card prices. Disable for room rows, whose prices differ from the

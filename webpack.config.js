@@ -4,7 +4,7 @@ module.exports = {
   entry: {
     content: './src/index.ts',
     background: './src/background.ts',
-    interceptor: './src/interceptor.ts',
+    interceptor: './src/interceptor-main.ts',
     options: './src/options.ts',
   },
   mode: 'production',

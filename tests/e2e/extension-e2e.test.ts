@@ -312,36 +312,7 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
     });
   });
 
-  test('5. Search auto-expansion: clicks a real "Load more" button and badges the new cards', async ({ context }) => {
-    const page = await openPage(context);
-    await page.goto(SEARCH_URL, { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('.aa-mpd-badge').first()).toBeVisible({ timeout: 10000 });
-    const initialCount = await page.locator('.aa-mpd-badge').count();
-
-    // Appends a copy of a priced card (as a new hotel) when clicked, then disappears
-    const tiersPerCard = await page.evaluate(() => {
-      const template = Array.from(document.querySelectorAll('li.PropertyCardItem')).find((c) =>
-        c.querySelector('[data-element-name="fpc-room-price"]')
-      )!;
-      const button = document.createElement('button');
-      button.textContent = 'Load more';
-      button.addEventListener('click', () => {
-        const clone = template.cloneNode(true) as Element;
-        clone.querySelectorAll('.aa-mpd-badge').forEach((b) => b.remove());
-        clone.setAttribute('data-hotelid', '999999001');
-        template.parentElement!.appendChild(clone);
-        (window as any).__loadMoreClicks = ((window as any).__loadMoreClicks || 0) + 1;
-        button.remove();
-      });
-      template.parentElement!.after(button);
-      return template.querySelectorAll('.aa-mpd-badge').length;
-    });
-
-    await expect(page.locator('.aa-mpd-badge')).toHaveCount(initialCount + tiersPerCard, { timeout: 10000 });
-    expect(await page.evaluate(() => (window as any).__loadMoreClicks)).toBe(1);
-  });
-
-  test('6. Extension options page (options.html): persists configuration changes to chrome.storage.sync', async ({
+  test('5. Extension options page (options.html): persists configuration changes to chrome.storage.sync', async ({
     context,
     extensionId,
   }) => {
@@ -506,7 +477,7 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
     );
   });
 
-  test('7. Sensitive checkout page exclusion guard: never injects scripts or badges on checkout URLs', async ({
+  test('6. Sensitive checkout page exclusion guard: never injects scripts or badges on checkout URLs', async ({
     context,
   }) => {
     const page = await openPage(context);

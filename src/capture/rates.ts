@@ -154,18 +154,13 @@ export function extractRatesFromSearchCards(
       hotelId = getHotelIdFromCard(card) || undefined;
     }
 
-    let finalLocation = cardLocation;
-    const enriched = hotelId ? getEnrichedHotel(hotelId) : undefined;
-    if (enriched) {
-      if (enriched.hotelName && enriched.hotelName !== "Unknown Hotel") {
-        hotelName = enriched.hotelName;
-      }
-      if (enriched.location && isValidLocation(enriched.location)) {
-        finalLocation = enriched.location;
-      }
-    }
+    // Hotels in the search data are captured from it directly (index.ts, search-query.ts); a card's
+    // text can show a rounded or per-night price that would record a different rate
+    if (hotelId && getEnrichedHotel(hotelId)) return;
 
-    // Determine final card location if not resolved by enriched data: link destination > card neighborhood > hotel name city
+    let finalLocation = cardLocation;
+
+    // Determine final card location: link destination > card neighborhood > hotel name city
     if (!finalLocation && cardNeighborhood && isValidLocation(cardNeighborhood)) {
       finalLocation = cardNeighborhood;
     } else if (!finalLocation && hotelName !== "Unknown Hotel") {
@@ -190,16 +185,7 @@ export function extractRatesFromSearchCards(
       mpd: Number(mpd.toFixed(1)),
       isTotalPrice,
       isBonus: hasBoostTag,
-      // Hotel details for the dashboard, from the intercepted API data when available
-      imageUrl: enriched?.imageUrl || getCardImageUrl(card),
-      stars: enriched?.stars,
-      rating: enriched?.rating,
-      reviewCount: enriched?.reviewCount,
-      refundable: enriched?.refundable,
-      neighborhood: enriched?.neighborhood,
-      country: enriched?.country,
-      basePrice: enriched?.basePrice,
-      allInPrice: enriched?.allInPrice,
+      imageUrl: getCardImageUrl(card),
     });
   });
 

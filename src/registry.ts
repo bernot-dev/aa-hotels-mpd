@@ -13,11 +13,17 @@ const DATA_STORAGE_KEY = "aa_hotels_data_registry";
 const PRICE_STORAGE_KEY = "aa_hotels_price_registry";
 const TOTAL_STORAGE_KEY = "aa_hotels_total_registry";
 
-let activeSearchId: string | null = null;
+let activeSearchKey: string | null = null;
 let activeDates: string | null = null;
 // Hotel IDs from the most recent results payload (one page of search results)
 let currentPageHotelIds: string[] = [];
 let searchTotalResults: number | null = null;
+// The search whose total is kept in searchTotalResults
+let totalSearchKey: string | null = null;
+// The search's first reported total, and whether searchTotalResults has since settled on the
+// count of hotels with rooms available
+let initialSearchTotal: number | null = null;
+let searchTotalSettled = false;
 
 // Initialize from sessionStorage if available
 try {
@@ -117,24 +123,25 @@ export function ingestHotelRates(
 ): number {
   if (!rates || rates.length === 0) return 0;
 
-  // Search Session Invalidation: If new search ID or dates arrive, clear stale entries
+  // Search Session Invalidation: If a new search or dates arrive, clear stale entries. The search
+  // key stays the same across a search's result pages, whose searchIds differ.
   const first = rates[0];
-  const thisSearchId = first.searchId;
+  const thisSearchKey = first.searchKey || first.searchId;
   const thisDates = first.checkInDate && first.checkOutDate
     ? `${first.checkInDate}_${first.checkOutDate}`
     : null;
 
   if (
-    (thisSearchId && activeSearchId && thisSearchId !== activeSearchId) ||
+    (thisSearchKey && activeSearchKey && thisSearchKey !== activeSearchKey) ||
     (thisDates && activeDates && thisDates !== activeDates)
   ) {
     hotelMpdRegistry.clear();
     hotelDataRegistry.clear();
     hotelPriceRegistry.clear();
-    searchTotalResults = null;
+    resetSearchTotal();
   }
 
-  if (thisSearchId) activeSearchId = thisSearchId;
+  if (thisSearchKey) activeSearchKey = thisSearchKey;
   if (thisDates) activeDates = thisDates;
   currentPageHotelIds = rates.map((r) => r.hotelId).filter(Boolean);
 
@@ -205,14 +212,49 @@ export function getLocationBestMPD(): number {
   return best;
 }
 
-export function setSearchTotalResults(total: number | null): void {
+function resetSearchTotal(): void {
+  searchTotalResults = null;
+  totalSearchKey = null;
+  initialSearchTotal = null;
+  searchTotalSettled = false;
+}
+
+/**
+ * Records the search's total result count. A search keeps its first total until the site's final
+ * availability poll reports the settled count (`settled`), which leaves out hotels with no rooms;
+ * other later responses report drifting counts for the same search and are ignored.
+ */
+export function setSearchTotalResults(total: number | null, searchKey?: string, settled = false): void {
   if (typeof total === "number" && total > 0) {
-    searchTotalResults = total;
+    const sameSearch = !!searchKey && searchKey === totalSearchKey && searchTotalResults !== null;
+    if (!sameSearch) {
+      searchTotalResults = total;
+      initialSearchTotal = total;
+      searchTotalSettled = settled;
+      totalSearchKey = searchKey ?? null;
+    } else if (settled && !searchTotalSettled) {
+      searchTotalResults = total;
+      searchTotalSettled = true;
+    } else {
+      return;
+    }
     persistToStorage();
   } else if (total === null) {
-    searchTotalResults = null;
+    resetSearchTotal();
     persistToStorage();
   }
+}
+
+export interface SearchTotalDetails {
+  /** Total to show: the settled count once known, else the first count reported. */
+  total: number | null;
+  /** The first count reported for the search, which includes hotels with no rooms available. */
+  initialTotal: number | null;
+  settled: boolean;
+}
+
+export function getSearchTotalDetails(): SearchTotalDetails {
+  return { total: searchTotalResults, initialTotal: initialSearchTotal, settled: searchTotalSettled };
 }
 
 export function getSearchTotalResults(): number | null {
@@ -282,8 +324,8 @@ export function clearHotelMpdRegistry(): void {
   hotelMpdRegistry.clear();
   hotelDataRegistry.clear();
   hotelPriceRegistry.clear();
-  searchTotalResults = null;
-  activeSearchId = null;
+  resetSearchTotal();
+  activeSearchKey = null;
   activeDates = null;
   currentPageHotelIds = [];
   try {

@@ -7,207 +7,33 @@ import { extractRatesFromSearchCards } from "./capture/rates";
 import { extractSearchCriteria } from "./capture/criteria";
 import { setupMpdSort } from "./sort";
 import { abortBackgroundSearchQueries } from "./search-query";
+import { EXPAND_LIST_MESSAGE } from "./list-expander";
 
 export interface SearchExpansionOptions {
   expandSearchResults: boolean;
-  maxClicks?: number;
-  maxConsecutiveNoChange?: number;
-  pollIntervalMs?: number;
-  postClickDelayMs?: number;
-  waitTimeoutMs?: number;
-  maxInitialWaitMs?: number;
 }
 
+/**
+ * Loads every card on the results page. The list's loading triggers are only reachable from the
+ * MAIN world, where they fire without scrolling (see list-expander.ts), so this just asks it to
+ * expand whenever the list changes.
+ */
 export function setupSearchExpansion(options: SearchExpansionOptions) {
-  const {
-    expandSearchResults,
-    maxClicks = 100,
-    maxConsecutiveNoChange = 5,
-    pollIntervalMs = 200,
-    postClickDelayMs = 100,
-    waitTimeoutMs = 8000,
-    maxInitialWaitMs = 5000,
-  } = options;
-
+  const { expandSearchResults } = options;
   let isDisposed = false;
-  let scheduledTimer: ReturnType<typeof setTimeout> | null = null;
-  let initialPollInterval: ReturnType<typeof setInterval> | null = null;
-  let waitTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
-  let isWaitingForNewCards = false;
-  let totalClicks = 0;
-  let consecutiveNoChange = 0;
-  let lastCardCount = 0;
-  let initialPollElapsedMs = 0;
-  const INITIAL_POLL_STEP_MS = 250;
 
-  const clearScheduledTimer = () => {
-    if (scheduledTimer !== null) {
-      clearTimeout(scheduledTimer);
-      scheduledTimer = null;
-    }
-  };
-
-  const clearInitialPoll = () => {
-    if (initialPollInterval !== null) {
-      clearInterval(initialPollInterval);
-      initialPollInterval = null;
-    }
-  };
-
-  const clearWaitTimeout = () => {
-    if (waitTimeoutTimer !== null) {
-      clearTimeout(waitTimeoutTimer);
-      waitTimeoutTimer = null;
-    }
-  };
-
-  // Only true "load more" buttons append results. Pagination ("Next", page numbers) replaces the
-  // current page, and carousel arrows ("Next property image") are not result controls, so neither
-  // may ever be clicked.
-  const LOAD_MORE_TEXT = /^(?:load|show|see|view) more(?: hotels| results| properties)?$/;
-  const findLoadMoreButton = (): HTMLButtonElement | null => {
-    const candidates = document.querySelectorAll<HTMLButtonElement>(
-      'button, [role="button"], [data-selenium="load-more-button"], [data-element-name="load-more-button"]'
-    );
-    for (let i = 0; i < candidates.length; i++) {
-      const btn = candidates[i];
-      if (
-        btn.closest(
-          '[data-selenium="pagination-panel"], #paginationContainer, [data-element-name*="pagination" i], [data-element-name*="carousel" i], [data-element-name="property-card-gallery"]'
-        )
-      ) {
-        continue;
-      }
-      const attr = `${btn.getAttribute("data-selenium") || ""} ${btn.getAttribute("data-element-name") || ""}`;
-      const text = btn.textContent?.trim().toLowerCase().replace(/\s+/g, " ") || "";
-      if (/load-more/i.test(attr) || LOAD_MORE_TEXT.test(text)) {
-        return btn;
-      }
-    }
-    return null;
-  };
-
-  const countCards = (): number => {
-    return document.querySelectorAll(CARD_SELECTOR).length;
-  };
-
-  const isButtonBusy = (btn: HTMLElement): boolean => {
-    if ((btn as HTMLButtonElement).disabled) return true;
-    if (btn.getAttribute("aria-disabled") === "true") return true;
-    if (btn.getAttribute("aria-busy") === "true") return true;
-    if (btn.hasAttribute("data-loading")) return true;
-    if (
-      btn.querySelector(
-        '.chakra-spinner, .chakra-button__spinner, [data-loading], svg[class*="spin"], [class*="spinner" i]'
-      )
-    ) {
-      return true;
-    }
-    const text = btn.textContent?.trim().toLowerCase() || "";
-    if (text.includes("loading") || text.includes("searching")) {
-      return true;
-    }
-    return false;
-  };
-
-  const checkAndExpand = () => {
+  const requestExpansion = () => {
     if (!expandSearchResults || isDisposed) return;
-    if (totalClicks >= maxClicks) return;
-
-    const moreButton = findLoadMoreButton();
-    if (!moreButton) {
-      if (totalClicks > 0) {
-        clearInitialPoll();
-      }
-      return;
-    }
-
-    clearInitialPoll();
-
-    const currentCount = countCards();
-
-    if (isWaitingForNewCards) {
-      if (currentCount > lastCardCount) {
-        isWaitingForNewCards = false;
-        consecutiveNoChange = 0;
-        clearWaitTimeout();
-      } else {
-        // Still waiting for network response or DOM hydration; keep polling
-        scheduleCheck(pollIntervalMs);
-        return;
-      }
-    }
-
-    if (isButtonBusy(moreButton)) {
-      scheduleCheck(pollIntervalMs);
-      return;
-    }
-
-    lastCardCount = currentCount;
-    totalClicks++;
-    isWaitingForNewCards = true;
-
-    clearWaitTimeout();
-    waitTimeoutTimer = setTimeout(() => {
-      if (isWaitingForNewCards && !isDisposed) {
-        consecutiveNoChange++;
-        isWaitingForNewCards = false;
-        if (consecutiveNoChange < maxConsecutiveNoChange) {
-          scheduleCheck(pollIntervalMs);
-        } else {
-          console.warn(
-            "[AA-Hotels-MPD] Stopped search expansion: no new hotels appeared after multiple attempts."
-          );
-        }
-      }
-    }, waitTimeoutMs);
-
-    try {
-      moreButton.click();
-    } catch (err) {
-      console.warn("[AA-Hotels-MPD] Error clicking Load more button:", err);
-      isWaitingForNewCards = false;
-      clearWaitTimeout();
-    }
-
-    scheduleCheck(postClickDelayMs);
+    window.postMessage({ type: EXPAND_LIST_MESSAGE }, "*");
   };
 
-  const scheduleCheck = (delayMs: number) => {
-    if (isDisposed) return;
-    clearScheduledTimer();
-    scheduledTimer = setTimeout(() => {
-      scheduledTimer = null;
-      checkAndExpand();
-    }, delayMs);
-  };
-
-  if (expandSearchResults) {
-    scheduleCheck(100);
-    initialPollInterval = setInterval(() => {
-      initialPollElapsedMs += INITIAL_POLL_STEP_MS;
-      if (initialPollElapsedMs >= maxInitialWaitMs || isDisposed) {
-        clearInitialPoll();
-      }
-      checkAndExpand();
-    }, INITIAL_POLL_STEP_MS);
-  }
-
-  const onMutation = () => {
-    if (isDisposed) return;
-    if (expandSearchResults) {
-      scheduleCheck(50);
-    }
-  };
+  requestExpansion();
 
   const teardown = () => {
     isDisposed = true;
-    clearScheduledTimer();
-    clearInitialPoll();
-    clearWaitTimeout();
   };
 
-  return { onMutation, teardown };
+  return { onMutation: requestExpansion, teardown };
 }
 
 export interface ProcessSearchPageOptions {

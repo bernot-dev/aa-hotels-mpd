@@ -115,6 +115,28 @@ describe("All-In Pricing & Race Condition Safeguards", () => {
     expect(upgradedBadge?.textContent).toContain("13.6 mpd");
   });
 
+  it("rates cards that show per-night prices and miles from the stay totals in the search data", () => {
+    ingestHotelRates([sampleEnrichedHotel], "status_cardmember", true);
+
+    // The site can show per-night amounts: half the 2-night stay's miles and the nightly price
+    const card = doc.createElement("div");
+    card.className = "PropertyCardItem";
+    card.setAttribute("data-hotel-id", "12345");
+    card.innerHTML = `
+      <div data-element-name="property-card-info"></div>
+      <span data-selenium="hotel-currency" class="PropertyCardPrice__Currency">Per night excludes taxes & fees</span>
+      <span data-selenium="display-price" class="PropertyCardPrice__Value">$149</span>
+      <div data-selenium="points-max-promo-text">Earn 2,250 miles</div>
+      <div data-selenium="points-max-promo-text">Earn 200 miles</div>
+    `;
+    doc.body.appendChild(card);
+
+    // 4500 miles / $331.94 for the stay, not 2250 / $331.94
+    expect(processCard(card, 2, true, true, true, "status_cardmember").cardMaxMPD).toBeCloseTo(13.556, 2);
+    expect(card.dataset.aaMpdRate).toBe(String(4500 / 331.94));
+    expect(processCard(card, 2, true, true, true, "member").cardMaxMPD).toBeCloseTo(400 / 331.94, 4);
+  });
+
   it("handles Race Condition 2: API response arrives before DOM renders", () => {
     // 1. API response arrives and is cached
     ingestHotelRates([sampleEnrichedHotel], true, true);

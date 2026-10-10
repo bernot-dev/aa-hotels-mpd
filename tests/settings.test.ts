@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   DEFAULT_EARNING_LEVEL,
-  DEFAULT_MAX_SEARCH_PAGES,
+  DEFAULT_MAX_SEARCH_RESULTS,
+  clampMaxSearchResults,
   loadPricingSettings,
   loadSearchSettings,
   milesForEarningLevel,
@@ -58,43 +59,35 @@ describe('Search settings', () => {
     delete (globalThis as any).chrome;
   });
 
-  it('defaults to expandSearchResults true and maxSearchPages 5', async () => {
-    (globalThis as any).chrome = { storage: { sync: { get: vi.fn().mockResolvedValue({}) } } };
-    expect(await loadSearchSettings()).toEqual({
-      expandSearchResults: true,
-      maxSearchPages: DEFAULT_MAX_SEARCH_PAGES,
-    });
+  const withStorage = (stored: Record<string, unknown>) => {
+    (globalThis as any).chrome = { storage: { sync: { get: vi.fn().mockResolvedValue(stored) } } };
+  };
+
+  it('defaults to expanding results and considering up to 450 hotels', async () => {
+    withStorage({});
+    expect(await loadSearchSettings()).toEqual({ expandSearchResults: true, maxSearchResults: 450 });
+    expect(DEFAULT_MAX_SEARCH_RESULTS).toBe(450);
   });
 
-  it('loads configured values and clamps maxSearchPages between 1 and 50', async () => {
-    (globalThis as any).chrome = {
-      storage: {
-        sync: {
-          get: vi.fn().mockResolvedValue({
-            expandSearchResults: false,
-            maxSearchPages: 100,
-          }),
-        },
-      },
-    };
-    expect(await loadSearchSettings()).toEqual({
-      expandSearchResults: false,
-      maxSearchPages: 50,
-    });
+  it('loads the configured maximum, in whole 90-hotel pages from 90 to 4500', async () => {
+    withStorage({ expandSearchResults: false, maxSearchResults: 900 });
+    expect(await loadSearchSettings()).toEqual({ expandSearchResults: false, maxSearchResults: 900 });
 
-    (globalThis as any).chrome = {
-      storage: {
-        sync: {
-          get: vi.fn().mockResolvedValue({
-            expandSearchResults: true,
-            maxSearchPages: 0,
-          }),
-        },
-      },
-    };
-    expect(await loadSearchSettings()).toEqual({
-      expandSearchResults: true,
-      maxSearchPages: DEFAULT_MAX_SEARCH_PAGES,
-    });
+    withStorage({ maxSearchResults: 100000 });
+    expect((await loadSearchSettings()).maxSearchResults).toBe(4500);
+    withStorage({ maxSearchResults: 0 });
+    expect((await loadSearchSettings()).maxSearchResults).toBe(DEFAULT_MAX_SEARCH_RESULTS);
+
+    expect(clampMaxSearchResults(500)).toBe(450);
+    expect(clampMaxSearchResults(179)).toBe(90);
+    expect(clampMaxSearchResults(10)).toBe(90);
+  });
+
+  it('converts a page count saved by older versions at 45 hotels per page', async () => {
+    withStorage({ maxSearchPages: 10 });
+    expect((await loadSearchSettings()).maxSearchResults).toBe(450);
+    // A saved maximum wins over a leftover page count
+    withStorage({ maxSearchPages: 10, maxSearchResults: 180 });
+    expect((await loadSearchSettings()).maxSearchResults).toBe(180);
   });
 });

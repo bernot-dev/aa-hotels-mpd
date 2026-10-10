@@ -26,13 +26,20 @@ import {
   LocationHierarchyState,
   LocationHierarchyCity,
 } from "./analytics";
-import { DEFAULT_EARNING_LEVEL, EarningLevel, parseEarningLevel } from "./settings";
+import {
+  DEFAULT_EARNING_LEVEL,
+  DEFAULT_MAX_SEARCH_RESULTS,
+  EarningLevel,
+  clampMaxSearchResults,
+  parseEarningLevel,
+  readMaxSearchResults,
+} from "./settings";
 
 export type Config = {
   expandRoomRates: boolean;
   expandRoomTypes: boolean;
   expandSearchResults: boolean;
-  maxSearchPages?: number;
+  maxSearchResults?: number;
   includeBonusMiles: boolean;
   earningLevel: EarningLevel;
   keepExhaustiveQueryHistory?: boolean;
@@ -806,8 +813,11 @@ async function saveOptions(): Promise<void> {
   const expandRoomRates = (document.getElementById("expandRoomRates") as HTMLInputElement).checked;
   const expandRoomTypes = (document.getElementById("expandRoomTypes") as HTMLInputElement).checked;
   const expandSearchResults = (document.getElementById("expandSearchResults") as HTMLInputElement).checked;
-  const maxSearchPagesInput = document.getElementById("maxSearchPages") as HTMLInputElement | null;
-  const maxSearchPages = Math.max(1, Math.min(50, parseInt(maxSearchPagesInput?.value || "5", 10) || 5));
+  const maxSearchResultsInput = document.getElementById("maxSearchResults") as HTMLInputElement | null;
+  const maxSearchResults = clampMaxSearchResults(
+    parseInt(maxSearchResultsInput?.value || "", 10) || DEFAULT_MAX_SEARCH_RESULTS
+  );
+  if (maxSearchResultsInput) maxSearchResultsInput.value = String(maxSearchResults);
   const includeBonusMiles = (document.getElementById("includeBonusMiles") as HTMLInputElement).checked;
   const keepExhaustiveQueryHistory = (
     document.getElementById("keepExhaustiveQueryHistory") as HTMLInputElement
@@ -826,13 +836,15 @@ async function saveOptions(): Promise<void> {
         expandRoomRates,
         expandRoomTypes,
         expandSearchResults,
-        maxSearchPages,
+        maxSearchResults,
         includeBonusMiles,
         earningLevel,
         keepExhaustiveQueryHistory,
         pricingCalculationMethod,
         useAllInPricing,
       });
+      // Replaced by maxSearchResults
+      await chrome.storage.sync.remove("maxSearchPages");
     }
 
     const status = document.getElementById("status");
@@ -857,7 +869,9 @@ async function restoreOptions(): Promise<void> {
       expandRoomRates: false,
       expandRoomTypes: false,
       expandSearchResults: true,
-      maxSearchPages: 5,
+      // 0 reads as unset; an undefined default would leave the key out of the storage request
+      maxSearchResults: 0,
+      maxSearchPages: 0,
       includeBonusMiles: false,
       earningLevel: DEFAULT_EARNING_LEVEL as string,
       keepExhaustiveQueryHistory: false,
@@ -886,8 +900,8 @@ async function restoreOptions(): Promise<void> {
     const searchEl = document.getElementById("expandSearchResults") as HTMLInputElement | null;
     if (searchEl) searchEl.checked = config.expandSearchResults;
 
-    const maxPagesEl = document.getElementById("maxSearchPages") as HTMLInputElement | null;
-    if (maxPagesEl) maxPagesEl.value = String(config.maxSearchPages || 5);
+    const maxResultsEl = document.getElementById("maxSearchResults") as HTMLInputElement | null;
+    if (maxResultsEl) maxResultsEl.value = String(readMaxSearchResults(config));
 
     const bonusEl = document.getElementById("includeBonusMiles") as HTMLInputElement | null;
     if (bonusEl) bonusEl.checked = config.includeBonusMiles;

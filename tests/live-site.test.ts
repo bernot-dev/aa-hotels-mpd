@@ -7,14 +7,19 @@ import { JSDOM } from 'jsdom';
 import {
   extractHotelRatesFromPayload,
   extractAgodaRequestCriteria,
+  getSearchKey,
+  isFinalAvailabilityPoll,
   wrapFetch,
 } from '../src/interceptor';
+import { updateSummaryBanner } from '../src/search-query';
 import {
   clearHotelMpdRegistry,
   getCurrentPageBestMPD,
   getHotelIdFromPin,
   hotelMpdRegistry,
   ingestHotelRates,
+  getSearchTotalResults,
+  setSearchTotalResults,
 } from '../src/registry';
 import { updateMapPins, PIN_SELECTOR } from '../src/map';
 import { processSearchPage } from '../src/search';
@@ -125,7 +130,7 @@ describe('Fetch interception', () => {
   });
 
   it('keeps intercepting after the page reassigns window.fetch', async () => {
-    await import('../src/interceptor');
+    await import('../src/interceptor-main');
     window.fetch = (async () => new Response(JSON.stringify(searchCall.response))) as typeof fetch;
     await (await window.fetch('https://search.aadvantagehotels.com/graphql/search')).json();
     expect(latestRates()).toHaveLength(pricedProperties.length);
@@ -151,6 +156,100 @@ describe('Registry: best rate on the current page', () => {
     // Page 2 of the same search
     ingestHotelRates([rate('3', 500), rate('4', 800)]);
     expect(getCurrentPageBestMPD()).toBe(8);
+  });
+});
+
+describe('One search across its result pages', () => {
+  beforeEach(() => clearHotelMpdRegistry());
+
+  // The site requests page 2 of a search with its own searchId and request time
+  const requestFor = (pageNumber: number, searchId: string, bookingDate: string, checkIn?: string) => {
+    const body = JSON.parse(JSON.stringify(searchCall.request));
+    const sr = body.variables.CitySearchRequest.searchRequest;
+    sr.page.pageNumber = pageNumber;
+    sr.searchContext.searchId = searchId;
+    sr.searchCriteria.bookingDate = bookingDate;
+    if (checkIn) sr.searchCriteria.localCheckInDate = checkIn;
+    return body;
+  };
+  const page1 = requestFor(1, 'id-page-1', '2026-10-10T13:43:05.422Z');
+  const page2 = requestFor(2, 'id-page-2', '2026-10-10T13:43:07.926Z');
+
+  it('shares a search key between pages but not between searches', () => {
+    expect(getSearchKey(page1)).toBeDefined();
+    expect(getSearchKey(page2)).toBe(getSearchKey(page1));
+    expect(getSearchKey(JSON.stringify(page2))).toBe(getSearchKey(page1));
+    // The site's final availability poll for the same page
+    const finalPoll = JSON.parse(JSON.stringify(page2));
+    finalPoll.variables.CitySearchRequest.searchRequest.searchCriteria.synchronous = true;
+    expect(getSearchKey(finalPoll)).toBe(getSearchKey(page1));
+    expect(getSearchKey(requestFor(1, 'id-page-1', '2026-10-10T13:43:05.422Z', '2026-12-01'))).not.toBe(getSearchKey(page1));
+  });
+
+  it("keeps page 1's hotels when the same search's page 2 arrives with a new searchId", () => {
+    ingestHotelRates(extractHotelRatesFromPayload(searchCall.response, page1));
+    const page1Count = hotelMpdRegistry.size;
+    expect(page1Count).toBe(pricedProperties.length);
+
+    const page2Response = JSON.parse(JSON.stringify(searchCall.response));
+    page2Response.data.citySearch.properties = page2Response.data.citySearch.properties.slice(0, 1);
+    ingestHotelRates(extractHotelRatesFromPayload(page2Response, page2));
+    expect(hotelMpdRegistry.size).toBe(page1Count);
+  });
+
+  it('recognizes the final availability poll', () => {
+    const finalPoll = JSON.parse(JSON.stringify(page2));
+    finalPoll.variables.CitySearchRequest.searchRequest.searchCriteria.synchronous = true;
+    expect(isFinalAvailabilityPoll(finalPoll)).toBe(true);
+    expect(isFinalAvailabilityPoll(JSON.stringify(finalPoll))).toBe(true);
+    expect(isFinalAvailabilityPoll(page2)).toBe(false);
+    expect(isFinalAvailabilityPoll(undefined)).toBe(false);
+  });
+
+  it('settles on the final poll\'s count of hotels with rooms and explains the difference', () => {
+    const key = getSearchKey(page1);
+    setSearchTotalResults(920, key);
+    setSearchTotalResults(916, key);
+    expect(getSearchTotalResults()).toBe(920);
+
+    setSearchTotalResults(709, key, true);
+    expect(getSearchTotalResults()).toBe(709);
+    // Background pages and later polls don't move it again
+    setSearchTotalResults(905, key);
+    setSearchTotalResults(700, key, true);
+    expect(getSearchTotalResults()).toBe(709);
+
+    // More hotels collected than remain bookable: the count is capped at the total
+    for (let i = 0; i < 750; i++) hotelMpdRegistry.set(`h${i}`, 5);
+    const banner = document.createElement('div');
+    banner.id = 'aa-mpd-search-summary';
+    updateSummaryBanner(banner, 12.3, false);
+    const total = banner.querySelector<HTMLElement>('.aa-mpd-banner-total');
+    expect(banner.textContent).toContain('(considering 709 of 709 properties)');
+    expect(total?.textContent).toBe('709');
+    expect(total?.title).toBe(
+      'The search first matched 920 properties. 211 of them have no rooms available for these dates, which leaves 709.'
+    );
+  });
+
+  it('shows the total without a tooltip until it settles', () => {
+    setSearchTotalResults(920, getSearchKey(page1));
+    hotelMpdRegistry.set('1', 5);
+    const banner = document.createElement('div');
+    banner.id = 'aa-mpd-search-summary';
+    updateSummaryBanner(banner, 5, false);
+    expect(banner.textContent).toContain('(considering 1 of 920 properties)');
+    expect(banner.querySelector('.aa-mpd-banner-total')).toBeNull();
+  });
+
+  it("keeps a search's first total while later pages report drifting counts", () => {
+    setSearchTotalResults(919, getSearchKey(page1));
+    setSearchTotalResults(709, getSearchKey(page2));
+    expect(getSearchTotalResults()).toBe(919);
+
+    const otherSearch = getSearchKey(requestFor(1, 'x', 'y', '2026-12-01'));
+    setSearchTotalResults(312, otherSearch);
+    expect(getSearchTotalResults()).toBe(312);
   });
 });
 

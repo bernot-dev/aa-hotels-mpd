@@ -1,21 +1,28 @@
-import { extractHotelRatesFromPayload, extractTotalFilteredHotels, EnrichedHotelRate } from "./interceptor";
+import { extractHotelRatesFromPayload, extractTotalFilteredHotels, getSearchKey, EnrichedHotelRate } from "./interceptor";
 import {
   ingestHotelRates,
   getCurrentPageBestMPD,
   getLocationBestMPD,
   getSearchTotalResults,
+  getSearchTotalDetails,
   setSearchTotalResults,
   getConsideredHotelsCount,
   isAllResultsConsidered,
 } from "./registry";
-import { loadPricingSettings, milesForEarningLevel, DEFAULT_MAX_SEARCH_PAGES } from "./settings";
+import {
+  loadPricingSettings,
+  milesForEarningLevel,
+  BACKGROUND_PAGE_SIZE,
+  DEFAULT_MAX_SEARCH_RESULTS,
+} from "./settings";
 import { getLogoUrl } from "./logo";
 import { extractSearchCriteria } from "./capture/criteria";
 import { queueRatesForDispatch } from "./capture/collector";
 
 export interface BackgroundSearchQueryOptions {
   expandSearchResults: boolean;
-  maxSearchPages?: number;
+  /** Most hotels to consider, counting the site's own first page of 90. */
+  maxSearchResults?: number;
   delayMs?: number;
   jitterMs?: number;
   fetchFn?: typeof fetch;
@@ -28,8 +35,13 @@ export interface CapturedSearchRequest {
   body: any;
 }
 
+export { BACKGROUND_PAGE_SIZE };
+
 let backgroundSearchLoading = false;
 let activeJobId = 0;
+// Search key of the running or finished background job. The site re-requests a search's pages
+// while availability settles; those requests must not restart the job.
+let activeJobSearchKey: string | undefined;
 
 export function isBackgroundSearchLoading(): boolean {
   return backgroundSearchLoading;
@@ -44,6 +56,20 @@ export interface SummaryBannerOptions {
   totalHotels?: number | null;
   consideredHotels?: number;
   allCovered?: boolean;
+}
+
+/**
+ * The registry's total, with a tooltip once the site's final availability poll has dropped hotels
+ * with no rooms from the count the search first reported.
+ */
+function describeSettledTotal(total: number): string {
+  const { initialTotal, settled } = getSearchTotalDetails();
+  if (!settled || initialTotal === null || initialTotal <= total) return String(total);
+  const unavailable = initialTotal - total;
+  const note =
+    `The search first matched ${initialTotal} properties. ${unavailable} of them have no rooms ` +
+    `available for these dates, which leaves ${total}.`;
+  return `<span class="aa-mpd-banner-total" title="${note}" tabindex="0">${total}</span>`;
 }
 
 export function updateSummaryBanner(
@@ -104,6 +130,11 @@ export function updateSummaryBanner(
     }
   }
 
+  // Collected rates can include hotels that later turned out to have no rooms
+  if (typeof totalCount === "number" && totalCount > 0) {
+    consideredCount = Math.min(consideredCount, totalCount);
+  }
+
   const allCovered =
     typeof opts.allCovered === "boolean"
       ? opts.allCovered
@@ -113,7 +144,8 @@ export function updateSummaryBanner(
   let consideredSuffix = "";
   if (consideredCount > 0) {
     if (typeof totalCount === "number" && totalCount > 0) {
-      consideredSuffix = ` (considering ${consideredCount} of ${totalCount} properties)`;
+      const totalHtml = typeof opts.totalHotels === "number" ? String(totalCount) : describeSettledTotal(totalCount);
+      consideredSuffix = ` (considering ${consideredCount} of ${totalHtml} properties)`;
     } else {
       consideredSuffix = ` (considering ${consideredCount} properties)`;
     }
@@ -165,7 +197,7 @@ export function findSearchRequestPage(body: any): { key: string; page: any } | n
   return null;
 }
 
-export function createPageRequestBody(body: any, pageNumber: number): any {
+export function createPageRequestBody(body: any, pageNumber: number, pageSize?: number): any {
   let parsed = body;
   if (typeof parsed === "string") {
     try {
@@ -179,6 +211,7 @@ export function createPageRequestBody(body: any, pageNumber: number): any {
   if (pageInfo) {
     pageInfo.page.pageNumber = pageNumber;
     pageInfo.page.pageToken = "";
+    if (pageSize) pageInfo.page.pageSize = pageSize;
   }
   return cloned;
 }
@@ -196,7 +229,8 @@ export async function runBackgroundSearchQueries(
     return { queriedPages: 0, totalHotelsFound: 0 };
   }
 
-  const maxPages = options.maxSearchPages ?? DEFAULT_MAX_SEARCH_PAGES;
+  // Page 1 (90 hotels) is the site's own; the background fetches the pages after it
+  const maxPages = Math.floor((options.maxSearchResults ?? DEFAULT_MAX_SEARCH_RESULTS) / BACKGROUND_PAGE_SIZE);
   if (maxPages <= 1) {
     return { queriedPages: 0, totalHotelsFound: 0 };
   }
@@ -207,6 +241,12 @@ export async function runBackgroundSearchQueries(
   if (!fetchImpl) {
     return { queriedPages: 0, totalHotelsFound: 0 };
   }
+
+  const searchKey = getSearchKey(request.body);
+  if (searchKey && searchKey === activeJobSearchKey) {
+    return { queriedPages: 0, totalHotelsFound: 0 };
+  }
+  activeJobSearchKey = searchKey;
 
   const jobId = ++activeJobId;
   backgroundSearchLoading = true;
@@ -225,7 +265,11 @@ export async function runBackgroundSearchQueries(
       // Check if job was aborted or superseded by a newer search
       if (activeJobId !== jobId) break;
 
-      const nextBody = createPageRequestBody(request.body, pageNum);
+      // Stop once earlier pages cover every hotel the search reported
+      const knownTotal = getSearchTotalResults();
+      if (knownTotal !== null && (pageNum - 1) * BACKGROUND_PAGE_SIZE >= knownTotal) break;
+
+      const nextBody = createPageRequestBody(request.body, pageNum, BACKGROUND_PAGE_SIZE);
       const headers = {
         ...request.headers,
         "content-type": "application/json",
@@ -248,7 +292,7 @@ export async function runBackgroundSearchQueries(
         const data = await res.json();
         const total = extractTotalFilteredHotels(data);
         if (typeof total === "number") {
-          setSearchTotalResults(total);
+          setSearchTotalResults(total, searchKey);
         }
         const rates = extractHotelRatesFromPayload(data, nextBody);
         queriedPages++;
@@ -321,6 +365,7 @@ export async function runBackgroundSearchQueries(
 
 export function abortBackgroundSearchQueries(): void {
   activeJobId++;
+  activeJobSearchKey = undefined;
   if (backgroundSearchLoading) {
     backgroundSearchLoading = false;
     updateAllSearchBanners();

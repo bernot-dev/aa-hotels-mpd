@@ -228,10 +228,10 @@ describe("Total Results and Best Earn Rate Banner Automation Tests", () => {
       }));
       ingestHotelRates(page1Hotels as any, "status_cardmember", true);
 
-      // Run background search queries with maxSearchPages: 2
+      // Run background search queries for up to 180 results (one background page)
       const res = await runBackgroundSearchQueries(mockRequest, {
         expandSearchResults: true,
-        maxSearchPages: 2,
+        maxSearchResults: 180,
         delayMs: 0,
         jitterMs: 0,
         fetchFn,
@@ -254,48 +254,7 @@ describe("Total Results and Best Earn Rate Banner Automation Tests", () => {
   });
 
   describe("Search Expansion & Viewframe Stability", () => {
-    it("expands when a load more button is present without moving the viewframe", async () => {
-      const listContainer = document.createElement("div");
-      listContainer.id = "searchPageRightColumn";
-      for (let i = 0; i < 11; i++) {
-        const card = document.createElement("div");
-        card.className = "PropertyCardItem";
-        card.setAttribute("data-selenium", "hotel-item");
-        listContainer.appendChild(card);
-      }
-      const loadMoreBtn = document.createElement("button");
-      loadMoreBtn.setAttribute("data-selenium", "load-more-button");
-      loadMoreBtn.textContent = "Load more";
-      listContainer.appendChild(loadMoreBtn);
-      document.body.appendChild(listContainer);
-
-      let clickCount = 0;
-      loadMoreBtn.onclick = () => {
-        clickCount++;
-        for (let i = 11; i < 20; i++) {
-          const card = document.createElement("div");
-          card.className = "PropertyCardItem";
-          card.setAttribute("data-selenium", "hotel-item");
-          listContainer.insertBefore(card, loadMoreBtn);
-        }
-        loadMoreBtn.remove();
-      };
-
-      const expansionController = setupSearchExpansion({
-        expandSearchResults: true,
-        pollIntervalMs: 20,
-        postClickDelayMs: 20,
-        waitTimeoutMs: 100,
-      });
-
-      await new Promise((r) => setTimeout(r, 150));
-      expect(clickCount).toBe(1);
-      expect(document.querySelectorAll(".PropertyCardItem").length).toBe(20);
-
-      expansionController.teardown();
-    });
-
-    it("does not hijack or move the viewframe on infinite-scroll pages without load-more buttons", async () => {
+    it("does not hijack or move the viewframe while expanding the list", async () => {
       const listContainer = document.createElement("div");
       listContainer.id = "searchPageRightColumn";
       for (let i = 0; i < 11; i++) {
@@ -316,12 +275,7 @@ describe("Total Results and Best Earn Rate Banner Automation Tests", () => {
       const scrollIntoViewSpy = vi.fn();
       paginationPanel.scrollIntoView = scrollIntoViewSpy;
 
-      const expansionController = setupSearchExpansion({
-        expandSearchResults: true,
-        pollIntervalMs: 20,
-        postClickDelayMs: 20,
-        waitTimeoutMs: 100,
-      });
+      const expansionController = setupSearchExpansion({ expandSearchResults: true });
 
       await new Promise((r) => setTimeout(r, 150));
       expansionController.onMutation();
