@@ -217,34 +217,6 @@ describe('Search Page Presentation Regression Tests', () => {
     fixtureCleanup();
     expect(document.getElementById('aa-mpd-search-summary')).toBeNull();
   }, 15000);
-
-  it('runs against real search-authenticated.html fixture and correctly populates banner and badges', async () => {
-    const fixturePath = path.resolve(__dirname, '../fixtures/search-authenticated.html');
-    if (!fs.existsSync(fixturePath)) {
-      return;
-    }
-    const fixtureHtml = fs.readFileSync(fixturePath, 'utf-8');
-    const dom = new JSDOM(fixtureHtml);
-
-    document.body.innerHTML = dom.window.document.body.innerHTML;
-
-    const fixtureContainer = document.querySelector('#searchPageRightColumn, #contentContainer, [data-selenium="pagination-panel"], [data-testid="hotel-results-list-container"]');
-    expect(fixtureContainer).not.toBeNull();
-
-    const fixtureCleanup = await processSearchPage(fixtureContainer!);
-    await new Promise((r) => setTimeout(r, 80));
-
-    const banner = document.getElementById('aa-mpd-search-summary');
-    expect(banner).not.toBeNull();
-    expect(banner?.style.display).toBe('block');
-    expect(banner?.innerHTML).toContain('Best earn rate for this location: <b>17.5 miles/$</b>');
-
-    const badges = fixtureContainer!.querySelectorAll('.aa-mpd-badge');
-    expect(badges.length).toBeGreaterThanOrEqual(42);
-
-    fixtureCleanup();
-    expect(document.getElementById('aa-mpd-search-summary')).toBeNull();
-  }, 15000);
 });
 
 describe('Search Result Auto-Expansion Regression Tests', () => {

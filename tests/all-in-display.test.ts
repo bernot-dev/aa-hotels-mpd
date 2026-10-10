@@ -39,7 +39,22 @@ describe('interceptor all-in totals', () => {
     const [hotel] = extractHotelRatesFromPayload({
       checkInDate: '2026-10-04',
       checkOutDate: '2026-10-10',
-      results: [{ hotel: { id: 94254, name: 'The STRAT' }, ...STRAT, economics: { rewardAmount: 600 } }],
+      data: {
+        search: {
+          properties: [
+            {
+              propertyId: '94254',
+              displayName: 'The STRAT',
+              pricing: {
+                displayPrice: { amount: 210.65 },
+                inclusive: { amount: 578.57 },
+              },
+              ...STRAT,
+              loyaltyOfferSummary: { offers: [{ earn: { points: 600 } }] },
+            },
+          ],
+        },
+      },
     });
     expect(hotel.allInPrice).toBe(578.57);
     expect(hotel.sitePriceTotals).toEqual([510.35, 210.65, 238.79]);
@@ -113,20 +128,24 @@ describe('all-in price display', () => {
   });
 
   const pricing = (price: string, label = 'includes fees', miles = 7300) => `
-    <div data-testid="non-tier-earn-rewards">Earn ${miles.toLocaleString()} miles per stay</div>
-    <p data-testid="tier-earn-rewards">Earn ${miles.toLocaleString()} miles per stay</p>
-    <h3 data-testid="earn-price">${price}</h3>
-    <p data-testid="pricing-text">Total (6 nights)<div>${label}</div></p>`;
+    <div data-selenium="points-max-promo-text">Earn ${miles.toLocaleString()} miles per stay</div>
+    <div data-element-name="fpc-room-price" data-selenium="display-price">${price}</div>
+    <div data-element-name="fpc-price-text" data-selenium="hotel-currency">Total (6 nights)</div><div>${label}</div>`;
 
   const searchCard = (price: string, label?: string) => {
-    document.body.innerHTML = `<a data-testid="hotel-card-94254"><div data-testid="hotel-card-pricing">${pricing(price, label)}</div></a>`;
-    return document.querySelector('[data-testid="hotel-card-pricing"]')!;
+    document.body.innerHTML = `
+      <li class="PropertyCardItem" data-hotelid="94254" data-selenium="hotel-item">
+        <div data-element-name="property-card">
+          ${pricing(price, label)}
+        </div>
+      </li>`;
+    return document.querySelector('[data-element-name="property-card"]')!;
   };
 
-  const text = (testId: string) => document.querySelector(`[data-testid="${testId}"]`)!.textContent;
-  // innerHTML parsing moves the <div> note out of the <p>, so read the note with the text after it
+  const priceText = () => document.querySelector('[data-element-name="fpc-room-price"]')!.textContent;
+  // innerHTML parsing moves the <div> note out of the <p>/<div>, so read the note with the text after it
   const note = () => {
-    const p = document.querySelector('[data-testid="pricing-text"]')!;
+    const p = document.querySelector('[data-element-name="fpc-price-text"]')!;
     return p.textContent! + (p.nextElementSibling?.textContent ?? '');
   };
 
@@ -144,7 +163,7 @@ describe('all-in price display', () => {
     const card = searchCard('$510');
     processCard(card, 6, false, true);
 
-    expect(text('earn-price')).toBe('$579');
+    expect(priceText()).toBe('$579');
     expect(note()).toBe(`Total (6 nights)${ALL_IN_LABEL}`);
     // MPD is computed from the all-in total: 7,300 / 578.57
     expect(card.querySelector<HTMLElement>('.aa-mpd-badge')!.dataset.rate).toBe('12.6');
@@ -153,7 +172,7 @@ describe('all-in price display', () => {
   it('relabels the fee note when it is nested inside pricing-text, as React renders it', () => {
     hotelDataRegistry.set('94254', hotel());
     const card = searchCard('$510');
-    const pricingText = card.querySelector('[data-testid="pricing-text"]')!;
+    const pricingText = card.querySelector('[data-element-name="fpc-price-text"]')!;
     pricingText.appendChild(pricingText.nextElementSibling!);
     processCard(card, 6, false, true);
     expect(pricingText.textContent).toBe(`Total (6 nights)${ALL_IN_LABEL}`);
@@ -162,19 +181,19 @@ describe('all-in price display', () => {
   it('changes nothing when the site already shows the all-in total', () => {
     hotelDataRegistry.set('94254', hotel());
     const card = searchCard('$579', 'includes taxes & fees');
-    const before = card.querySelector('[data-testid="pricing-text"]')!.outerHTML;
+    const before = card.querySelector('[data-element-name="fpc-price-text"]')!.outerHTML;
     processCard(card, 6, false, true);
 
-    expect(text('earn-price')).toBe('$579');
-    expect(card.querySelector('[data-testid="pricing-text"]')!.outerHTML).toBe(before);
-    expect(card.querySelector('[data-testid="earn-price"]')!.hasAttribute('data-aa-mpd-all-in')).toBe(false);
+    expect(priceText()).toBe('$579');
+    expect(card.querySelector('[data-element-name="fpc-price-text"]')!.outerHTML).toBe(before);
+    expect(card.querySelector('[data-element-name="fpc-room-price"]')!.hasAttribute('data-aa-mpd-all-in')).toBe(false);
   });
 
   it('leaves prices alone when the pricing method is base price', () => {
     hotelDataRegistry.set('94254', hotel());
     const card = searchCard('$510');
     processCard(card, 6, false, false);
-    expect(text('earn-price')).toBe('$510');
+    expect(priceText()).toBe('$510');
     expect(note()).toBe('Total (6 nights)includes fees');
   });
 
@@ -183,27 +202,30 @@ describe('all-in price display', () => {
     const card = searchCard('$510');
     processCard(card, 6, false, true);
     processCard(card, 6, false, true);
-    expect(text('earn-price')).toBe('$579');
+    expect(priceText()).toBe('$579');
 
     // React updates the same text node when it re-renders
-    card.querySelector('[data-testid="earn-price"]')!.firstChild!.nodeValue = '$510';
+    card.querySelector('[data-element-name="fpc-room-price"]')!.firstChild!.nodeValue = '$510';
     processCard(card, 6, false, true);
-    expect(text('earn-price')).toBe('$579');
+    expect(priceText()).toBe('$579');
     expect(note()).toBe(`Total (6 nights)${ALL_IN_LABEL}`);
   });
 
   it('keeps the currency symbol and formatting of the original price', () => {
     hotelDataRegistry.set('94254', hotel({ allInPrice: 4719.85, sitePriceTotals: [4162.83] }));
     searchCard('US$4,163');
-    processCard(document.querySelector('[data-testid="hotel-card-pricing"]')!, 6, false, true);
-    expect(text('earn-price')).toBe('US$4,720');
+    processCard(document.querySelector('[data-element-name="property-card"]')!, 6, false, true);
+    expect(priceText()).toBe('US$4,720');
   });
 
   it('shows all-in totals on map pins', () => {
     hotelDataRegistry.set('94254', hotel());
-    document.body.innerHTML = '<button data-testid="hotel-pin-94254"><span>$510</span></button>';
+    document.body.innerHTML = `
+      <button data-selenium="propertyMarkerIcon-94254" id="propertyMarkerIcon-94254">
+        <div class="propertyMarkerIcon-content"><span>$510</span></div>
+      </button>`;
     updateMapPins(document.body, true);
-    expect(document.querySelector('[data-testid="hotel-pin-94254"]')!.textContent).toBe('$579');
+    expect(document.querySelector('#propertyMarkerIcon-94254')!.textContent?.trim()).toBe('$579');
   });
 
   it('matches details room rates by price and member miles', () => {
@@ -211,10 +233,10 @@ describe('all-in price display', () => {
       { allInPrice: 4719.85, sitePriceTotals: [4162.83], rewards: 8600, nights: 6 },
       { allInPrice: 4887.43, sitePriceTotals: [4330.41], rewards: 14600, nights: 6 },
     ]);
-    document.body.innerHTML = `<div data-testid="room-card">${pricing('$4,163', 'includes fees', 8600)}</div>`;
-    processCard(document.querySelector('[data-testid="room-card"]')!, 6, false, true);
+    document.body.innerHTML = `<div class="MasterRoom" data-element-name="room-card" data-selenium="room-card">${pricing('$4,163', 'includes fees', 8600)}</div>`;
+    processCard(document.querySelector('[data-element-name="room-card"]')!, 6, false, true);
 
-    expect(text('earn-price')).toBe('$4,720');
+    expect(priceText()).toBe('$4,720');
     expect(note()).toBe(`Total (6 nights)${ALL_IN_LABEL}`);
   });
 
@@ -223,12 +245,12 @@ describe('all-in price display', () => {
       { allInPrice: 4719.85, sitePriceTotals: [4162.83], rewards: 8600, nights: 6 },
       { allInPrice: 4800, sitePriceTotals: [4162.83], rewards: 8600, nights: 6 },
     ]);
-    document.body.innerHTML = `<div data-testid="room-card">${pricing('$4,163', 'includes fees', 8600)}</div>`;
-    processCard(document.querySelector('[data-testid="room-card"]')!, 6, false, true);
-    expect(text('earn-price')).toBe('$4,163');
+    document.body.innerHTML = `<div class="MasterRoom" data-element-name="room-card" data-selenium="room-card">${pricing('$4,163', 'includes fees', 8600)}</div>`;
+    processCard(document.querySelector('[data-element-name="room-card"]')!, 6, false, true);
+    expect(priceText()).toBe('$4,163');
 
-    document.body.innerHTML = `<div data-testid="room-card">${pricing('$999', 'includes fees', 8600)}</div>`;
-    processCard(document.querySelector('[data-testid="room-card"]')!, 6, false, true);
-    expect(text('earn-price')).toBe('$999');
+    document.body.innerHTML = `<div class="MasterRoom" data-element-name="room-card" data-selenium="room-card">${pricing('$999', 'includes fees', 8600)}</div>`;
+    processCard(document.querySelector('[data-element-name="room-card"]')!, 6, false, true);
+    expect(priceText()).toBe('$999');
   });
 });

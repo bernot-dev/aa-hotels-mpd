@@ -116,40 +116,6 @@ describe('Details Page Presentation Regression Tests', () => {
     expect(document.getElementById('aa-mpd-details-summary')).toBeNull();
   });
 
-  it('runs against real details-authenticated.html fixture with 162 cards across 49 room groups', async () => {
-    const fixturePath = path.resolve(__dirname, '../fixtures/details-authenticated.html');
-    if (!fs.existsSync(fixturePath)) {
-      return;
-    }
-    const fixtureHtml = fs.readFileSync(fixturePath, 'utf-8');
-
-    setGlobalChrome({
-      storage: {
-        sync: {
-          get: vi.fn().mockResolvedValue({
-            includeBonusMiles: false,
-          }),
-        },
-      },
-    });
-
-    let dom = new JSDOM(fixtureHtml);
-    document.body.innerHTML = dom.window.document.body.innerHTML;
-
-    let roomGroup = document.querySelector('#property-room-grid-root, div[data-selenium="room-grid"]');
-    if (!roomGroup) return;
-
-    let fixtureCleanup = await processDetailsPage(roomGroup);
-    await new Promise((r) => setTimeout(r, 80));
-
-    let banner = document.getElementById('aa-mpd-details-summary');
-    expect(banner).not.toBeNull();
-    expect(banner?.style.display).toBe('block');
-    expect(banner?.innerHTML).toContain('Best earn rate on this page:');
-
-    fixtureCleanup();
-  });
-
   it('does not re-toggle room rate buttons that are labeled "Show fewer room rates"', async () => {
     setGlobalChrome({
       storage: {

@@ -196,11 +196,11 @@ export function extractSearchCriteria(
   // 3. Search page DOM extraction: neighborhood filter container
   if (location === "Unknown Location" && doc) {
     const nFilter = doc.querySelector(
-      '[data-selenium="neighborhood-filter"], [data-element-name="neighborhood-filter"], [data-testid="neighborhood-filter-container"]'
+      '[data-selenium="neighborhood-filter"], [data-element-name="neighborhood-filter"]'
     );
     if (nFilter) {
       const nLabels = Array.from(
-        nFilter.querySelectorAll('.chakra-checkbox__label p, label p, span p')
+        nFilter.querySelectorAll('label p, span p')
       )
         .map((el) => el.textContent?.trim() || "")
         .filter(isValidLocation);
@@ -214,7 +214,7 @@ export function extractSearchCriteria(
   if (location === "Unknown Location" && doc) {
     const cardNeighborhoods = Array.from(
       doc.querySelectorAll(
-        '[data-selenium="area-city-name"], [data-element-name="area-city-name"], [data-testid="hotel-neighborhood"]'
+        '[data-selenium="area-city-name"], [data-element-name="area-city-name"]'
       )
     )
       .map((el) => el.textContent?.trim() || "")
@@ -238,7 +238,7 @@ export function extractSearchCriteria(
   if (location === "Unknown Location" && doc) {
     const hotelNames = Array.from(
       doc.querySelectorAll(
-        '[data-selenium="hotel-name"], [data-element-name="property-card-title"], .PropertyCardItem__Name, [data-testid="hotel-name"], h3:not([data-selenium="display-price"]):not(.PropertyCardPrice__Value)'
+        '[data-selenium="hotel-name"], [data-element-name="property-card-title"], .PropertyCardItem__Name, h3:not([data-selenium="display-price"]):not(.PropertyCardPrice__Value)'
       )
     ).map((el) => el.textContent?.trim() || "");
     for (const name of hotelNames) {
@@ -252,12 +252,8 @@ export function extractSearchCriteria(
 
   // 7. DOM extraction: hotel address on details page
   if (location === "Unknown Location" && doc) {
-    const cityEl = doc.querySelector(
-      '[data-selenium="hotel-address-city"], [data-testid="address-city"]'
-    );
-    const countryEl = doc.querySelector(
-      '[data-selenium="hotel-address-country"], [data-testid="address-country"]'
-    );
+    const cityEl = doc.querySelector('[data-selenium="hotel-address-city"]');
+    const countryEl = doc.querySelector('[data-selenium="hotel-address-country"]');
     if (cityEl && cityEl.textContent?.trim()) {
       const city = cityEl.textContent.trim();
       const country = countryEl?.textContent?.trim();
@@ -270,36 +266,6 @@ export function extractSearchCriteria(
 
   // NOTE: Destination input box is NEVER read under any circumstances.
   // Location is sourced strictly from encoded links, neighborhood filters, or page elements.
-
-  if (doc) {
-    if (!checkIn) {
-      const inInput = doc.querySelector<HTMLInputElement>("#check-in-date");
-      if (inInput && inInput.value) {
-        checkIn = inInput.value;
-      }
-    }
-
-    if (!checkOut) {
-      const outInput = doc.querySelector<HTMLInputElement>("#check-out-date");
-      if (outInput && outInput.value) {
-        checkOut = outInput.value;
-      }
-    }
-
-    // Rooms & Guests fallback from button text
-    const roomsGuestsBtn = doc.querySelector('[data-testid="search-rooms-and-guests-button"]');
-    if (roomsGuestsBtn && roomsGuestsBtn.textContent) {
-      const text = roomsGuestsBtn.textContent;
-      const roomsMatch = text.match(/(\d+)\s*Room/i);
-      if (roomsMatch) {
-        rooms = parseInt(roomsMatch[1], 10);
-      }
-      const guestsMatch = text.match(/(\d+)\s*Guest/i);
-      if (guestsMatch) {
-        guests = parseInt(guestsMatch[1], 10);
-      }
-    }
-  }
 
   // Calculate nights
   let nights = getNights();

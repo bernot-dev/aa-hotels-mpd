@@ -150,6 +150,12 @@ export function getCanonicalLocation(city: string, state: string): string {
 
 export function extractTotalFilteredHotels(payload: any): number | null {
   if (!payload || typeof payload !== "object") return null;
+  if (typeof payload.totalFilteredHotels === "number") {
+    return payload.totalFilteredHotels;
+  }
+  if (typeof payload.searchResult?.searchInfo?.totalFilteredHotels === "number") {
+    return payload.searchResult.searchInfo.totalFilteredHotels;
+  }
   if (payload.data && typeof payload.data === "object") {
     for (const key of Object.keys(payload.data)) {
       const searchInfo = payload.data[key]?.searchResult?.searchInfo;
@@ -166,12 +172,6 @@ export function extractTotalFilteredHotels(payload: any): number | null {
     if (typeof payload.data.searchResult?.searchInfo?.totalFilteredHotels === "number") {
       return payload.data.searchResult.searchInfo.totalFilteredHotels;
     }
-  }
-  if (typeof payload.searchResult?.searchInfo?.totalFilteredHotels === "number") {
-    return payload.searchResult.searchInfo.totalFilteredHotels;
-  }
-  if (typeof payload.totalFilteredHotels === "number") {
-    return payload.totalFilteredHotels;
   }
   if (typeof payload.totalProperties === "number") {
     return payload.totalProperties;
@@ -431,12 +431,9 @@ function extractAgodaProperty(
 
 /**
  * Extracts enriched hotel rates from arbitrary API response objects.
- * Handles the Agoda white-label GraphQL schema (data.<x>Search.properties) and
- * Rocket Travel / Rocketmiles schema:
- * - payload.searchResult.results
- * - payload.results
- * - payload.hotels
- * - payload (as an array of hotel objects)
+/**
+ * Extracts enriched hotel rates from arbitrary API response objects.
+ * Handles the Agoda white-label GraphQL schema (data.<x>Search.properties, data.propertyDetail.rooms).
  * The optional request body supplies stay dates for Agoda responses, which omit them.
  */
 export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown): EnrichedHotelRate[] {
@@ -458,10 +455,6 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
       nights = diffDays;
     }
   }
-
-  const searchPlace = payload.placeResult || payload.searchResult?.placeResult || {};
-  const searchCity = searchPlace.city || "";
-  const searchState = searchPlace.state || "";
 
   const hotelMap = new Map<string, EnrichedHotelRate>();
 
@@ -486,7 +479,7 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
       return;
     }
 
-    const rawId = item.propertyId ?? item.hotelId ?? item.hotel?.id ?? item.id ?? item.hotel?.propertyId;
+    const rawId = item.propertyId ?? item.hotelId ?? item.hotel?.id ?? item.id;
     if (rawId === null || rawId === undefined) return;
     const hotelId = String(rawId).trim();
     if (!hotelId) return;
@@ -498,7 +491,7 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
       item.hotel?.name ||
       item.name ||
       "Unknown Hotel";
-    const economics = item.economics || item.roomTypeResultTeaser?.economics || item.rates?.[0]?.economics;
+    const economics = item.economics || {};
     const pricing = item.pricing || {};
 
     let basePrice = 0;
@@ -514,9 +507,9 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
       basePrice = Number(item.displayPrice);
     } else if (item.totalPrice?.amount) {
       basePrice = Number(item.totalPrice.amount);
-    } else if (economics?.total?.amount) {
+    } else if (economics.total?.amount) {
       basePrice = Number(economics.total.amount);
-    } else if (economics?.displayPrice?.amount) {
+    } else if (economics.displayPrice?.amount) {
       basePrice = Number(economics.displayPrice.amount);
     } else if (typeof item.price === "number") {
       basePrice = item.price;
@@ -524,9 +517,7 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
 
     const nightlyPrice = pricing.displayPrice?.perNight?.amount
       ? Number(pricing.displayPrice.perNight.amount)
-      : item.lowestAveragePrice?.amount
-      ? Number(item.lowestAveragePrice.amount)
-      : economics?.pricePerNight?.amount
+      : economics.pricePerNight?.amount
       ? Number(economics.pricePerNight.amount)
       : 0;
 
@@ -541,7 +532,7 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
       (pricing.totalInclusive?.amount ? Number(pricing.totalInclusive.amount) : 0) ||
       (item.grandTotalPublishedPriceInclusive?.amount ? Number(item.grandTotalPublishedPriceInclusive.amount) : 0) ||
       (item.totalPriceInclusive?.amount ? Number(item.totalPriceInclusive.amount) : 0) ||
-      (economics?.totalInclusive?.amount ? Number(economics.totalInclusive.amount) : 0) ||
+      (economics.totalInclusive?.amount ? Number(economics.totalInclusive.amount) : 0) ||
       basePrice;
 
     let fees = 0;
@@ -563,12 +554,12 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
     } else if (pricing.pointmax?.point || pricing.pointmax?.points) {
       baseMiles = Number(pricing.pointmax.point || pricing.pointmax.points);
       tieredMiles = baseMiles;
-    } else if (economics) {
+    } else if (economics.rewardAmount || economics.rewardAmountTiered) {
       baseMiles = Number(economics.rewardAmount || economics.baseRewardAmount || 0);
       tieredMiles = Number(economics.rewardAmountTiered || economics.tieredRewardAmount || baseMiles);
     } else {
       baseMiles = Number(item.rewards ?? item.rewardAmount ?? item.rewardMiles ?? item.totalRewards ?? 0);
-      tieredMiles = Number(item.roomTypeResultTeaser?.rewards ?? item.rewardAmountTiered ?? baseMiles);
+      tieredMiles = Number(item.rewardAmountTiered ?? baseMiles);
     }
 
     if (isNaN(basePrice)) basePrice = 0;
@@ -580,19 +571,15 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
     if (baseMiles <= 0 && tieredMiles <= 0) return;
 
     // Location extraction & normalization
-    const address = item.hotel?.address || item.address || {};
-    const city = normalizeCityName(address.city || searchCity);
-    const state = normalizeState(address.state || searchState);
+    const address = item.address || {};
+    const city = normalizeCityName(address.city || "");
+    const state = normalizeState(address.state || "");
     const location = getCanonicalLocation(city, state);
     const rawCountry =
       address.country?.name ||
       address.country?.code ||
       (typeof address.country === "string" ? address.country : "") ||
       address.countryCode ||
-      searchPlace.country?.name ||
-      searchPlace.country?.code ||
-      (typeof searchPlace.country === "string" ? searchPlace.country : "") ||
-      searchPlace.countryCode ||
       "";
     let country = String(rawCountry).trim();
     if (/^(?:US|USA|United States)$/i.test(country) || (!country && (US_STATES[state.toLowerCase()] || /^[A-Z]{2}$/.test(state)))) {
@@ -602,19 +589,17 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
     const neighborhood =
       address.neighborhoodName ||
       item.neighborhoodName ||
-      item.hotel?.neighborhood ||
-      item.hotel?.neighborhoodName ||
       item.neighborhood ||
       "";
     const zipcode = address.zipcode || "";
-    const latitude = address.latitude ?? item.latitude ?? searchPlace.latitude;
-    const longitude = address.longitude ?? item.longitude ?? searchPlace.longitude;
+    const latitude = address.latitude ?? item.latitude;
+    const longitude = address.longitude ?? item.longitude;
 
-    const stars = Number(item.hotel?.stars ?? item.stars ?? 0);
-    const rating = Number(item.hotel?.rating ?? item.rating ?? 0);
-    const reviewCount = Number(item.hotel?.numberOfReviews ?? item.numberOfReviews ?? 0);
-    const imageUrl = item.hotel?.mainImage?.url ?? item.mainImage?.url ?? "";
-    const refundable = item.refundability === "REFUNDABLE" || item.isRefundable === true;
+    const stars = Number(item.stars ?? 0);
+    const rating = Number(item.rating ?? 0);
+    const reviewCount = Number(item.numberOfReviews ?? 0);
+    const imageUrl = item.mainImage?.url ?? "";
+    const refundable = item.isRefundable === true;
 
     const enrichedRate: EnrichedHotelRate = {
       hotelId,
@@ -646,7 +631,6 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
       searchId: searchId || undefined,
     };
 
-    // If hotel already registered, keep the best rate/miles
     keepBest(enrichedRate);
   };
 
@@ -692,33 +676,17 @@ export function extractHotelRatesFromPayload(payload: any, requestBody?: unknown
   if (Array.isArray(payload.propertiesGql)) {
     candidates.push(...payload.propertiesGql);
   }
+  if (Array.isArray(payload.properties)) {
+    candidates.push(...payload.properties);
+  }
   if (Array.isArray(payload.searchResult?.results)) {
     candidates.push(...payload.searchResult.results);
   }
   if (Array.isArray(payload.results)) {
     candidates.push(...payload.results);
   }
-  if (Array.isArray(payload.hotels)) {
-    candidates.push(...payload.hotels);
-  }
 
   candidates.forEach(processHotelItem);
-
-  // 2. If nothing found in standard top-level arrays, do a bounded shallow scan
-  if (hotelMap.size === 0) {
-    for (const key of Object.keys(payload)) {
-      const val = payload[key];
-      if (Array.isArray(val)) {
-        val.forEach(processHotelItem);
-      } else if (val && typeof val === "object") {
-        if (Array.isArray(val.results)) {
-          val.results.forEach(processHotelItem);
-        } else if (Array.isArray(val.properties)) {
-          val.properties.forEach(processHotelItem);
-        }
-      }
-    }
-  }
 
   const rates = Array.from(hotelMap.values());
   const searchKey = requestBody ? getSearchKey(requestBody) : undefined;
@@ -797,11 +765,7 @@ export function shouldInspectUrl(url: string): boolean {
     lower.includes("/graphql") ||
     lower.includes("/search") ||
     lower.includes("/accom") ||
-    lower.includes("/property") ||
-    lower.includes("/results") ||
-    lower.includes("/hotels") ||
-    lower.includes("aadvantage-hotels") ||
-    lower.includes("/rest/")
+    lower.includes("/property")
   );
 }
 

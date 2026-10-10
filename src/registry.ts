@@ -349,12 +349,8 @@ export function getHotelIdFromPin(pin: Element): string | null {
     pin.getAttribute("data-id");
   if (directId && /^\d+$/.test(directId)) return directId;
 
-  const testId = pin.getAttribute("data-testid") || "";
-  const testIdMatch = testId.match(/^hotel-pin-(\d+)$/);
-  if (testIdMatch) return testIdMatch[1];
-
   // e.g. pin-123, hotel_123, propertyMarkerIcon-123
-  const pinId = pin.id || pin.getAttribute("data-selenium") || testId;
+  const pinId = pin.id || pin.getAttribute("data-selenium") || "";
   const match = pinId.match(/(?:pin|hotel|property(?:MarkerIcon)?)[-_]?(\d+)/i);
   return match ? match[1] : null;
 }
@@ -370,14 +366,7 @@ export function getHotelIdFromCard(card: Element): string | null {
       current.getAttribute("data-hotelid");
     if (directId && /^\d+$/.test(directId)) return directId;
 
-    // 2. data-testid inspection e.g. hotel-card-12345
-    const testId = current.getAttribute("data-testid");
-    if (testId) {
-      const match = testId.match(/^hotel-card-(\d+)$/);
-      if (match) return match[1];
-    }
-
-    // 3. Element ID e.g. hotel-12345, property-12345
+    // 2. Element ID e.g. hotel-12345, property-12345
     const elemId = current.id;
     if (elemId) {
       const match = elemId.match(/(?:hotel|property)[-_]?(\d+)/i);
@@ -387,14 +376,7 @@ export function getHotelIdFromCard(card: Element): string | null {
     current = current.parentElement;
   }
 
-  // 4. Closest or child with data-testid^="hotel-card-"
-  const testIdElem =
-    card.querySelector('[data-testid^="hotel-card-"]') ||
-    card.closest('[data-testid^="hotel-card-"]');
-  const testIdMatch = testIdElem?.getAttribute("data-testid")?.match(/^hotel-card-(\d+)$/);
-  if (testIdMatch) return testIdMatch[1];
-
-  // 5. Child links e.g. /accom/property?propertyId=12345 or hotelId=12345
+  // 3. Child links e.g. /accom/property?propertyId=12345 or hotelId=12345
   const links = card.querySelectorAll("a[href]");
   for (let i = 0; i < links.length; i++) {
     const href = links[i].getAttribute("href") || "";

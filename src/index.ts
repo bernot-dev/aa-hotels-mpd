@@ -23,7 +23,7 @@ const SEARCH_SELECTOR =
 const DETAILS_SELECTOR =
   '#property-room-grid-root, [data-element-name="property-room-grid-root"], [data-selenium="room-grid"]';
 
-import { processCard, innermostCards, CARD_SELECTOR } from "./cards";
+import { processCard, innermostCards, CARD_SELECTOR, ROOM_CARD_SELECTOR } from "./cards";
 import { getNights } from "./nights";
 import { extractSearchCriteria, isValidLocation, normalizeLocation } from "./capture/criteria";
 import { queueRatesForDispatch } from "./capture/collector";
@@ -132,7 +132,7 @@ if (typeof window !== "undefined") {
     if (!useAllInPricing) return;
 
     const nights = getNights();
-    document.querySelectorAll('[data-testid="room-card"]').forEach((card) => {
+    document.querySelectorAll(ROOM_CARD_SELECTOR).forEach((card) => {
       try {
         processCard(card, nights, includeBonusMiles, useAllInPricing, true, earningLevel);
       } catch {

@@ -47,7 +47,7 @@ export function getColorForRatio(ratio: number): string {
 }
 
 export const PIN_SELECTOR =
-  '[data-element-name="map-search-property-marker"], [data-selenium^="propertyMarkerIcon-"], button[data-selenium*="pin"], [data-selenium*="pin"], .static-map-pin, [class*="map-pin"], button[data-testid^="hotel-pin-"], [data-testid^="hotel-pin-"]';
+  '[data-element-name="map-search-property-marker"], [data-selenium^="propertyMarkerIcon-"], button[data-selenium*="pin"], [data-selenium*="pin"], [class*="map-pin"]';
 
 /**
  * Updates visible map pins with normalized background colors, and all-in prices when enabled.
@@ -138,69 +138,4 @@ export function processMapPreviewCards(
   if (newRatesFound) {
     updateMapPins(root, useAllInPricing);
   }
-}
-
-export interface MapController {
-  update: () => void;
-  teardown: () => void;
-}
-
-/**
- * Sets up the map view controller with mutation observation for pins and preview cards.
- */
-export function setupMapController(
-  container: Element,
-  nights: number = 1,
-  includeBonusMiles: boolean = false,
-  useAllInPricing: boolean = true,
-  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL
-): MapController {
-  let isDisposed = false;
-  let isScheduled = false;
-
-  const runUpdate = () => {
-    if (isDisposed) return;
-    isScheduled = false;
-    processMapPreviewCards(container, nights, includeBonusMiles, useAllInPricing, earningLevel);
-    updateMapPins(container, useAllInPricing);
-  };
-
-  const scheduleUpdate = () => {
-    if (isDisposed || isScheduled) return;
-    isScheduled = true;
-    if (typeof requestAnimationFrame !== "undefined") {
-      requestAnimationFrame(runUpdate);
-    } else {
-      setTimeout(runUpdate, 16);
-    }
-  };
-
-  const observer = new MutationObserver((mutations) => {
-    if (isDisposed) return;
-    // Check if external mutations occurred
-    const hasExternal = mutations.some((m) => {
-      const target = m.target as HTMLElement;
-      if (target?.classList?.contains("aa-mpd-badge") || target?.dataset?.aaMpd) {
-        return false;
-      }
-      return true;
-    });
-
-    if (hasExternal) {
-      scheduleUpdate();
-    }
-  });
-
-  observer.observe(container, { childList: true, subtree: true });
-
-  // Initial immediate run
-  runUpdate();
-
-  return {
-    update: runUpdate,
-    teardown: () => {
-      isDisposed = true;
-      observer.disconnect();
-    },
-  };
 }

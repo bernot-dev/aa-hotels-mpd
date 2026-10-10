@@ -86,7 +86,7 @@ export function extractRatesFromSearchCards(
       if (parent !== card && parent.querySelectorAll(CARD_SELECTOR).length > 1) break;
       if (hotelName === "Unknown Hotel") {
         const nameEl = parent.querySelector(
-          '[data-selenium="hotel-name"], [data-element-name="property-card-title"], .PropertyCardItem__Name, [data-testid="hotel-name"], h3:not([data-selenium="display-price"]):not(.PropertyCardPrice__Value)'
+          '[data-selenium="hotel-name"], [data-element-name="property-card-title"], .PropertyCardItem__Name, h3:not([data-selenium="display-price"]):not(.PropertyCardPrice__Value)'
         );
         if (nameEl && nameEl.textContent) {
           const candidate = getOwnHeadingText(nameEl);

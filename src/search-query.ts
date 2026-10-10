@@ -112,12 +112,12 @@ export function updateSummaryBanner(
 
   if (typeof document !== "undefined") {
     const domCards = document.querySelectorAll(
-      'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"], [data-testid="hotel-card-pricing"]'
+      'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]'
     ).length;
     consideredCount = Math.max(consideredCount, domCards);
 
     if (totalCount === null) {
-      const statusElem = document.querySelector('[data-testid="search-result-update"]');
+      const statusElem = document.querySelector('[data-selenium="search-result-header"], [data-element-name="search-result-count"]');
       const match = statusElem?.textContent?.match(/(\d+)\s+properties found/i);
       if (match) {
         totalCount = Number(match[1]);

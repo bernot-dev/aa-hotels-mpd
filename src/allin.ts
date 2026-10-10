@@ -139,7 +139,15 @@ export function applyAllInPrice(
 
 /** Member miles from a details room card's "Earn N miles per stay" line for AAdvantage members. */
 export function readMemberMiles(card: Element): number | null {
-  const el = card.querySelector('[data-testid="non-tier-earn-rewards"]');
+  const el =
+    card.querySelector('[data-testid="non-tier-earn-rewards"]') ||
+    Array.from(card.querySelectorAll('[data-testid="upc_caption"]')).find((c) => {
+      const next = c.nextElementSibling?.textContent || c.parentElement?.nextElementSibling?.textContent || "";
+      return /aadvantage® member/i.test(next) || /earn\s+[\d,]+\s+miles/i.test(c.textContent || "");
+    }) ||
+    card.querySelector(
+      '[data-selenium="points-max-promo-text"], [data-element-name="room-card-earn-miles"], .points-max-promo-text'
+    );
   const match = el?.textContent?.match(/\d[\d,]*/);
   return match ? Number(match[0].replace(/,/g, "")) : null;
 }

@@ -34,22 +34,21 @@ export const extractNumber = (e: Element): number | null => {
 };
 
 export const CARD_SELECTOR =
-  'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"], [data-testid="hotel-card-pricing"], [data-testid="room-card"]';
+  'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]';
 export const ROOM_CARD_SELECTOR =
   '[data-selenium="ChildRoomsList-room"], [data-selenium="master-room-card"], [data-selenium="room-card"], [data-element-name="room-card"], .MasterRoom';
 export const PRICE_SELECTOR =
-  '[data-element-name="fpc-room-price"], [data-selenium="display-price"], .PropertyCardPrice__Value, [data-testid="earn-price"]';
+  '[data-element-name="fpc-room-price"], [data-selenium="display-price"], .PropertyCardPrice__Value';
 export const PRICE_TYPE_SELECTOR =
-  '[data-element-name="fpc-price-text"], [data-selenium="hotel-currency"], .PropertyCardPrice__Currency, [data-testid="pricing-text"]';
-// upc_caption is shared by the price, the price note and the miles captions; getMilesElements filters it
+  '[data-element-name="fpc-price-text"], [data-selenium="hotel-currency"], .PropertyCardPrice__Currency';
 export const TIER_SELECTOR =
-  '[data-testid="upc_caption"], [data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"], [data-testid$="tier-earn-rewards"]';
+  '[data-testid="upc_caption"], [data-selenium="points-max-promo-text"], [data-selenium="points-max"], [data-selenium="loyalty-offer"]';
 
 export const BOOST_SELECTOR =
-  '[data-testid="boost-applied-badge"], [data-element-name="boost-applied-badge"], [data-testid="boost-best-value-jacket"], [data-element-name="jacket-boost"], [data-selenium="boost-tag"], [data-element-name="boost-tag"]';
+  '[data-element-name="boost-applied-badge"], [data-element-name="jacket-boost"], [data-selenium="boost-tag"], [data-element-name="boost-tag"]';
 
 export const BOOST_JACKET_SELECTOR =
-  '[data-testid="boost-best-value-jacket"], [data-element-name="jacket-boost"]';
+  '[data-element-name="jacket-boost"]';
 
 export const BOOST_STYLE_ID = "aa-mpd-boost-jacket-styles";
 
@@ -79,7 +78,6 @@ export function updateBoostJacketStyles(includeBonusMiles: boolean): void {
       style = document.createElement("style");
       style.id = BOOST_STYLE_ID;
       style.textContent = `
-        [data-testid="boost-best-value-jacket"],
         [data-element-name="jacket-boost"] {
           display: none !important;
         }
@@ -562,10 +560,7 @@ export const processCard = (
   jackets.forEach((j) => {
     j.style.display = includeBonusMiles ? "" : "none";
   });
-  if (
-    card instanceof HTMLElement &&
-    (card.matches(BOOST_JACKET_SELECTOR) || card.getAttribute("data-testid") === "boost-best-value-jacket")
-  ) {
+  if (card instanceof HTMLElement && card.matches(BOOST_JACKET_SELECTOR)) {
     card.style.display = includeBonusMiles ? "" : "none";
   }
 
@@ -815,7 +810,7 @@ export const updateCards = (
           target.classList?.contains('aa-mpd-badge') ||
           target.dataset?.aaMpd === 'true' ||
           target.closest?.(
-            '.aa-mpd-badge, #aa-mpd-search-summary, #aa-mpd-details-summary, [data-aa-mpd], #downshift-0-menu, [role="listbox"], [data-testid*="search-destination"], #downshift-0-input'
+            '.aa-mpd-badge, #aa-mpd-search-summary, #aa-mpd-details-summary, [data-aa-mpd], [role="listbox"]'
           )
         ) {
           return false;
@@ -826,9 +821,8 @@ export const updateCards = (
             node.classList?.contains?.('aa-mpd-badge') ||
             node.dataset?.aaMpd === 'true' ||
             node.closest?.(
-              '.aa-mpd-badge, #aa-mpd-search-summary, #aa-mpd-details-summary, [data-aa-mpd], #downshift-0-menu, [role="listbox"], [data-testid*="search-destination"], #downshift-0-input'
+              '.aa-mpd-badge, #aa-mpd-search-summary, #aa-mpd-details-summary, [data-aa-mpd], [role="listbox"]'
             ) ||
-            (node.id && node.id.includes('downshift')) ||
             (node.getAttribute?.('role') === 'listbox' || node.getAttribute?.('role') === 'option')
           ) {
             continue;

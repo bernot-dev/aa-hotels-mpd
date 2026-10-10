@@ -1,10 +1,10 @@
 // "Most miles per dollar" sort for the search results list.
 //
-// The site's sort options (in [data-element-name="sort-bar-container"] or the older <select id="sort-by-dropdown">)
-// are controlled by React, and their own options refetch the results. This option is handled entirely
-// client-side: it stops the click/change event before React sees it, then reorders hotels with CSS `order`
-// on the flex list (leaving DOM order, which React owns, intact). The choice persists across reloads until
-// the user picks one of the site's own options.
+// The site's sort options (in [data-element-name="sort-bar-container"]) are controlled by React,
+// and their own options refetch the results. This option is handled entirely client-side: it stops the
+// click event before React sees it, then reorders hotels with CSS `order` on the flex list (leaving
+// DOM order, which React owns, intact). The choice persists across reloads until the user picks one
+// of the site's own options.
 
 export const MPD_SORT_VALUE = "aa-mpd";
 export const MPD_SORT_LABEL = "Most miles per dollar";
@@ -15,11 +15,7 @@ export const SORT_BUTTON_ID = "aa-mpd-sort-button";
 export const SORT_CONTAINER_ID = "aa-mpd-sort-container";
 export const SORT_BAR_STYLE_ID = "aa-mpd-sort-bar-style";
 
-const SELECT_ID = "sort-by-dropdown";
-const OPTION_ID = "aa-mpd-sort-option";
 const STYLE_ID = "aa-mpd-sort-style";
-const SELECT_STYLE_ID = "aa-mpd-select-style";
-const SELECT_BUTTON_ID = "aa-mpd-select-button";
 const SORTED_ATTR = "data-aa-mpd-sorted";
 const RESYNC_INTERVAL_MS = 500;
 
@@ -44,50 +40,6 @@ function setMpdSortPreferred(preferred: boolean): void {
 }
 
 import { getLogoUrl } from "./logo";
-
-/** Chrome 135+ can render rich option content once a select opts in to `appearance: base-select`. */
-function supportsCustomizableSelect(): boolean {
-  try {
-    return typeof CSS !== "undefined" && CSS.supports("appearance", "base-select");
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Switches the site's select to a customizable select so options (and the closed select, through
- * <selectedcontent>) can show the extension logo. Styled to match the site's own dropdown.
- */
-function enableCustomizableSelect(select: HTMLSelectElement): void {
-  if (!document.getElementById(SELECT_STYLE_ID)) {
-    const style = document.createElement("style");
-    style.id = SELECT_STYLE_ID;
-    const sel = `#${SELECT_ID}`;
-    style.textContent = `
-      ${sel}, ${sel}::picker(select) { appearance: base-select; }
-      ${sel}::picker-icon { display: none; }
-      ${sel}::picker(select) {
-        background: #fff; border: 1px solid #c4c4c4; border-radius: 6px;
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15); padding: 4px 0;
-      }
-      ${sel} option { padding: 10px 16px; gap: 8px; align-items: center; }
-      ${sel} option::checkmark { display: none; }
-      ${sel} option:checked { font-weight: 600; }
-      ${sel} option:hover, ${sel} option:focus-visible { background: #eef4fb; }
-      ${sel} > button { display: contents; }
-      ${sel} selectedcontent { display: inline-flex; align-items: center; gap: 8px; }
-      ${sel} .aa-mpd-sort-logo { width: 20px; height: 20px; flex-shrink: 0; }
-    `;
-    document.head.appendChild(style);
-  }
-  if (!select.querySelector(`#${SELECT_BUTTON_ID}`)) {
-    const button = document.createElement("button");
-    button.id = SELECT_BUTTON_ID;
-    button.setAttribute("data-aa-mpd", "true");
-    button.appendChild(document.createElement("selectedcontent"));
-    select.prepend(button);
-  }
-}
 
 /**
  * Ensures styles for the MPD sort button inside [data-element-name="sort-bar-container"].
@@ -243,18 +195,9 @@ function updateSortBarState(sortBar: HTMLElement, isActive: boolean): void {
   }
 }
 
-/** Hotel items are the list children holding a `hotel-card-<id>` element (or being one). */
 export function findHotelList(): HTMLElement | null {
   const modernList = document.querySelector<HTMLElement>("ol.hotel-list-container, .hotel-list-container");
   if (modernList) return modernList;
-
-  const container = document.querySelector('[data-testid="hotel-results-list-container"]');
-  if (container) {
-    const card = Array.from(container.querySelectorAll("[data-testid^='hotel-card-']")).find((el) =>
-      /^hotel-card-\d+$/.test(el.getAttribute("data-testid") || "")
-    );
-    return (card?.parentElement as HTMLElement) ?? (container as HTMLElement);
-  }
 
   const anyCard = document.querySelector('li.PropertyCardItem, [data-selenium="hotel-item"]');
   return (anyCard?.parentElement as HTMLElement) ?? null;
@@ -276,7 +219,7 @@ export function getItemMpd(item: Element): number {
 }
 
 export interface MpdSortController {
-  /** Ensures the option exists, keeps the select/sort-bar showing it, and (re)orders hotels if active. */
+  /** Ensures the option exists, keeps the sort bar showing it, and (re)orders hotels if active. */
   apply(): void;
   teardown(): void;
 }
@@ -290,31 +233,7 @@ export function setupMpdSort(): MpdSortController {
   let sortedList: HTMLElement | null = null;
   let originalRowGap = "";
 
-  const getSelect = () => document.getElementById(SELECT_ID) as HTMLSelectElement | null;
   const getSortBar = () => document.querySelector<HTMLElement>(SORT_BAR_CONTAINER_SELECTOR);
-
-  const ensureOption = (select: HTMLSelectElement) => {
-    if (select.querySelector(`#${OPTION_ID}`)) return;
-    const rich = supportsCustomizableSelect();
-    if (rich) enableCustomizableSelect(select);
-
-    const option = document.createElement("option");
-    option.id = OPTION_ID;
-    option.value = MPD_SORT_VALUE;
-    option.textContent = MPD_SORT_LABEL;
-    option.setAttribute("data-aa-mpd", "true");
-    const logoUrl = getLogoUrl(48);
-    if (rich && logoUrl) {
-      // Customizable selects render option markup, so the extension logo can sit inline
-      const logo = document.createElement("img");
-      logo.src = logoUrl;
-      logo.alt = "";
-      logo.className = "aa-mpd-sort-logo";
-      logo.title = "Added by AA Hotels MPD";
-      option.append(" ", logo);
-    }
-    select.appendChild(option);
-  };
 
   const clearOrder = () => {
     if (!sortedList) return;
@@ -364,7 +283,7 @@ export function setupMpdSort(): MpdSortController {
 
   const startResync = () => {
     if (resyncTimer !== null) return;
-    // React resets a controlled select's value or sort bar buttons when it re-renders
+    // React resets sort bar buttons when it re-renders
     resyncTimer = setInterval(() => apply(), RESYNC_INTERVAL_MS);
   };
 
@@ -377,9 +296,6 @@ export function setupMpdSort(): MpdSortController {
 
   const apply = () => {
     if (disposed) return;
-    const select = getSelect();
-    if (select) ensureOption(select);
-
     const sortBar = getSortBar();
     if (sortBar) ensureSortBarButton(sortBar);
 
@@ -388,7 +304,6 @@ export function setupMpdSort(): MpdSortController {
       return;
     }
 
-    if (select && select.value !== MPD_SORT_VALUE) select.value = MPD_SORT_VALUE;
     if (sortBar) updateSortBarState(sortBar, true);
 
     applyOrder();
@@ -402,23 +317,6 @@ export function setupMpdSort(): MpdSortController {
     clearOrder();
     const sortBar = getSortBar();
     if (sortBar) updateSortBarState(sortBar, false);
-  };
-
-  const onSelectEvent = (event: Event) => {
-    const target = event.target as HTMLElement | null;
-    if (!(target instanceof HTMLSelectElement) || target.id !== SELECT_ID) return;
-
-    if (target.value === MPD_SORT_VALUE) {
-      // Keep React from treating this as a site sort and refetching with an unknown value
-      event.stopImmediatePropagation();
-      if (event.type === "change") {
-        active = true;
-        setMpdSortPreferred(true);
-        apply();
-      }
-    } else if (active && event.type === "change") {
-      deactivate();
-    }
   };
 
   const onSortClick = (event: MouseEvent) => {
@@ -447,21 +345,14 @@ export function setupMpdSort(): MpdSortController {
   };
 
   // Capture phase on window runs before React's listeners on its root container
-  window.addEventListener("input", onSelectEvent, true);
-  window.addEventListener("change", onSelectEvent, true);
   window.addEventListener("click", onSortClick, true);
 
   const teardown = () => {
     disposed = true;
-    window.removeEventListener("input", onSelectEvent, true);
-    window.removeEventListener("change", onSelectEvent, true);
     window.removeEventListener("click", onSortClick, true);
     stopResync();
     clearOrder();
     document.getElementById(STYLE_ID)?.remove();
-    document.getElementById(OPTION_ID)?.remove();
-    document.getElementById(SELECT_BUTTON_ID)?.remove();
-    document.getElementById(SELECT_STYLE_ID)?.remove();
     document.getElementById(SORT_CONTAINER_ID)?.remove();
     document.getElementById(SORT_BUTTON_ID)?.remove();
     document.getElementById(SORT_BAR_STYLE_ID)?.remove();

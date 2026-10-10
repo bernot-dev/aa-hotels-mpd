@@ -89,8 +89,7 @@
         "images/icon-128.png"
       ],
       "matches": [
-        "https://search.aadvantagehotels.com/*",
-        "*://www.aadvantagehotels.com/*"
+        "https://search.aadvantagehotels.com/*"
       ]
     }
   ]
