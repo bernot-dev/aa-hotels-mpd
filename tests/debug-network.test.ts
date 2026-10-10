@@ -1,16 +1,17 @@
-// The debug panel's "Network JSON" export: the MAIN world interceptor records inspected responses
+// The debug panel's "Network JSON" export (development builds): the MAIN world interceptor records inspected responses
 // while the localStorage flag is set, and the content script's panel reads them over postMessage.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { setNetworkRecorder, wrapFetch } from '../src/interceptor';
 import {
   DEBUG_NETWORK_FLAG,
   MAX_DEBUG_RECORDS,
   clearDebugNetworkRecords,
   getDebugNetworkRecords,
   handleDebugRecordsRequest,
-  wrapFetch,
-} from '../src/interceptor';
+  installNetworkRecorder,
+} from '../src/debug-recorder';
 import { requestCapturedNetworkRecords, setNetworkRecording } from '../src/debug';
 
 const searchCall = JSON.parse(
@@ -26,11 +27,14 @@ const fetchSearch = async () => {
 
 describe('debug network recording', () => {
   beforeEach(() => {
+    // Done by interceptor-main.ts in development builds
+    installNetworkRecorder();
     clearDebugNetworkRecords();
     localStorage.removeItem(DEBUG_NETWORK_FLAG);
   });
   afterEach(() => {
     vi.restoreAllMocks();
+    setNetworkRecorder(null);
     window.removeEventListener('message', handleDebugRecordsRequest);
     localStorage.removeItem(DEBUG_NETWORK_FLAG);
   });
@@ -73,7 +77,6 @@ describe('debug network recording', () => {
 
   it('hands the records to the debug panel over postMessage', async () => {
     postFromThisWindow();
-    window.addEventListener('message', handleDebugRecordsRequest);
     setNetworkRecording(true);
     await fetchSearch();
 

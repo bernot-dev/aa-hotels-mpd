@@ -72,6 +72,8 @@ npm run build
 npm test
 ```
 
+`npm run build:dev` (or `npm run watch`) makes a development build that also includes the debug panel for exporting DOM and network test fixtures. Turn the panel on from the extension's service worker console with `chrome.storage.sync.set({ showDebugButton: true })`. Production builds leave the debug tooling out entirely, and `npm test` fails if the committed `dist/` isn't a production build, so run `npm run build` before committing.
+
 To load the built extension into Chrome:
 1. Navigate to `chrome://extensions` in Google Chrome.
 2. Enable **Developer mode** in the upper right corner.

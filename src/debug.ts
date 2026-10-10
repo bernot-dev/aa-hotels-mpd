@@ -1,16 +1,14 @@
 // Developer Debug Tooling for AA Hotels MPD
-// The fixture export panel only mounts when the `showDebugButton` sync setting is true. There's no
-// options page toggle; set it from the extension's service worker console with
-// `chrome.storage.sync.set({ showDebugButton: true })`. DEV_DEBUG_MODE is a build-time kill switch
-// for all debug tooling.
+// Development builds only (`npm run build:dev` or `npm run watch`): index.ts loads this module behind
+// __AA_MPD_DEBUG__, so production bundles leave it out. Even then, the fixture export panel only
+// mounts when the `showDebugButton` sync setting is true. There's no options page toggle; set it from
+// the extension's service worker console with `chrome.storage.sync.set({ showDebugButton: true })`.
 import {
   CapturedNetworkRecord,
   DEBUG_NETWORK_FLAG,
   DEBUG_RECORDS_REQUEST,
   DEBUG_RECORDS_RESPONSE,
-} from './interceptor';
-
-export const DEV_DEBUG_MODE = true;
+} from './debug-recorder';
 
 /** Turns network recording in the page's interceptor on or off for this and later page loads. */
 export function setNetworkRecording(enabled: boolean): void {
@@ -196,7 +194,7 @@ export async function exportNetworkJsonFixture(): Promise<void> {
 }
 
 export async function mountDebugButton(): Promise<void> {
-  if (!DEV_DEBUG_MODE || typeof document === 'undefined') {
+  if (typeof document === 'undefined') {
     return;
   }
 

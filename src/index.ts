@@ -2,7 +2,6 @@ import { initRouter, RouteInfo, isSensitiveCheckoutPage } from "./router";
 import { waitForElement } from "./wait";
 import { processDetailsPage } from "./details";
 import { processSearchPage } from "./search";
-import { mountDebugButton } from "./debug";
 import { loadPricingSettings, loadSearchSettings, milesForEarningLevel } from "./settings";
 import {
   ingestHotelRates,
@@ -230,11 +229,16 @@ async function handleRouteChange(routeInfo: RouteInfo) {
     activeTeardown = null;
   }
 
-  // 2. Ensure debug button is mounted (never on checkout pages)
   if (isSensitiveCheckoutPage(routeInfo.url) || routeInfo.route === "other") {
     return;
   }
-  mountDebugButton().catch(console.error);
+
+  // 2. Ensure the debug panel is mounted. Development builds only; production builds drop this
+  // branch and the module with it.
+  if (__AA_MPD_DEBUG__) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- a conditional require lets webpack drop the module
+    (require("./debug") as typeof import("./debug")).mountDebugButton().catch(console.error);
+  }
 
   // 3. Mount appropriate controller for the current route
   const currentAbort = new AbortController();

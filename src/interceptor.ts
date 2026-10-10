@@ -83,66 +83,12 @@ export function getSitePriceTotals(item: unknown): number[] {
 
 export const EVENT_NAME = "AA_HOTELS_MPD_NETWORK_DATA";
 
-// Debug network capture. The interceptor runs in the page's world at document_start, before the
-// content script can read extension settings, so the debug panel turns recording on through a
-// localStorage flag (shared by both worlds) and reads the records back with postMessage.
-export const DEBUG_NETWORK_FLAG = "aa_mpd_debug_network";
-export const DEBUG_RECORDS_REQUEST = "AA_HOTELS_MPD_DEBUG_RECORDS_REQUEST";
-export const DEBUG_RECORDS_RESPONSE = "AA_HOTELS_MPD_DEBUG_RECORDS_RESPONSE";
-export const MAX_DEBUG_RECORDS = 50;
+/** Called with every inspected response. Only development builds install one (see debug-recorder.ts). */
+type NetworkRecorder = (url: string, method: string, response: unknown, requestBody?: unknown) => void;
+let networkRecorder: NetworkRecorder | null = null;
 
-/** One inspected response, shaped like the { request, response } test fixtures. */
-export interface CapturedNetworkRecord {
-  url: string;
-  method: string;
-  timestamp: number;
-  request?: unknown;
-  response: unknown;
-}
-
-const debugRecords: CapturedNetworkRecord[] = [];
-
-function isDebugRecording(): boolean {
-  try {
-    return localStorage.getItem(DEBUG_NETWORK_FLAG) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function recordDebugNetwork(url: string, method: string, response: unknown, requestBody?: unknown): void {
-  if (!isDebugRecording()) return;
-  let request = requestBody;
-  if (typeof requestBody === "string") {
-    try {
-      request = JSON.parse(requestBody);
-    } catch {
-      // Keep the raw body
-    }
-  } else if (requestBody !== undefined && requestBody !== null && typeof requestBody === "object") {
-    // FormData, Blob and other bodies don't survive postMessage as useful JSON
-    request = undefined;
-  }
-  debugRecords.push({ url, method, timestamp: Date.now(), request, response });
-  if (debugRecords.length > MAX_DEBUG_RECORDS) debugRecords.splice(0, debugRecords.length - MAX_DEBUG_RECORDS);
-}
-
-export function getDebugNetworkRecords(): CapturedNetworkRecord[] {
-  return debugRecords.slice();
-}
-
-export function clearDebugNetworkRecords(): void {
-  debugRecords.length = 0;
-}
-
-/** Answers the debug panel's requests for the recorded responses. */
-export function handleDebugRecordsRequest(event: MessageEvent): void {
-  if (event.source !== window || event.data?.type !== DEBUG_RECORDS_REQUEST) return;
-  try {
-    window.postMessage({ type: DEBUG_RECORDS_RESPONSE, id: event.data.id, records: debugRecords }, "*");
-  } catch (err) {
-    console.debug("[AA-Hotels-MPD] Failed to send debug network records:", err);
-  }
+export function setNetworkRecorder(recorder: NetworkRecorder | null): void {
+  networkRecorder = recorder;
 }
 
 const US_STATES: Record<string, string> = {
@@ -847,10 +793,12 @@ const tappedResponses = new WeakSet<Response>();
 
 function inspectPayload(url: string, method: string, data: unknown, requestBody?: unknown): void {
   try {
-    try {
-      recordDebugNetwork(url, method, data, requestBody);
-    } catch {
-      // Debug recording is best effort
+    if (networkRecorder) {
+      try {
+        networkRecorder(url, method, data, requestBody);
+      } catch {
+        // Debug recording is best effort
+      }
     }
     const totalHotels = extractTotalFilteredHotels(data);
     const searchKey = requestBody ? getSearchKey(requestBody) : undefined;
@@ -1004,8 +952,6 @@ export function initNetworkInterceptor(): void {
 
   // Must run before the site creates its IntersectionObservers
   initListExpander();
-
-  window.addEventListener("message", handleDebugRecordsRequest);
 
   // 1. Monkey-patch window.fetch. The site reassigns window.fetch after load (with a bound
   // native fetch), so the property is redefined with a setter that wraps whatever is assigned.
