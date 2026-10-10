@@ -253,12 +253,49 @@ describe("Total Results and Best Earn Rate Banner Automation Tests", () => {
     });
   });
 
-  describe("Programmatic Infinite-Scroll Tile Expansion Automation", () => {
-    it("scrolls down towards pagination and restores viewport scroll to top until all tiles are loaded", async () => {
-      // Setup total search results
-      setSearchTotalResults(64);
+  describe("Search Expansion & Viewframe Stability", () => {
+    it("expands when a load more button is present without moving the viewframe", async () => {
+      const listContainer = document.createElement("div");
+      listContainer.id = "searchPageRightColumn";
+      for (let i = 0; i < 11; i++) {
+        const card = document.createElement("div");
+        card.className = "PropertyCardItem";
+        card.setAttribute("data-selenium", "hotel-item");
+        listContainer.appendChild(card);
+      }
+      const loadMoreBtn = document.createElement("button");
+      loadMoreBtn.setAttribute("data-selenium", "load-more-button");
+      loadMoreBtn.textContent = "Load more";
+      listContainer.appendChild(loadMoreBtn);
+      document.body.appendChild(listContainer);
 
-      // Initial page setup: 11 cards in DOM (typical Agoda initial chunk)
+      let clickCount = 0;
+      loadMoreBtn.onclick = () => {
+        clickCount++;
+        for (let i = 11; i < 20; i++) {
+          const card = document.createElement("div");
+          card.className = "PropertyCardItem";
+          card.setAttribute("data-selenium", "hotel-item");
+          listContainer.insertBefore(card, loadMoreBtn);
+        }
+        loadMoreBtn.remove();
+      };
+
+      const expansionController = setupSearchExpansion({
+        expandSearchResults: true,
+        pollIntervalMs: 20,
+        postClickDelayMs: 20,
+        waitTimeoutMs: 100,
+      });
+
+      await new Promise((r) => setTimeout(r, 150));
+      expect(clickCount).toBe(1);
+      expect(document.querySelectorAll(".PropertyCardItem").length).toBe(20);
+
+      expansionController.teardown();
+    });
+
+    it("does not hijack or move the viewframe on infinite-scroll pages without load-more buttons", async () => {
       const listContainer = document.createElement("div");
       listContainer.id = "searchPageRightColumn";
       for (let i = 0; i < 11; i++) {
@@ -272,19 +309,12 @@ describe("Total Results and Best Earn Rate Banner Automation Tests", () => {
       listContainer.appendChild(paginationPanel);
       document.body.appendChild(listContainer);
 
-      let scrollHistory: number[] = [];
-      window.scrollY = 0;
-      window.scrollTo = vi.fn().mockImplementation((options: any) => {
-        if (typeof options === "object" && typeof options.top === "number") {
-          window.scrollY = options.top;
-          scrollHistory.push(options.top);
-        }
-      });
-
-      let scrollIntoViewCalled = false;
-      paginationPanel.scrollIntoView = vi.fn().mockImplementation(() => {
-        scrollIntoViewCalled = true;
-      });
+      const initialScrollY = 150;
+      window.scrollY = initialScrollY;
+      const scrollToSpy = vi.fn();
+      window.scrollTo = scrollToSpy;
+      const scrollIntoViewSpy = vi.fn();
+      paginationPanel.scrollIntoView = scrollIntoViewSpy;
 
       const expansionController = setupSearchExpansion({
         expandSearchResults: true,
@@ -293,26 +323,14 @@ describe("Total Results and Best Earn Rate Banner Automation Tests", () => {
         waitTimeoutMs: 100,
       });
 
-      // Wait 130ms: initial check (scheduled at 100ms) runs Step A and triggers scrollIntoView
-      await new Promise((r) => setTimeout(r, 130));
-      expect(scrollIntoViewCalled).toBe(true);
-
-      // Simulate more cards hydrated by browser
-      for (let i = 11; i < 64; i++) {
-        const card = document.createElement("div");
-        card.className = "PropertyCardItem";
-        card.setAttribute("data-selenium", "hotel-item");
-        listContainer.insertBefore(card, paginationPanel);
-      }
-
-      // Notify mutation or wait for poll interval (20ms) to trigger Step B
+      await new Promise((r) => setTimeout(r, 150));
       expansionController.onMutation();
-      await new Promise((r) => setTimeout(r, 80));
-      expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "instant" });
-      expect(window.scrollY).toBe(0);
+      await new Promise((r) => setTimeout(r, 50));
 
-      // Now all 64 cards are present, which matches searchTotalResults (64)
-      expect(document.querySelectorAll(".PropertyCardItem").length).toBe(64);
+      // Viewframe was NOT moved or hijacked
+      expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+      expect(scrollToSpy).not.toHaveBeenCalled();
+      expect(window.scrollY).toBe(initialScrollY);
 
       expansionController.teardown();
     });
