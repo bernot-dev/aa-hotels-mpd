@@ -169,7 +169,7 @@ function ensureScreenshotDir() {
 }
 
 test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)', () => {
-  test('1. Search results: badges every miles tier, shows the banner, and never paginates', async ({ context }) => {
+  test('1. Search results: one MPD chip per priced card, shows the banner, and never paginates', async ({ context }) => {
     const page = await openPage(context);
     // Record clicks on pagination and image carousel controls before the extension loads
     await page.addInitScript(() => {
@@ -192,28 +192,37 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
     await expect(summaryBanner).toBeVisible({ timeout: 10000 });
     await expect(summaryBanner).toContainText(/Best earn rate for this location: \d+\.\d miles\/\$/);
 
-    const expectedBadges = await countMilesCaptions(page, 'li.PropertyCardItem');
-    expect(expectedBadges).toBeGreaterThan(0);
-    await expect(page.locator('.aa-mpd-badge')).toHaveCount(expectedBadges);
+    // Each priced card gets a single chip in its property-card-info box, not one per miles tier
+    const pricedCount = await page.locator('li.PropertyCardItem:has([data-element-name="fpc-room-price"])').count();
+    expect(pricedCount).toBeGreaterThan(0);
+    await expect(page.locator('.aa-mpd-badge')).toHaveCount(pricedCount);
+    await expect(page.locator('[data-element-name="property-card-info"] > .aa-mpd-chip')).toHaveCount(pricedCount);
 
-    // Badge = miles / total price for the first priced card
+    // Chip = miles for the default earning level (credit cardmembers with status, the highest tier)
+    // / total price, for the first priced card
     const first = await page.evaluate(() => {
       const card = Array.from(document.querySelectorAll('li.PropertyCardItem')).find((c) =>
         c.querySelector('[data-element-name="fpc-room-price"]')
       )!;
       const price = Number(card.querySelector('[data-element-name="fpc-room-price"]')!.getAttribute('data-fpc-value'));
-      const caption = card.querySelector('.aa-mpd-badge')!.parentElement!;
-      const miles = Number(caption.childNodes[0].textContent!.match(/[\d,]+/)![0].replace(/,/g, ''));
-      return { price, miles, badge: caption.querySelector('.aa-mpd-badge')!.textContent };
+      const miles = Math.max(
+        ...Array.from(card.querySelectorAll('[data-testid="upc_caption"]'))
+          .map((el) => (el.textContent || '').match(/Earn ([\d,]+) miles/)?.[1])
+          .filter((m): m is string => !!m)
+          .map((m) => Number(m.replace(/,/g, '')))
+      );
+      const chip = card.querySelector<HTMLElement>('.aa-mpd-chip')!;
+      return { price, miles, rate: chip.dataset.rate, text: chip.textContent };
     });
-    expect(first.badge).toBe(` (${(first.miles / first.price).toFixed(1)} miles/$)`);
+    expect(first.rate).toBe((first.miles / first.price).toFixed(1));
+    expect(first.text).toContain(`${first.rate} miles per dollar`);
 
     // Auto-expansion is on by default; it must not page through results
     await page.waitForTimeout(2500);
     expect(await page.evaluate(() => (window as any).__forbiddenClicks)).toBe(0);
     await expect(page.locator('[data-selenium="pagination-panel"]')).toContainText('Page 1 of');
 
-    // Fixture export panel is opt-in
+    // Debug tooling is left out of production builds
     await expect(page.locator('#aa-mpd-debug-panel')).toHaveCount(0);
 
     ensureScreenshotDir();
@@ -284,7 +293,7 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
     await page.screenshot({ path: path.join(screenshotDir, 'e2e-map-view.png') });
   });
 
-  test('4. Hotel page (/<slug>/hotel/<city>.html): banner above the room grid and badges on every room', async ({
+  test('4. Hotel page (/<slug>/hotel/<city>.html): banner above the room grid and badges every miles tier except bonus offers', async ({
     context,
   }) => {
     const page = await openPage(context);
@@ -295,14 +304,16 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
     await expect(detailsSummary).toContainText(/Best earn rate on this page: \d+\.\d miles\/\$/);
     expect(await detailsSummary.evaluate((el) => el.nextElementSibling?.id)).toBe('property-room-grid-root');
 
-    const expectedBadges = await countMilesCaptions(page, '[data-selenium="ChildRoomsList-room"]');
+    // Bonus miles offers (boost jackets) are excluded by default, so only the other rooms are badged,
+    // one badge per miles tier
+    const regularRoom = '[data-selenium="ChildRoomsList-room"]:not(:has([data-element-name="jacket-boost"]))';
+    const bonusRoom = '[data-selenium="ChildRoomsList-room"]:has([data-element-name="jacket-boost"])';
+    const expectedBadges = await countMilesCaptions(page, regularRoom);
     expect(expectedBadges).toBeGreaterThan(0);
     await expect(page.locator('.aa-mpd-badge')).toHaveCount(expectedBadges);
-    expect(
-      await page.evaluate(
-        () => Array.from(document.querySelectorAll('[data-selenium="ChildRoomsList-room"]')).filter((r) => !r.querySelector('.aa-mpd-badge')).length
-      )
-    ).toBe(0);
+    expect(await page.locator(`${regularRoom}:not(:has(.aa-mpd-badge))`).count()).toBe(0);
+    expect(await page.locator(bonusRoom).count()).toBeGreaterThan(0);
+    await expect(page.locator(`${bonusRoom} .aa-mpd-badge`)).toHaveCount(0);
 
     ensureScreenshotDir();
     await detailsSummary.scrollIntoViewIfNeeded();
