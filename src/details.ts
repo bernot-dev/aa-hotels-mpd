@@ -1,6 +1,5 @@
 import { updateCards, ROOM_CARD_SELECTOR, BOOST_STYLE_ID } from "./cards";
 import { resetRateCollector } from "./capture/collector";
-import { getNights } from "./nights";
 import { loadPricingSettings } from "./settings";
 
 export interface RoomExpansionOptions {

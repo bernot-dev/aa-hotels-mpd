@@ -193,38 +193,7 @@ export function extractSearchCriteria(
     }
   }
 
-  // 3. Search page DOM extraction: neighborhood filter container
-  if (location === "Unknown Location" && doc) {
-    const nFilter = doc.querySelector(
-      '[data-selenium="neighborhood-filter"], [data-element-name="neighborhood-filter"]'
-    );
-    if (nFilter) {
-      const nLabels = Array.from(
-        nFilter.querySelectorAll('label p, span p')
-      )
-        .map((el) => el.textContent?.trim() || "")
-        .filter(isValidLocation);
-      if (nLabels.length > 0) {
-        location = nLabels[0];
-      }
-    }
-  }
-
-  // 4. Search page DOM extraction: hotel card neighborhoods
-  if (location === "Unknown Location" && doc) {
-    const cardNeighborhoods = Array.from(
-      doc.querySelectorAll(
-        '[data-selenium="area-city-name"], [data-element-name="area-city-name"]'
-      )
-    )
-      .map((el) => el.textContent?.trim() || "")
-      .filter(isValidLocation);
-    if (cardNeighborhoods.length > 0) {
-      location = cardNeighborhoods[0];
-    }
-  }
-
-  // 5. Document title (e.g. "Hotels in Dallas, TX" or "Dallas Hotels")
+  // 3. Document title (e.g. "Hotels in Dallas, TX" or "Dallas Hotels")
   if (location === "Unknown Location" && doc && doc.title) {
     const titleMatch =
       doc.title.match(/Hotels\s+in\s+([^|\-]+)/i) ||
@@ -234,7 +203,7 @@ export function extractSearchCriteria(
     }
   }
 
-  // 6. Search page DOM extraction: hotel name city pattern (e.g. "Hilton Anatole, Dallas" -> "Dallas")
+  // 4. Search page DOM extraction: hotel name city pattern (e.g. "Hilton Anatole, Dallas" -> "Dallas")
   if (location === "Unknown Location" && doc) {
     const hotelNames = Array.from(
       doc.querySelectorAll(
@@ -250,22 +219,8 @@ export function extractSearchCriteria(
     }
   }
 
-  // 7. DOM extraction: hotel address on details page
-  if (location === "Unknown Location" && doc) {
-    const cityEl = doc.querySelector('[data-selenium="hotel-address-city"]');
-    const countryEl = doc.querySelector('[data-selenium="hotel-address-country"]');
-    if (cityEl && cityEl.textContent?.trim()) {
-      const city = cityEl.textContent.trim();
-      const country = countryEl?.textContent?.trim();
-      const addrLoc = country ? `${city}, ${country}` : city;
-      if (isValidLocation(addrLoc)) {
-        location = addrLoc;
-      }
-    }
-  }
-
   // NOTE: Destination input box is NEVER read under any circumstances.
-  // Location is sourced strictly from encoded links, neighborhood filters, or page elements.
+  // Location is sourced strictly from encoded links or page elements.
 
   // Calculate nights
   let nights = getNights();

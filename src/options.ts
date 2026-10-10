@@ -29,21 +29,10 @@ import {
 import {
   DEFAULT_EARNING_LEVEL,
   DEFAULT_MAX_SEARCH_RESULTS,
-  EarningLevel,
   clampMaxSearchResults,
   parseEarningLevel,
   readMaxSearchResults,
 } from "./settings";
-
-export type Config = {
-  expandRoomRates: boolean;
-  expandRoomTypes: boolean;
-  expandSearchResults: boolean;
-  maxSearchResults?: number;
-  includeBonusMiles: boolean;
-  earningLevel: EarningLevel;
-  keepExhaustiveQueryHistory?: boolean;
-};
 
 let currentStats: DashboardStats | null = null;
 let showAllTopMpds = false;

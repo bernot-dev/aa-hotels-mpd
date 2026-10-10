@@ -25,7 +25,7 @@ const DETAILS_SELECTOR =
 
 import { processCard, innermostCards, CARD_SELECTOR, ROOM_CARD_SELECTOR } from "./cards";
 import { getNights } from "./nights";
-import { extractSearchCriteria, isValidLocation, normalizeLocation } from "./capture/criteria";
+import { extractSearchCriteria, normalizeLocation } from "./capture/criteria";
 import { queueRatesForDispatch } from "./capture/collector";
 import { CapturedRate } from "./types";
 
@@ -134,7 +134,7 @@ if (typeof window !== "undefined") {
     const nights = getNights();
     document.querySelectorAll(ROOM_CARD_SELECTOR).forEach((card) => {
       try {
-        processCard(card, nights, includeBonusMiles, useAllInPricing, true, earningLevel);
+        processCard(card, nights, includeBonusMiles, useAllInPricing, false, earningLevel);
       } catch {
         // Skip cards that are mid-render
       }

@@ -253,6 +253,24 @@ describe('One search across its result pages', () => {
   });
 });
 
+describe('Results page status (search-guest.html)', () => {
+  beforeEach(() => clearHotelMpdRegistry());
+
+  it('does not take one page of a multi-page search as the total', () => {
+    const doc = new JSDOM(fs.readFileSync(path.join(fixturesDir, 'search-guest.html'), 'utf-8')).window.document;
+    document.body.innerHTML = doc.body.innerHTML;
+    // "Page 1 of 10", and a status line counting only this page's 90 cards
+    expect(getSearchTotalResults()).toBeNull();
+
+    const banner = document.createElement('div');
+    banner.id = 'aa-mpd-search-summary';
+    updateSummaryBanner(banner, 5, false);
+    expect(banner.textContent).toContain('(considering 90 properties)');
+    expect(banner.textContent).toContain('There may be better deals on additional pages.');
+    document.body.innerHTML = '';
+  });
+});
+
 describe('Live map markers (search-map-guest.html)', () => {
   beforeEach(() => clearHotelMpdRegistry());
 

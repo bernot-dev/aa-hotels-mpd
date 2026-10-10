@@ -394,7 +394,6 @@ export function createOrUpdateChip(
 
   const formattedMPD = mpd.toFixed(1);
   const dot = getMpdDot(mpd, minMpd, maxMpd);
-  const allInPrice = (enriched && enriched.allInPrice > 0) ? enriched.allInPrice : price;
   const nightlyPrice = calculateNightlyPrice(price, enriched, nights, useAllInPricing);
 
   let chip = container.querySelector<HTMLElement>(':scope > .aa-mpd-badge') ||

@@ -100,42 +100,7 @@ describe("Rate and Criteria Capture Pipeline", () => {
       expect(criteria.location).toBe("San Diego, CA");
     });
 
-    it("extracts destination from neighborhood filter container on search page when links lack destination", () => {
-      const dom = new JSDOM(`
-        <div>
-          <div data-selenium="neighborhood-filter">
-            <label class="chakra-checkbox">
-              <span class="chakra-checkbox__label"><p>Dallas City Center</p></span>
-            </label>
-            <label class="chakra-checkbox">
-              <span class="chakra-checkbox__label"><p>Stemmons Corridor</p></span>
-            </label>
-          </div>
-          <a data-selenium="hotel-item-link" href="/accom/property?propertyId=12345&checkIn=2026-10-05&checkOut=2026-10-07">
-            <div class="PropertyCardItem" data-selenium="hotel-item">Card</div>
-          </a>
-        </div>
-      `);
-      const criteria = extractSearchCriteria("https://search.aadvantagehotels.com/search", dom.window.document);
-      expect(criteria.location).toBe("Dallas City Center");
-    });
-
-    it("extracts destination from hotel card neighborhood when filter container and links lack destination", () => {
-      const dom = new JSDOM(`
-        <div>
-          <div>
-            <h4 data-selenium="area-city-name">Back Bay</h4>
-            <a data-selenium="hotel-item-link" href="/accom/property?propertyId=12345&checkIn=2026-10-05&checkOut=2026-10-07">
-              <div class="PropertyCardItem" data-selenium="hotel-item">Card</div>
-            </a>
-          </div>
-        </div>
-      `);
-      const criteria = extractSearchCriteria("https://search.aadvantagehotels.com/search", dom.window.document);
-      expect(criteria.location).toBe("Back Bay");
-    });
-
-    it("extracts destination from document title when DOM has no neighborhood tags", () => {
+    it("extracts destination from document title when links lack destination", () => {
       const dom = new JSDOM(`
         <html>
           <head><title>Hotels in Seattle, WA | AAdvantage Hotels</title></head>

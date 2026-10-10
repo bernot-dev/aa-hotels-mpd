@@ -290,36 +290,6 @@ export function getEnrichedHotel(hotelId: string): EnrichedHotelRate | undefined
   return hotelDataRegistry.get(hotelId);
 }
 
-export function getAllEnrichedHotels(): EnrichedHotelRate[] {
-  return Array.from(hotelDataRegistry.values());
-}
-
-export function getAllInMPD(
-  hotelId: string,
-  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL
-): number | undefined {
-  const hotel = hotelDataRegistry.get(hotelId);
-  if (!hotel) return undefined;
-  const price = hotel.allInPrice > 0 ? hotel.allInPrice : hotel.price;
-  if (price <= 0) return undefined;
-  const miles = milesForEarningLevel(hotel.baseMiles, hotel.tieredMiles, earningLevel);
-  const mpd = miles / price;
-  return mpd > 0 ? mpd : undefined;
-}
-
-export function getBaseMPD(
-  hotelId: string,
-  earningLevel: EarningLevel = DEFAULT_EARNING_LEVEL
-): number | undefined {
-  const hotel = hotelDataRegistry.get(hotelId);
-  if (!hotel) return undefined;
-  const price = hotel.basePrice > 0 ? hotel.basePrice : hotel.price;
-  if (price <= 0) return undefined;
-  const miles = milesForEarningLevel(hotel.baseMiles, hotel.tieredMiles, earningLevel);
-  const mpd = miles / price;
-  return mpd > 0 ? mpd : undefined;
-}
-
 export function clearHotelMpdRegistry(): void {
   hotelMpdRegistry.clear();
   hotelDataRegistry.clear();

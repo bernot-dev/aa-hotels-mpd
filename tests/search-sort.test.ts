@@ -1,11 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
 import {
   setupMpdSort,
   getItemMpd,
-  MPD_SORT_VALUE,
   MPD_SORT_LABEL,
   MPD_SORT_STORAGE_KEY,
   SORT_BUTTON_ID,

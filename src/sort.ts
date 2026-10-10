@@ -6,7 +6,6 @@
 // DOM order, which React owns, intact). The choice persists across reloads until the user picks one
 // of the site's own options.
 
-export const MPD_SORT_VALUE = "aa-mpd";
 export const MPD_SORT_LABEL = "Most miles per dollar";
 export const MPD_SORT_STORAGE_KEY = "aa_hotels_mpd_sort";
 

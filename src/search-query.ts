@@ -116,16 +116,11 @@ export function updateSummaryBanner(
     ).length;
     consideredCount = Math.max(consideredCount, domCards);
 
+    // The site's "N properties found" status counts only the current page, so it isn't a total
     if (totalCount === null) {
-      const statusElem = document.querySelector('[data-selenium="search-result-header"], [data-element-name="search-result-count"]');
-      const match = statusElem?.textContent?.match(/(\d+)\s+properties found/i);
-      if (match) {
-        totalCount = Number(match[1]);
-      } else {
-        const pageCountText = document.querySelector('#paginationPageCount, [data-selenium="pagination-text"]')?.textContent || "";
-        if (pageCountText.includes("Page 1 of 1") && domCards > 0) {
-          totalCount = domCards;
-        }
+      const pageCountText = document.querySelector('#paginationPageCount, [data-selenium="pagination-text"]')?.textContent || "";
+      if (/\bPage 1 of 1\b/.test(pageCountText) && domCards > 0) {
+        totalCount = domCards;
       }
     }
   }

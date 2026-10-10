@@ -431,8 +431,6 @@ function extractAgodaProperty(
 
 /**
  * Extracts enriched hotel rates from arbitrary API response objects.
-/**
- * Extracts enriched hotel rates from arbitrary API response objects.
  * Handles the Agoda white-label GraphQL schema (data.<x>Search.properties, data.propertyDetail.rooms).
  * The optional request body supplies stay dates for Agoda responses, which omit them.
  */

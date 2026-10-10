@@ -77,7 +77,6 @@ export function extractRatesFromSearchCards(
     let hotelName = "Unknown Hotel";
     let hotelId: string | undefined = getHotelIdFromCard(card) || undefined;
     let cardLocation: string | undefined = undefined;
-    let cardNeighborhood: string | undefined = undefined;
 
     let parent: Element | null = card;
     for (let i = 0; i < 8; i++) {
@@ -93,13 +92,6 @@ export function extractRatesFromSearchCards(
           if (candidate && !/^\$\d+/.test(candidate)) {
             hotelName = candidate;
           }
-        }
-      }
-
-      if (!cardNeighborhood) {
-        const neighborhoodEl = parent.querySelector('[data-selenium="area-city-name"], [data-element-name="area-city-name"]');
-        if (neighborhoodEl && neighborhoodEl.textContent) {
-          cardNeighborhood = neighborhoodEl.textContent.trim();
         }
       }
 
@@ -160,10 +152,8 @@ export function extractRatesFromSearchCards(
 
     let finalLocation = cardLocation;
 
-    // Determine final card location: link destination > card neighborhood > hotel name city
-    if (!finalLocation && cardNeighborhood && isValidLocation(cardNeighborhood)) {
-      finalLocation = cardNeighborhood;
-    } else if (!finalLocation && hotelName !== "Unknown Hotel") {
+    // Determine final card location: card area text or link destination > hotel name city
+    if (!finalLocation && hotelName !== "Unknown Hotel") {
       const cityMatch = hotelName.match(/,\s*([^,]+)$/);
       if (cityMatch && isValidLocation(cityMatch[1].trim())) {
         finalLocation = cityMatch[1].trim();
@@ -220,16 +210,6 @@ export function extractRatesFromDetailsCards(
         detailsLocation = decodeURIComponent(destParam.trim().replace(/\+/g, " "));
       }
     } catch {}
-  }
-
-  if (!detailsLocation && doc) {
-    const cityEl = doc.querySelector('[data-testid="address-city"]');
-    const countryEl = doc.querySelector('[data-testid="address-country"]');
-    if (cityEl && cityEl.textContent?.trim()) {
-      const city = cityEl.textContent.trim();
-      const country = countryEl?.textContent?.trim();
-      detailsLocation = country ? `${city}, ${country}` : city;
-    }
   }
 
   const cards = innermostCards(container.querySelectorAll(ROOM_CARD_SELECTOR));

@@ -208,7 +208,7 @@ export const processSearchPage = async (
   // Handle map toggle clicks explicitly
   const handleMapToggleClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement | null;
-    if (target?.closest('[data-element-name*="map-toggle"], [data-selenium*="map-toggle"]')) {
+    if (target?.closest('[data-element-name="show-map-btn"]')) {
       setTimeout(runDomUpdate, 50);
       setTimeout(runDomUpdate, 200);
       setTimeout(runDomUpdate, 600);
