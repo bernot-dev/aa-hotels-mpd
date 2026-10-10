@@ -15,8 +15,6 @@ import {
   applyAllInPrice,
   candidatesFromHotel,
   candidatesFromRoom,
-  readMemberMiles,
-  readShownPrice,
 } from "./allin";
 import { getLogoUrl } from "./logo";
 import { DEFAULT_EARNING_LEVEL, EarningLevel, milesForEarningLevel } from "./settings";
@@ -543,15 +541,9 @@ export const processCard = (
   const dollarsElem = card.querySelector(PRICE_SELECTOR);
 
   // Show the all-in total in place of the site's price before reading it for MPD. Search and map
-  // cards match by hotel id; details room rates have no id and match by price and member miles.
+  // cards match by hotel id, details room cards by room identifier.
   if (useAllInPricing && dollarsElem) {
-    const shown = readShownPrice(dollarsElem);
-    const candidates = enriched
-      ? candidatesFromHotel(enriched)
-      : shown !== null
-      ? candidatesFromRoom(shown, readMemberMiles(card))
-      : null;
-    applyAllInPrice(dollarsElem, candidates, card);
+    applyAllInPrice(dollarsElem, enriched ? candidatesFromHotel(enriched) : candidatesFromRoom(card), card);
   }
 
   // Manage visibility of boost jackets in/around card

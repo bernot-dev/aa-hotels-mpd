@@ -39,12 +39,12 @@ export interface EnrichedHotelRate {
 
 export type RawHotelRate = EnrichedHotelRate;
 
-/** A single room rate from the details page API, which has no hotel id on each rate. */
+/** A room rate from the details page's room grid. */
 export interface RoomRate {
+  /** The rate's `roomIdentifiers`, which its room card carries as `data-room-identifier`. */
+  roomId: string;
   allInPrice: number;
   sitePriceTotals: number[];
-  /** Miles for AAdvantage members, as shown in the room card's "Earn N miles" line. */
-  rewards: number;
   nights: number;
 }
 
@@ -764,33 +764,46 @@ export function isSensitiveCheckoutPage(url: string = typeof window !== 'undefin
   );
 }
 
+const positive = (value: unknown): number => {
+  const amount = Number(value);
+  return isFinite(amount) && amount > 0 ? amount : 0;
+};
+
 /**
- * Extracts room rates from the details page's rooms payload: room types whose `childrenRooms` each
- * carry prices and member `rewards` but no `hotel` (search results carry a `hotel`).
+ * Extracts room rates from the details page's room grid (the GetSecondaryData response):
+ * roomGridData.masterRooms[].rooms[], with per-stay totals in pricing.displaySummary.perBook.
  */
 export function extractRoomRatesFromPayload(payload: unknown): RoomRate[] {
+  const masterRooms = field(field(payload, "roomGridData"), "masterRooms");
+  if (!Array.isArray(masterRooms)) return [];
+  const nights = positive(field(field(payload, "hotelSearchCriteria"), "los")) || 1;
+
   const rooms: RoomRate[] = [];
-  const visit = (node: unknown, depth: number) => {
-    if (!node || typeof node !== "object" || depth > 5) return;
-    if (Array.isArray(node)) {
-      node.forEach((child) => visit(child, depth + 1));
-      return;
-    }
-    const obj = node as ApiObject;
-    const allInPrice = getAllInTotal(obj);
-    if (allInPrice > 0 && !obj.hotel && typeof obj.rewards === "number") {
-      const nights = Number(obj.numberOfNights);
+  for (const master of masterRooms) {
+    const rates = field(master, "rooms");
+    if (!Array.isArray(rates)) continue;
+    for (const rate of rates) {
+      const roomId = field(rate, "roomIdentifiers");
+      // Miles per dollar is only meaningful for USD prices
+      if (typeof roomId !== "string" || !roomId || field(rate, "currency") !== "USD") continue;
+
+      const perBook = field(field(field(rate, "pricing"), "displaySummary"), "perBook");
+      const total = (key: string, kind: "allInclusive" | "exclusive") => positive(field(field(perBook, key), kind));
+      // Room + taxes + every fee, including those paid at the property (payAtHotel)
+      const allInPrice = total("displayTotal", "allInclusive");
+      if (!allInPrice) continue;
+
       rooms.push({
+        roomId,
         allInPrice,
-        sitePriceTotals: getSitePriceTotals(obj),
-        rewards: obj.rewards,
-        nights: nights > 0 ? nights : 1,
+        // Without taxes, or without the fees paid at the property
+        sitePriceTotals: [total("displayTotal", "exclusive"), total("payToAgoda", "allInclusive")].filter(
+          (amount, i, all) => amount > 0 && amount !== allInPrice && all.indexOf(amount) === i
+        ),
+        nights,
       });
-      return;
     }
-    Object.keys(obj).forEach((key) => visit(obj[key], depth + 1));
-  };
-  visit(payload, 0);
+  }
   return rooms;
 }
 

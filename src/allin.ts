@@ -20,20 +20,17 @@ export interface AllInCandidates {
   nights: number;
 }
 
-const roomRates: RoomRate[] = [];
+const roomRates = new Map<string, RoomRate>();
 
 export function ingestRoomRates(rooms: RoomRate[]): void {
   rooms.forEach((room) => {
-    if (!(room?.allInPrice > 0)) return;
-    const duplicate = roomRates.some(
-      (r) => r.allInPrice === room.allInPrice && r.rewards === room.rewards && r.nights === room.nights
-    );
-    if (!duplicate) roomRates.push({ ...room, sitePriceTotals: room.sitePriceTotals || [] });
+    if (!room?.roomId || !(room.allInPrice > 0)) return;
+    roomRates.set(room.roomId, { ...room, sitePriceTotals: room.sitePriceTotals || [] });
   });
 }
 
 export function clearRoomRates(): void {
-  roomRates.length = 0;
+  roomRates.clear();
 }
 
 const matches = (shown: number, amount: number) => Math.abs(shown - Math.round(amount)) <= TOLERANCE;
@@ -66,21 +63,11 @@ export function candidatesFromHotel(hotel: EnrichedHotelRate | undefined): AllIn
   };
 }
 
-/**
- * Details page rates carry no ids, so find the room rate by the price it shows and its member miles.
- * Returns null unless exactly one all-in total fits.
- */
-export function candidatesFromRoom(shown: number, memberMiles: number | null): AllInCandidates | null {
-  const fits = roomRates.filter((room) => {
-    if (memberMiles !== null && room.rewards !== memberMiles) return false;
-    const nights = room.nights > 1 ? room.nights : 1;
-    return [room.allInPrice, ...room.sitePriceTotals].some(
-      (total) => matches(shown, total) || (nights > 1 && matches(shown, total / nights))
-    );
-  });
-  const allInTotals = fits.map((r) => r.allInPrice).filter((v, i, all) => all.indexOf(v) === i);
-  if (allInTotals.length !== 1) return null;
-  const room = fits[0];
+/** A details room card's rate, found by the room identifier the card carries. */
+export function candidatesFromRoom(card: Element): AllInCandidates | null {
+  const roomId = card.closest("[data-room-identifier]")?.getAttribute("data-room-identifier");
+  const room = roomId ? roomRates.get(roomId) : undefined;
+  if (!room) return null;
   return { allInPrice: room.allInPrice, sitePriceTotals: room.sitePriceTotals, nights: room.nights };
 }
 
@@ -135,19 +122,4 @@ export function applyAllInPrice(
   const replaced = priceEl.getAttribute(REPLACED_ATTR) === "true";
   if (replaced && labelScope) relabelFees(labelScope);
   return amount !== null;
-}
-
-/** Member miles from a details room card's "Earn N miles per stay" line for AAdvantage members. */
-export function readMemberMiles(card: Element): number | null {
-  const el =
-    card.querySelector('[data-testid="non-tier-earn-rewards"]') ||
-    Array.from(card.querySelectorAll('[data-testid="upc_caption"]')).find((c) => {
-      const next = c.nextElementSibling?.textContent || c.parentElement?.nextElementSibling?.textContent || "";
-      return /aadvantage® member/i.test(next) || /earn\s+[\d,]+\s+miles/i.test(c.textContent || "");
-    }) ||
-    card.querySelector(
-      '[data-selenium="points-max-promo-text"], [data-element-name="room-card-earn-miles"], .points-max-promo-text'
-    );
-  const match = el?.textContent?.match(/\d[\d,]*/);
-  return match ? Number(match[0].replace(/,/g, "")) : null;
 }

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   extractHotelRatesFromPayload,
   extractRoomRatesFromPayload,
@@ -10,6 +12,12 @@ import { resolveAllInAmount, ingestRoomRates, clearRoomRates, ALL_IN_LABEL } fro
 import { processCard } from '../src/cards';
 import { updateMapPins } from '../src/map';
 import { hotelDataRegistry, clearHotelMpdRegistry } from '../src/registry';
+
+// A live details page capture (Trump International Hotel Las Vegas, 2 nights): six room rates from
+// the GetSecondaryData room grid and the room cards the site rendered for them
+const fixturesDir = path.resolve(__dirname, '../fixtures');
+const lasVegasRooms = JSON.parse(fs.readFileSync(path.join(fixturesDir, 'details-rooms-lasvegas-guest.json'), 'utf-8'));
+const lasVegasRoomCards = fs.readFileSync(path.join(fixturesDir, 'details-rooms-lasvegas-guest.html'), 'utf-8');
 
 const usd = (amount: number) => ({ currency: 'USD', symbol: '&#36;', amount });
 
@@ -61,27 +69,24 @@ describe('interceptor all-in totals', () => {
     expect(hotel.nights).toBe(6);
   });
 
-  it('extracts details room rates and skips hotel search results', () => {
-    const rooms = extractRoomRatesFromPayload([
-      {
-        id: 1,
-        name: 'Bleu King',
-        childrenRooms: [
-          {
-            rewards: 8600,
-            numberOfNights: 6,
-            totalPrice: usd(4162.83),
-            grandTotalPublishedPriceInclusive: usd(4719.85),
-            grandTotalPublishedPriceInclusiveWithFees: usd(4719.85),
-            grandTotalPublishedPriceWithPropertyTaxAndCounterFees: usd(4162.83),
-          },
-        ],
-      },
-      { hotel: { id: 5 }, rewards: 100, ...STRAT },
-    ]);
-    expect(rooms).toEqual([
-      { allInPrice: 4719.85, sitePriceTotals: [4162.83, 4719.85], rewards: 8600, nights: 6 },
-    ]);
+  it('extracts details room rates from the room grid, keyed by room identifier', () => {
+    const rooms = extractRoomRatesFromPayload(lasVegasRooms);
+    expect(rooms).toHaveLength(6);
+    expect(rooms[0]).toEqual({
+      roomId: lasVegasRooms.roomGridData.masterRooms[0].rooms[0].roomIdentifiers,
+      // Includes the $88.46 resort fee and taxes paid at the property
+      allInPrice: 805.54,
+      // Without taxes, and without what's paid at the property
+      sitePriceTotals: [750.31, 717.08],
+      nights: 2,
+    });
+  });
+
+  it('skips non-USD rates and payloads without a room grid', () => {
+    const euro = structuredClone(lasVegasRooms);
+    euro.roomGridData.masterRooms.forEach((m: any) => m.rooms.forEach((r: any) => (r.currency = 'EUR')));
+    expect(extractRoomRatesFromPayload(euro)).toEqual([]);
+    expect(extractRoomRatesFromPayload({ data: { citySearch: { properties: [] } } })).toEqual([]);
   });
 });
 
@@ -228,29 +233,49 @@ describe('all-in price display', () => {
     expect(document.querySelector('#propertyMarkerIcon-94254')!.textContent?.trim()).toBe('$579');
   });
 
-  it('matches details room rates by price and member miles', () => {
-    ingestRoomRates([
-      { allInPrice: 4719.85, sitePriceTotals: [4162.83], rewards: 8600, nights: 6 },
-      { allInPrice: 4887.43, sitePriceTotals: [4330.41], rewards: 14600, nights: 6 },
-    ]);
-    document.body.innerHTML = `<div class="MasterRoom" data-element-name="room-card" data-selenium="room-card">${pricing('$4,163', 'includes fees', 8600)}</div>`;
-    processCard(document.querySelector('[data-element-name="room-card"]')!, 6, false, true);
+  describe('details room cards (details-rooms-lasvegas-guest)', () => {
+    const roomCards = () => Array.from(document.querySelectorAll('[data-selenium="ChildRoomsList-room"]'));
+    const roomPrice = (card: Element) => card.querySelector('[data-element-name="fpc-room-price"]')!.textContent;
 
-    expect(priceText()).toBe('$4,720');
-    expect(note()).toBe(`Total (6 nights)${ALL_IN_LABEL}`);
-  });
+    beforeEach(() => {
+      document.body.innerHTML = lasVegasRoomCards;
+      ingestRoomRates(extractRoomRatesFromPayload(lasVegasRooms));
+    });
 
-  it('leaves a details rate alone when the match is ambiguous or missing', () => {
-    ingestRoomRates([
-      { allInPrice: 4719.85, sitePriceTotals: [4162.83], rewards: 8600, nights: 6 },
-      { allInPrice: 4800, sitePriceTotals: [4162.83], rewards: 8600, nights: 6 },
-    ]);
-    document.body.innerHTML = `<div class="MasterRoom" data-element-name="room-card" data-selenium="room-card">${pricing('$4,163', 'includes fees', 8600)}</div>`;
-    processCard(document.querySelector('[data-element-name="room-card"]')!, 6, false, true);
-    expect(priceText()).toBe('$4,163');
+    it('leaves the live prices alone, since they already include resort fees paid at the property', () => {
+      const before = roomCards().map(roomPrice);
+      roomCards().forEach((card) => processCard(card, 2, false, true, false));
+      expect(roomCards().map(roomPrice)).toEqual(before);
+      expect(before[0]).toBe('USD 806');
+      // 13,800 status miles / $806
+      expect(roomCards()[0].querySelector<HTMLElement>('.aa-mpd-badge')!.dataset.rate).toBe('17.1');
+    });
 
-    document.body.innerHTML = `<div class="MasterRoom" data-element-name="room-card" data-selenium="room-card">${pricing('$999', 'includes fees', 8600)}</div>`;
-    processCard(document.querySelector('[data-element-name="room-card"]')!, 6, false, true);
-    expect(priceText()).toBe('$999');
+    it("finds each card's own rate by its room identifier", () => {
+      const [first, second] = roomCards();
+      // Each card showing its total without taxes
+      first.querySelector('[data-element-name="fpc-room-price"]')!.firstChild!.nodeValue = 'USD 750';
+      second.querySelector('[data-element-name="fpc-room-price"]')!.firstChild!.nodeValue = 'USD 806';
+      processCard(first, 2, false, true, false);
+      processCard(second, 2, false, true, false);
+      expect(roomPrice(first)).toBe('USD 806');
+      // $806 is also the first room's all-in total; matching by price alone would leave it
+      expect(roomPrice(second)).toBe('USD 861');
+    });
+
+    it('replaces per-night prices with the all-in total per night', () => {
+      const [first] = roomCards();
+      first.querySelector('[data-element-name="fpc-room-price"]')!.firstChild!.nodeValue = 'USD 375';
+      processCard(first, 2, false, true, false);
+      expect(roomPrice(first)).toBe('USD 403');
+    });
+
+    it('leaves cards without a known rate alone', () => {
+      clearRoomRates();
+      const [first] = roomCards();
+      first.querySelector('[data-element-name="fpc-room-price"]')!.firstChild!.nodeValue = 'USD 750';
+      processCard(first, 2, false, true, false);
+      expect(roomPrice(first)).toBe('USD 750');
+    });
   });
 });

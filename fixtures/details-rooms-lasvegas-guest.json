@@ -1,0 +1,406 @@
+{
+ "hotelId": 98013,
+ "hotelSearchCriteria": {
+  "hotelId": 98013,
+  "checkInDate": "2026-11-14",
+  "checkOutDate": "2026-11-16",
+  "los": 2,
+  "adults": 2,
+  "rooms": 1,
+  "currencyCode": "USD"
+ },
+ "roomGridData": {
+  "masterRooms": [
+   {
+    "id": 1457287636,
+    "name": "Double Superior Mountain View",
+    "rooms": [
+     {
+      "id": 1595898305,
+      "name": "Double Superior Mountain View",
+      "currency": "USD",
+      "roomIdentifiers": "CoUCCILn+/ELEAIgjkEwBEoKNEQ1MFBfMTAwUFCwtgN65QFTb21lKDEyNjc3MjIpfDE1OTU4OTgzMDV8NDE2N3xTMUtDfFdITFRLNHwxIVRCIVdITFRLNHwxfFMxS0MhVEIhMTIxNTctNTE1NDYhVEIhMTEwIVRCITIwOTE2NTE3fDJ8Uk98TGlzdCgpfDRENTBQXzEwMFB8U29tZShST3w0MTY3fERDfHxmYWxzZXxmYWxzZXwxMjY3NzIyfDIwOTE2NTE3fFMxS0N8V0hMVEs0fDEhVEIhV0hMVEs0fDF8UzFLQyFUQiExMjE1Ny01MTU0NiFUQiExMTAhVEIhMjA5MTY1MTcpEgIIARoGGAEoBDABIgQIBBgC",
+      "taxesAndSurchargesList": [
+       "Hotel tax and service fees  $ 42.31",
+       "Tax (Pay at the property) $ 0.78",
+       "Tax (Pay at the property) $ 0.34",
+       "Tax (Pay at the property) $ 2.15",
+       "Tax (Pay at the property) $ 0.39",
+       "Tax (Pay at the property) $ 1.17",
+       "Tax (Pay at the property) $ 0.39",
+       "Resort Fee (Pay at the property) $ 44.23"
+      ],
+      "pricing": {
+       "displaySummary": {
+        "perBook": {
+         "displayTotal": {
+          "exclusive": 750.31,
+          "allInclusive": 805.54
+         },
+         "payToAgoda": {
+          "exclusive": 632.46,
+          "allInclusive": 717.08
+         },
+         "payAtHotel": {
+          "exclusive": 78.02,
+          "allInclusive": 88.46
+         }
+        },
+        "perNight": {
+         "displayTotal": {
+          "exclusive": 375.16,
+          "allInclusive": 402.77
+         },
+         "payToAgoda": {
+          "exclusive": 316.23,
+          "allInclusive": 358.54
+         },
+         "payAtHotel": {
+          "exclusive": 39.01,
+          "allInclusive": 44.23
+         }
+        }
+       },
+       "loyaltyOfferSummary": {
+        "offers": [
+         {
+          "earn": {
+           "points": 1200.0
+          }
+         },
+         {
+          "earn": {
+           "points": 13800.0
+          }
+         }
+        ]
+       }
+      }
+     },
+     {
+      "id": 1595898305,
+      "name": "Double Superior Mountain View",
+      "currency": "USD",
+      "roomIdentifiers": "CoUCCILn+/ELEAIgjkEwBEoKNEQ1MFBfMTAwUFCwtgN65QFTb21lKDEyNjc3MjIpfDE1OTU4OTgzMDV8NDE2N3xTMUtDfFdITFRLNHwxIVRCIVdITFRLNHwxfFMxS0MhVEIhMTIxNTctNTE1NDYhVEIhMTEwIVRCITIwOTE2NTE3fDJ8Uk98TGlzdCgpfDRENTBQXzEwMFB8U29tZShST3w0MTY3fERDfHxmYWxzZXxmYWxzZXwxMjY3NzIyfDIwOTE2NTE3fFMxS0N8V0hMVEs0fDEhVEIhV0hMVEs0fDF8UzFLQyFUQiExMjE1Ny01MTU0NiFUQiExMTAhVEIhMjA5MTY1MTcpEgIIARoGGAEoBDABIgQIBBgCMhxNWHcyT0RjemZERXhPREZmVUZCOE9ESXlOdz09",
+      "taxesAndSurchargesList": [
+       "Hotel tax and service fees  $ 42.31",
+       "Tax (Pay at the property) $ 0.78",
+       "Tax (Pay at the property) $ 0.34",
+       "Tax (Pay at the property) $ 2.15",
+       "Tax (Pay at the property) $ 0.39",
+       "Tax (Pay at the property) $ 1.17",
+       "Tax (Pay at the property) $ 0.39",
+       "Resort Fee (Pay at the property) $ 44.23"
+      ],
+      "pricing": {
+       "displaySummary": {
+        "perBook": {
+         "displayTotal": {
+          "exclusive": 806.17,
+          "allInclusive": 861.4
+         },
+         "payToAgoda": {
+          "exclusive": 688.32,
+          "allInclusive": 772.94
+         },
+         "payAtHotel": {
+          "exclusive": 78.02,
+          "allInclusive": 88.46
+         }
+        },
+        "perNight": {
+         "displayTotal": {
+          "exclusive": 403.09,
+          "allInclusive": 430.7
+         },
+         "payToAgoda": {
+          "exclusive": 344.16,
+          "allInclusive": 386.47
+         },
+         "payAtHotel": {
+          "exclusive": 39.01,
+          "allInclusive": 44.23
+         }
+        }
+       },
+       "loyaltyOfferSummary": {
+        "offers": [
+         {
+          "earn": {
+           "points": 3200.0
+          }
+         },
+         {
+          "earn": {
+           "points": 15800.0
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "id": 768261724,
+    "name": "Room Superior",
+    "rooms": [
+     {
+      "id": 349291651,
+      "name": "Room Superior",
+      "currency": "USD",
+      "roomIdentifiers": "CoYCCIaSjs0CEAIgAjAESgo0RDY5UF8xMDBQUP62A3rnAVNvbWUoODgyOTYpfDM0OTI5MTY1MXwxfElEX0IyQl80M3wyfFJPfExpc3QoKXw0RDY5UF8xMDBQfFNvbWUoUk98Uk9PLlNVfDg4Mjk2fFVTRHwyMDI2MTExNHwyMDI2MTExNnxXfDI1Nnw4ODI5NnxST08uU1V8SURfQjJCXzQzfFJPfEZJVHwxfjJ+MHx8TnxOT1J8UkVDSEVDS3x8NDAxLjV8NDQ2LjExfDJ+MH4xfC01OXxJRF9CMkJfNDN8ZmFsc2V8dHJ1ZXxmYWxzZXw4ODI5NnxST08uU1V8SURfQjJCXzQzKRICCAEaBhgBKAQwASIECAQYAg==",
+      "taxesAndSurchargesList": [
+       "Hotel tax and service fees  $ 43.76",
+       "Tax (Pay at the property) $ 0.78",
+       "Tax (Pay at the property) $ 0.34",
+       "Tax (Pay at the property) $ 2.15",
+       "Tax (Pay at the property) $ 0.39",
+       "Tax (Pay at the property) $ 1.17",
+       "Tax (Pay at the property) $ 0.39",
+       "Resort Fee (Pay at the property) $ 44.23"
+      ],
+      "pricing": {
+       "displaySummary": {
+        "perBook": {
+         "displayTotal": {
+          "exclusive": 772.38,
+          "allInclusive": 830.2
+         },
+         "payToAgoda": {
+          "exclusive": 654.22,
+          "allInclusive": 741.74
+         },
+         "payAtHotel": {
+          "exclusive": 78.02,
+          "allInclusive": 88.46
+         }
+        },
+        "perNight": {
+         "displayTotal": {
+          "exclusive": 386.19,
+          "allInclusive": 415.1
+         },
+         "payToAgoda": {
+          "exclusive": 327.11,
+          "allInclusive": 370.87
+         },
+         "payAtHotel": {
+          "exclusive": 39.01,
+          "allInclusive": 44.23
+         }
+        }
+       },
+       "loyaltyOfferSummary": {
+        "offers": [
+         {
+          "earn": {
+           "points": 1200.0
+          }
+         },
+         {
+          "earn": {
+           "points": 13900.0
+          }
+         }
+        ]
+       }
+      }
+     },
+     {
+      "id": 349291651,
+      "name": "Room Superior",
+      "currency": "USD",
+      "roomIdentifiers": "CoYCCIaSjs0CEAIgAjAESgo0RDY5UF8xMDBQUP62A3rnAVNvbWUoODgyOTYpfDM0OTI5MTY1MXwxfElEX0IyQl80M3wyfFJPfExpc3QoKXw0RDY5UF8xMDBQfFNvbWUoUk98Uk9PLlNVfDg4Mjk2fFVTRHwyMDI2MTExNHwyMDI2MTExNnxXfDI1Nnw4ODI5NnxST08uU1V8SURfQjJCXzQzfFJPfEZJVHwxfjJ+MHx8TnxOT1J8UkVDSEVDS3x8NDAxLjV8NDQ2LjExfDJ+MH4xfC01OXxJRF9CMkJfNDN8ZmFsc2V8dHJ1ZXxmYWxzZXw4ODI5NnxST08uU1V8SURfQjJCXzQzKRICCAEaBhgBKAQwASIECAQYAjIcTVh3Mk9EY3pmREV4T0RGZlVGQjhPREk1TVE9PQ==",
+      "taxesAndSurchargesList": [
+       "Hotel tax and service fees  $ 43.76",
+       "Tax (Pay at the property) $ 0.78",
+       "Tax (Pay at the property) $ 0.34",
+       "Tax (Pay at the property) $ 2.15",
+       "Tax (Pay at the property) $ 0.39",
+       "Tax (Pay at the property) $ 1.17",
+       "Tax (Pay at the property) $ 0.39",
+       "Resort Fee (Pay at the property) $ 44.23"
+      ],
+      "pricing": {
+       "displaySummary": {
+        "perBook": {
+         "displayTotal": {
+          "exclusive": 828.24,
+          "allInclusive": 886.06
+         },
+         "payToAgoda": {
+          "exclusive": 710.08,
+          "allInclusive": 797.6
+         },
+         "payAtHotel": {
+          "exclusive": 78.02,
+          "allInclusive": 88.46
+         }
+        },
+        "perNight": {
+         "displayTotal": {
+          "exclusive": 414.12,
+          "allInclusive": 443.03
+         },
+         "payToAgoda": {
+          "exclusive": 355.04,
+          "allInclusive": 398.8
+         },
+         "payAtHotel": {
+          "exclusive": 39.01,
+          "allInclusive": 44.23
+         }
+        }
+       },
+       "loyaltyOfferSummary": {
+        "offers": [
+         {
+          "earn": {
+           "points": 3200.0
+          }
+         },
+         {
+          "earn": {
+           "points": 15900.0
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   },
+   {
+    "id": 1235094282,
+    "name": "Superior Room",
+    "rooms": [
+     {
+      "id": 898358295,
+      "name": "Superior Room",
+      "currency": "USD",
+      "roomIdentifiers": "Cs8BCK7w3tgGEAIgRjAESgs0RDEwMFBfMTAwUFCMuAN6rwFTb21lKDYzMjMpfDg5ODM1ODI5NXwzNXw2MzIzfDg5MjA0OHxyMzpjYWlhZ2g6YnBkb2xva2dtZDowOjEyMHwyfDM1fDJ8Uk98TGlzdCgpfDREMTAwUF8xMDBQfFNvbWUoUk98MzV8REN8fGZhbHNlfGZhbHNlfDYzMjN8ODkyMDQ4fDYzMjN8ODkyMDQ4fHIzOmNhaWFnaDpicGRvbG9rZ21kOjA6MTIwfDJ8MzUpEgIIARoGGAEoBDABIgQIBBgC",
+      "taxesAndSurchargesList": [
+       "Hotel tax and service fees  $ 43.93",
+       "Tax (Pay at the property) $ 0.78",
+       "Tax (Pay at the property) $ 0.34",
+       "Tax (Pay at the property) $ 2.15",
+       "Tax (Pay at the property) $ 0.39",
+       "Tax (Pay at the property) $ 1.17",
+       "Tax (Pay at the property) $ 0.39",
+       "Resort Fee (Pay at the property) $ 44.23"
+      ],
+      "pricing": {
+       "displaySummary": {
+        "perBook": {
+         "displayTotal": {
+          "exclusive": 775.96,
+          "allInclusive": 832.9
+         },
+         "payToAgoda": {
+          "exclusive": 656.58,
+          "allInclusive": 744.44
+         },
+         "payAtHotel": {
+          "exclusive": 78.02,
+          "allInclusive": 88.46
+         }
+        },
+        "perNight": {
+         "displayTotal": {
+          "exclusive": 387.98,
+          "allInclusive": 416.45
+         },
+         "payToAgoda": {
+          "exclusive": 328.29,
+          "allInclusive": 372.22
+         },
+         "payAtHotel": {
+          "exclusive": 39.01,
+          "allInclusive": 44.23
+         }
+        }
+       },
+       "loyaltyOfferSummary": {
+        "offers": [
+         {
+          "earn": {
+           "points": 1300.0
+          }
+         },
+         {
+          "earn": {
+           "points": 14400.0
+          }
+         }
+        ]
+       }
+      }
+     },
+     {
+      "id": 898358295,
+      "name": "Superior Room",
+      "currency": "USD",
+      "roomIdentifiers": "Cs8BCK7w3tgGEAIgRjAESgs0RDEwMFBfMTAwUFCMuAN6rwFTb21lKDYzMjMpfDg5ODM1ODI5NXwzNXw2MzIzfDg5MjA0OHxyMzpjYWlhZ2g6YnBkb2xva2dtZDowOjEyMHwyfDM1fDJ8Uk98TGlzdCgpfDREMTAwUF8xMDBQfFNvbWUoUk98MzV8REN8fGZhbHNlfGZhbHNlfDYzMjN8ODkyMDQ4fDYzMjN8ODkyMDQ4fHIzOmNhaWFnaDpicGRvbG9rZ21kOjA6MTIwfDJ8MzUpEgIIARoGGAEoBDABIgQIBBgCMhxNWHcyT0RjemZERXhPREZmVUZCOE9EUTRNdz09",
+      "taxesAndSurchargesList": [
+       "Hotel tax and service fees  $ 43.93",
+       "Tax (Pay at the property) $ 0.78",
+       "Tax (Pay at the property) $ 0.34",
+       "Tax (Pay at the property) $ 2.15",
+       "Tax (Pay at the property) $ 0.39",
+       "Tax (Pay at the property) $ 1.17",
+       "Tax (Pay at the property) $ 0.39",
+       "Resort Fee (Pay at the property) $ 44.23"
+      ],
+      "pricing": {
+       "displaySummary": {
+        "perBook": {
+         "displayTotal": {
+          "exclusive": 831.82,
+          "allInclusive": 888.76
+         },
+         "payToAgoda": {
+          "exclusive": 712.44,
+          "allInclusive": 800.3
+         },
+         "payAtHotel": {
+          "exclusive": 78.02,
+          "allInclusive": 88.46
+         }
+        },
+        "perNight": {
+         "displayTotal": {
+          "exclusive": 415.91,
+          "allInclusive": 444.38
+         },
+         "payToAgoda": {
+          "exclusive": 356.22,
+          "allInclusive": 400.15
+         },
+         "payAtHotel": {
+          "exclusive": 39.01,
+          "allInclusive": 44.23
+         }
+        }
+       },
+       "loyaltyOfferSummary": {
+        "offers": [
+         {
+          "earn": {
+           "points": 3300.0
+          }
+         },
+         {
+          "earn": {
+           "points": 16400.0
+          }
+         }
+        ]
+       }
+      }
+     }
+    ]
+   }
+  ]
+ }
+}
