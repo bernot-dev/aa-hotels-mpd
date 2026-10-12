@@ -78,7 +78,8 @@ The extension processes page content strictly in local tab memory to calculate m
 
 | Version | Date | Changes | Status |
 |---------|------|---------|--------|
-| 2.0.1 | 2026-10-12 | Patch release: eager card rendering without scrolling, map pin hover MPD preview, map sidebar card badging, median price tiers, stay cap notes, and live room grid selector fixes. | Submitted |
+| 2.0.2 | 2026-10-12 | Patch release: removed redundant tabs permission to eliminate browsing history install warning and scope permissions strictly to AAdvantage Hotels. | Submitted |
+| 2.0.1 | 2026-10-12 | Patch release: eager card rendering without scrolling, map pin hover MPD preview, map sidebar card badging, median price tiers, stay cap notes, and live room grid selector fixes. | Published |
 | 2.0.0 | 2026-10-09 | Major release: completely rebuilt to support the new AAdvantage Hotels website (search.aadvantagehotels.com). Adds background multi-page deal discovery, CPM acquisition cost, relative price ratings, native MPD sorting, and status tier earning level preferences. | Published |
 | 1.5.0 | 2026-09-20 | MPD rate history, IndexedDB analytics dashboard, sweet spot finder, map pin network interception, all-in pricing, and CSV/SQL export. | Published |
 | 1.4.0 | 2024-11-15 | Added configuration options for room rates, room types, and bonus miles. | Published |
