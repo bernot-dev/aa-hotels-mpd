@@ -8,7 +8,8 @@
     "test:e2e": "playwright test",
     "package": "npm run build && python3 scripts/package-extension.py extension.zip",
     "screenshots": "tsx scripts/capture-screenshots.ts",
-    "promo-tiles": "tsx scripts/capture-promo-tiles.ts"
+    "promo-tiles": "tsx scripts/capture-promo-tiles.ts",
+    "clean:browser": "node scripts/browser-profile.mjs --clean"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

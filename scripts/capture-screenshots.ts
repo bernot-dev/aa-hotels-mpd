@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import https from 'node:https';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
+import { createBrowserProfile } from './browser-profile.mjs';
 
 const projectRoot = path.resolve(__dirname, '../');
 const fixturesDir = path.resolve(projectRoot, 'fixtures');
@@ -61,8 +62,9 @@ async function captureScreenshots() {
   const port = (server.address() as any).port;
   console.log(`Local fixture server listening on https://127.0.0.1:${port}`);
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-ext-'));
-  const context = await chromium.launchPersistentContext(tmpDir, {
+  const profile = createBrowserProfile('pw-ext');
+  const context = await chromium.launchPersistentContext(profile.dir, {
+    env: profile.env,
     headless: false,
     viewport: { width: 1280, height: 800 },
     args: [
@@ -896,7 +898,7 @@ async function captureScreenshots() {
 
   await context.close();
   server.close();
-  fs.rmSync(tmpDir, { recursive: true, force: true });
+  profile.cleanup();
 
   console.log('All 5 extension screenshots captured successfully!');
 

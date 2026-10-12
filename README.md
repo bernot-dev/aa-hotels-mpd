@@ -74,6 +74,8 @@ npm test
 
 `npm run build:dev` (or `npm run watch`) makes a development build that also includes the debug panel for exporting DOM and network test fixtures. Turn the panel on from the extension's service worker console with `chrome.storage.sync.set({ showDebugButton: true })`. Production builds leave the debug tooling out entirely, and `npm test` fails if the committed `dist/` isn't a production build, so run `npm run build` before committing.
 
+Scripts and tests that launch Chromium get their profile from `createBrowserProfile()` in `scripts/browser-profile.mjs`. It keeps profiles under `~/.cache/aa-hotels-mpd/profiles` instead of `/tmp`, and deletes them when the process exits or is interrupted. A later run removes any profile left by a killed process. `npm run clean:browser` also clears hour-old Chromium and Playwright leftovers from `/tmp`.
+
 To load the built extension into Chrome:
 1. Navigate to `chrome://extensions` in Google Chrome.
 2. Enable **Developer mode** in the upper right corner.

@@ -12,7 +12,7 @@
 // Usage: node scripts/fetch-guest-fixtures.mjs [cityId] (default 8683 = Dallas, TX)
 import { chromium } from '@playwright/test';
 import fs from 'node:fs';
-import os from 'node:os';
+import { createBrowserProfile } from './browser-profile.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -79,8 +79,9 @@ function save(name, content) {
   console.log(`Saved ${name} (${(content.length / 1024).toFixed(0)} KB)`);
 }
 
-const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'aa-fixtures-'));
-const context = await chromium.launchPersistentContext(profile, {
+const profile = createBrowserProfile('aa-fixtures');
+const context = await chromium.launchPersistentContext(profile.dir, {
+  env: profile.env,
   headless: true,
   viewport: { width: 1400, height: 950 },
   userAgent:
@@ -132,5 +133,5 @@ try {
   save('details-guest.html', sanitize(await page.content()));
 } finally {
   await context.close();
-  fs.rmSync(profile, { recursive: true, force: true });
+  profile.cleanup();
 }

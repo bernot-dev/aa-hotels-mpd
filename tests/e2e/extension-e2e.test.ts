@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import https from 'node:https';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
+import { createBrowserProfile } from '../../scripts/browser-profile.mjs';
 
 // Runs the built extension against real captures of the redesigned search.aadvantagehotels.com
 // (Agoda white label), served over HTTPS on the real hostname. Regenerate the fixtures with
@@ -87,10 +88,11 @@ export const test = base.extend<TestFixtures>({
 
   context: async ({ serverUrl }, use) => {
     const port = new URL(serverUrl).port;
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-ext-'));
+    const profile = createBrowserProfile('pw-ext');
 
     // Chrome extensions require headless: false with --headless=new in args
-    const context = await chromium.launchPersistentContext(tmpDir, {
+    const context = await chromium.launchPersistentContext(profile.dir, {
+      env: profile.env,
       headless: false,
       args: [
         '--headless=new',
@@ -103,7 +105,7 @@ export const test = base.extend<TestFixtures>({
 
     await use(context);
     await context.close();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    profile.cleanup();
   },
 
   extensionId: async ({ context }, use) => {
