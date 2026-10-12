@@ -148,6 +148,29 @@ describe("list expander", () => {
     expect(mod.fireSentinels()).toBe(0);
   });
 
+  it("reports each result card's lazy-load wrapper in view as soon as it's observed", async () => {
+    document.body.innerHTML = `
+      <ol class="hotel-list-container">
+        <li class="PropertyCardItem"><div data-testid="lazy-load-component" id="card-1"></div></li>
+        <li class="PropertyCardItem"><div data-testid="lazy-load-component" id="card-2"></div></li>
+      </ol>
+      <div data-testid="lazy-load-component" id="elsewhere"></div>`;
+    const callback = vi.fn();
+    const io = new window.IntersectionObserver(callback);
+    ["card-1", "card-2", "elsewhere"].forEach((id) => io.observe(document.getElementById(id)!));
+    // A card React removed before the report goes out is skipped
+    document.getElementById("card-2")!.remove();
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith(
+      [expect.objectContaining({ target: document.getElementById("card-1"), isIntersecting: true })],
+      io
+    );
+    expect(scrollToSpy).not.toHaveBeenCalled();
+    expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+  });
+
   it("does nothing on pages without a recognizable list", () => {
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
     expect(mod.expandListStep()).toBe(false);

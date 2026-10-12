@@ -11,10 +11,16 @@
 //      `onSearch({ type: "SEARCH_LOAD_EXTRA_PROPERTIES" })`.
 // Each trigger is fired directly: a synthetic scroll event, the sentinel's observer callback,
 // and the list's own onSearch prop.
+//
+// Each card's content also waits behind its own LazyLoad wrapper (`lazy-load-component`), which
+// renders only once its IntersectionObserver reports it in view. Those are reported in view as soon
+// as they're observed, so every card renders without scrolling, including cards the MPD sort moves
+// to the top of the list.
 
 export const EXPAND_LIST_MESSAGE = "AA_HOTELS_MPD_EXPAND_LIST";
 
 const SENTINEL_TEST_ID = /inview-sentinel/i;
+const LAZY_CARD_SELECTOR = 'ol.hotel-list-container [data-testid="lazy-load-component"]';
 const LOAD_EXTRA_PROPERTIES = "SEARCH_LOAD_EXTRA_PROPERTIES";
 const LIST_CARD_SELECTOR = "ol.hotel-list-container li.PropertyCardItem";
 
@@ -44,6 +50,40 @@ const sentinels: SentinelRegistration[] = [];
 const isSentinel = (el: Element): boolean =>
   SENTINEL_TEST_ID.test(el.getAttribute?.("data-testid") || "");
 
+const isLazyCard = (el: Element): boolean => typeof el.matches === "function" && el.matches(LAZY_CARD_SELECTOR);
+
+/** Reports `el` to its observer as fully visible. */
+function reportInView(el: Element, callback: IntersectionObserverCallback, observer: IntersectionObserver): boolean {
+  const rect = el.getBoundingClientRect();
+  const entry = {
+    target: el,
+    isIntersecting: true,
+    intersectionRatio: 1,
+    boundingClientRect: rect,
+    intersectionRect: rect,
+    rootBounds: new DOMRect(0, 0, window.innerWidth, window.innerHeight),
+    time: performance.now(),
+  } as IntersectionObserverEntry;
+  try {
+    callback([entry], observer);
+    return true;
+  } catch (err) {
+    console.debug("[AA-Hotels-MPD] IntersectionObserver callback failed:", err);
+    return false;
+  }
+}
+
+// Lazy card wrappers observed since the last flush; reported together once the current task ends
+const pendingLazyCards: SentinelRegistration[] = [];
+let lazyFlushScheduled = false;
+
+function flushLazyCards(): void {
+  lazyFlushScheduled = false;
+  pendingLazyCards.splice(0).forEach(({ el, callback, observer }) => {
+    if (el.isConnected) reportInView(el, callback, observer);
+  });
+}
+
 /** Wraps IntersectionObserver so the callbacks of list sentinels can be invoked on demand. */
 export function trackSentinelObservers(): void {
   const NativeObserver = window.IntersectionObserver;
@@ -54,8 +94,16 @@ export function trackSentinelObservers(): void {
       super(callback, options);
       const nativeObserve = this.observe.bind(this);
       this.observe = (el: Element) => {
-        if (isSentinel(el)) sentinels.push({ el, callback, observer: this });
         nativeObserve(el);
+        if (isSentinel(el)) {
+          sentinels.push({ el, callback, observer: this });
+        } else if (isLazyCard(el)) {
+          pendingLazyCards.push({ el, callback, observer: this });
+          if (!lazyFlushScheduled) {
+            lazyFlushScheduled = true;
+            setTimeout(flushLazyCards, 0);
+          }
+        }
       };
     }
   }
@@ -72,22 +120,7 @@ export function fireSentinels(): number {
       sentinels.splice(i, 1);
       continue;
     }
-    const rect = el.getBoundingClientRect();
-    const entry = {
-      target: el,
-      isIntersecting: true,
-      intersectionRatio: 1,
-      boundingClientRect: rect,
-      intersectionRect: rect,
-      rootBounds: new DOMRect(0, 0, window.innerWidth, window.innerHeight),
-      time: performance.now(),
-    } as IntersectionObserverEntry;
-    try {
-      callback([entry], observer);
-      fired++;
-    } catch (err) {
-      console.debug("[AA-Hotels-MPD] Sentinel callback failed:", err);
-    }
+    if (reportInView(el, callback, observer)) fired++;
   }
   return fired;
 }
