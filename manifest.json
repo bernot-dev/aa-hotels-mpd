@@ -13,8 +13,7 @@
     }
   },
   "permissions": [
-    "storage",
-    "tabs"
+    "storage"
   ],
   "host_permissions": [
     "https://search.aadvantagehotels.com/*"

@@ -59,8 +59,7 @@ English
 | Permission | Type | Justification |
 |------------|------|---------------|
 | `storage` | permissions | Saves user preferences for earning levels, pricing methods, background search depth, and room expansion across browser sessions. |
-| `tabs` | permissions | Enables the background service worker to detect in-tab navigation on search.aadvantagehotels.com so rate calculations automatically refresh when changing searches or hotels. |
-| `https://search.aadvantagehotels.com/*` | host_permissions | Required to read hotel pricing and miles earnings and display calculated miles-per-dollar values on AAdvantage Hotels pages. |
+| `https://search.aadvantagehotels.com/*` | host_permissions | Required to read hotel pricing, detect in-tab navigation on AAdvantage Hotels pages, and display calculated miles-per-dollar values without requesting broad browsing history access. |
 
 ## Privacy & Data Use
 
