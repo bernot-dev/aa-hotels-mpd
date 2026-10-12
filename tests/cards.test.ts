@@ -15,9 +15,13 @@ import {
   CARD_SELECTOR,
   ROOM_CARD_SELECTOR,
   isBonusOffer,
+  isMilesCapped,
+  SPLIT_NOTE,
 } from '../src/cards';
 import {
+  getMpdDot,
   getPriceDollarSigns,
+  getSearchSetMedianPrice,
   registerHotelPrice,
   clearHotelMpdRegistry,
 } from '../src/registry';
@@ -328,7 +332,7 @@ describe('3-Row MPD Chip & Price Rating Tests', () => {
       nights: 2,
     };
 
-    // Pre-register hotel prices to set range: cheap ($150), mid ($250), expensive ($350)
+    // Pre-register hotel prices: the median is $250, so $350/nt is 1.4x the median
     registerHotelPrice('cheap-1', 150);
     registerHotelPrice('mid-1', 250);
     registerHotelPrice('omni-dallas', 350);
@@ -339,8 +343,6 @@ describe('3-Row MPD Chip & Price Rating Tests', () => {
       700.22,
       enrichedSample,
       true,
-      undefined,
-      undefined,
       true,
       2
     );
@@ -368,18 +370,28 @@ describe('3-Row MPD Chip & Price Rating Tests', () => {
 
     // Row 3: Dollar rating and nightly price
     expect(rows[2].querySelector('.aa-mpd-chip-value')?.textContent).toBe('$350/nt');
-    expect(rows[2].querySelector('.aa-mpd-chip-indicator')?.textContent).toBe('💲💲💲');
+    expect(rows[2].querySelector('.aa-mpd-chip-indicator')?.textContent).toBe('💲💲');
     expect(rows[2].querySelector('.aa-mpd-chip-divider')?.textContent).toBe('|');
   });
 
-  it('assigns 1 dollar sign to least expensive and 3 to most expensive', () => {
-    registerHotelPrice('h1', 100);
-    registerHotelPrice('h2', 200);
-    registerHotelPrice('h3', 300);
+  it('rates nightly prices against the median: under 0.75x, up to 1.5x, up to 3x, and above', () => {
+    // Median $200; one very expensive outlier doesn't move it
+    [100, 150, 200, 250, 3000].forEach((price, i) => registerHotelPrice(`h${i}`, price));
+    expect(getSearchSetMedianPrice()).toBe(200);
 
-    expect(getPriceDollarSigns(100)).toBe('💲');
-    expect(getPriceDollarSigns(200)).toBe('💲💲');
-    expect(getPriceDollarSigns(300)).toBe('💲💲💲');
+    expect(getPriceDollarSigns(149)).toBe('💲');
+    expect(getPriceDollarSigns(150)).toBe('💲💲');
+    expect(getPriceDollarSigns(300)).toBe('💲💲');
+    expect(getPriceDollarSigns(301)).toBe('💲💲💲');
+    expect(getPriceDollarSigns(600)).toBe('💲💲💲');
+    expect(getPriceDollarSigns(601)).toBe('💲💲💲💲');
+  });
+
+  it('rates MPD on fixed thresholds: under 12 red, 12 up to 20 yellow, 20 and up green', () => {
+    expect(getMpdDot(11.9)).toBe('🔴');
+    expect(getMpdDot(12)).toBe('🟡');
+    expect(getMpdDot(19.9)).toBe('🟡');
+    expect(getMpdDot(20)).toBe('🟢');
   });
 
   it('calculates nightly price and CPM correctly', () => {
@@ -392,3 +404,43 @@ describe('3-Row MPD Chip & Price Rating Tests', () => {
   });
 });
 
+describe('Per-booking miles cap', () => {
+  beforeEach(() => {
+    clearHotelMpdRegistry();
+    document.body.innerHTML = '';
+  });
+
+  it('flags rates at 15,000 miles only on stays longer than one night', () => {
+    expect(isMilesCapped(15000, 3)).toBe(true);
+    expect(isMilesCapped(15000, 1)).toBe(false);
+    expect(isMilesCapped(14900, 3)).toBe(false);
+  });
+
+  it('adds the split note to the chip of a capped multi-night rate', () => {
+    const info = document.createElement('div');
+    const full = createOrUpdateChip(info, 5.2, 2867, undefined, true, true, 3, true);
+    expect(full.querySelector('.aa-mpd-chip-split')?.textContent).toBe(SPLIT_NOTE);
+
+    const caption = document.createElement('span');
+    const pill = createOrUpdateChip(caption, 5.2, 2867, undefined, true, false, 3, true);
+    expect(pill.querySelector('.aa-mpd-chip-split')?.textContent).toBe(SPLIT_NOTE);
+
+    // And drops it once the rate is no longer capped
+    createOrUpdateChip(caption, 5.2, 2867, undefined, true, false, 1, false);
+    expect(pill.querySelector('.aa-mpd-chip-split')).toBeNull();
+  });
+
+  it('marks only the capped miles tiers of a multi-night room', () => {
+    document.body.innerHTML = `
+      <div data-selenium="ChildRoomsList-room">
+        <span data-testid="upc_caption">Earn 15,000 miles</span>
+        <span data-testid="upc_caption">Earn 1,800 miles</span>
+        <span data-element-name="fpc-room-price" data-selenium="display-price">USD 2,867</span>
+        <span data-element-name="fpc-price-text">3 nights including taxes and fees</span>
+      </div>`;
+    processCard(document.querySelector('[data-selenium="ChildRoomsList-room"]')!, 3, false, true, false);
+    const [status, member] = Array.from(document.querySelectorAll<HTMLElement>('.aa-mpd-badge'));
+    expect(status.querySelector('.aa-mpd-chip-split')?.textContent).toBe(SPLIT_NOTE);
+    expect(member.querySelector('.aa-mpd-chip-split')).toBeNull();
+  });
+});

@@ -1,10 +1,11 @@
 // "Most miles per dollar" sort for the search results list.
 //
 // The site's sort options (in [data-element-name="sort-bar-container"]) are controlled by React,
-// and their own options refetch the results. This option is handled entirely client-side: it stops the
-// click event before React sees it, then reorders hotels with CSS `order` on the flex list (leaving
-// DOM order, which React owns, intact). The choice persists across reloads until the user picks one
-// of the site's own options.
+// and their own options refetch the results. Selecting this option has the site query "Most miles
+// earned", so the results it loads are the ones earning the most miles, then reorders them by miles
+// per dollar client-side: it stops its own click event before React sees it, and orders hotels with
+// CSS `order` on the flex list (leaving DOM order, which React owns, intact). The choice persists
+// across reloads until the user picks one of the site's own options.
 
 export const MPD_SORT_LABEL = "Most miles per dollar";
 export const MPD_SORT_STORAGE_KEY = "aa_hotels_mpd_sort";
@@ -13,6 +14,8 @@ export const SORT_BAR_CONTAINER_SELECTOR = '[data-element-name="sort-bar-contain
 export const SORT_BUTTON_ID = "aa-mpd-sort-button";
 export const SORT_CONTAINER_ID = "aa-mpd-sort-container";
 export const SORT_BAR_STYLE_ID = "aa-mpd-sort-bar-style";
+/** The site's own "Most miles earned" option, which this sort queries before reordering. */
+export const MILES_EARNED_SORT_SELECTOR = 'button[data-element-name="search-sort-points-earned"]';
 
 const STYLE_ID = "aa-mpd-sort-style";
 const SORTED_ATTR = "data-aa-mpd-sorted";
@@ -231,6 +234,9 @@ export function setupMpdSort(): MpdSortController {
   let resyncTimer: ReturnType<typeof setInterval> | null = null;
   let sortedList: HTMLElement | null = null;
   let originalRowGap = "";
+  // Set while this controller clicks the site's "Most miles earned" option itself
+  let selectingSiteSort = false;
+  let siteSortRequested = false;
 
   const getSortBar = () => document.querySelector<HTMLElement>(SORT_BAR_CONTAINER_SELECTOR);
 
@@ -280,6 +286,21 @@ export function setupMpdSort(): MpdSortController {
     });
   };
 
+  /** Has the site query "Most miles earned" (once per activation), unless it already does. */
+  const ensureSiteSort = () => {
+    if (siteSortRequested) return;
+    const milesEarned = document.querySelector<HTMLElement>(MILES_EARNED_SORT_SELECTOR);
+    if (!milesEarned) return;
+    siteSortRequested = true;
+    if (milesEarned.getAttribute("aria-current") === "true") return;
+    selectingSiteSort = true;
+    try {
+      milesEarned.click();
+    } finally {
+      selectingSiteSort = false;
+    }
+  };
+
   const startResync = () => {
     if (resyncTimer !== null) return;
     // React resets sort bar buttons when it re-renders
@@ -303,6 +324,7 @@ export function setupMpdSort(): MpdSortController {
       return;
     }
 
+    ensureSiteSort();
     if (sortBar) updateSortBarState(sortBar, true);
 
     applyOrder();
@@ -311,6 +333,7 @@ export function setupMpdSort(): MpdSortController {
 
   const deactivate = () => {
     active = false;
+    siteSortRequested = false;
     setMpdSortPreferred(false);
     stopResync();
     clearOrder();
@@ -327,13 +350,14 @@ export function setupMpdSort(): MpdSortController {
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
+      if (!active) siteSortRequested = false;
       active = true;
       setMpdSortPreferred(true);
       apply();
       return;
     }
 
-    if (active) {
+    if (active && !selectingSiteSort) {
       const nativeBtn = target.closest<HTMLElement>(
         `${SORT_BAR_CONTAINER_SELECTOR} button, button[data-element-name^="search-sort-"]`
       );

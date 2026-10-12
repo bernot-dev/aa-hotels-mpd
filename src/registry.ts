@@ -359,28 +359,19 @@ export function getHotelIdFromCard(card: Element): string | null {
   return null;
 }
 
-export function getSearchSetMpdRange(): { minMpd: number; maxMpd: number } {
-  const values = Array.from(hotelMpdRegistry.values()).filter((v) => typeof v === "number" && v > 0);
-  if (values.length === 0) return { minMpd: 0, maxMpd: 0 };
-  return {
-    minMpd: Math.min(...values),
-    maxMpd: Math.max(...values),
-  };
-}
+// MPD ratings use fixed thresholds: flights earn up to 11 miles per dollar (with Executive
+// Platinum status), so under 12 has a more efficient alternative, and 20+ is among the best rates
+// most markets offer.
+export const MPD_FAIR = 12;
+export const MPD_GOOD = 20;
 
-export function getMpdDot(mpd: number, minMpd?: number, maxMpd?: number): "🟢" | "🟡" | "🔴" {
-  if (minMpd === undefined || maxMpd === undefined || maxMpd <= 0) {
-    const range = getSearchSetMpdRange();
-    minMpd = range.minMpd;
-    maxMpd = range.maxMpd;
-  }
-  if (maxMpd <= minMpd || minMpd <= 0) {
-    return "🟢";
-  }
-  const ratio = (mpd - minMpd) / (maxMpd - minMpd);
-  if (ratio >= 0.66) return "🟢";
-  if (ratio <= 0.33) return "🔴";
-  return "🟡";
+/** Most miles AAdvantage Hotels awards for one booking, however long the stay. */
+export const MAX_MILES_PER_BOOKING = 15000;
+
+export function getMpdDot(mpd: number): "🟢" | "🟡" | "🔴" {
+  if (mpd >= MPD_GOOD) return "🟢";
+  if (mpd >= MPD_FAIR) return "🟡";
+  return "🔴";
 }
 
 export function registerHotelPrice(hotelId: string, nightlyPrice: number): void {
@@ -389,37 +380,29 @@ export function registerHotelPrice(hotelId: string, nightlyPrice: number): void 
   persistToStorage();
 }
 
-export function getSearchSetPriceRange(): { minPrice: number; maxPrice: number } {
-  const values = Array.from(hotelPriceRegistry.values()).filter((v) => typeof v === "number" && v > 0);
-  if (values.length === 0) return { minPrice: 0, maxPrice: 0 };
-  return {
-    minPrice: Math.min(...values),
-    maxPrice: Math.max(...values),
-  };
+/** Median nightly price of the hotels seen in the current search, or 0 before any are known. */
+export function getSearchSetMedianPrice(): number {
+  const values = Array.from(hotelPriceRegistry.values())
+    .filter((v) => typeof v === "number" && v > 0)
+    .sort((a, b) => a - b);
+  if (values.length === 0) return 0;
+  const mid = Math.floor(values.length / 2);
+  return values.length % 2 ? values[mid] : (values[mid - 1] + values[mid]) / 2;
 }
 
+export type DollarSigns = "💲" | "💲💲" | "💲💲💲" | "💲💲💲💲";
+
 /**
- * Rates a hotel with 1-3 dollar sign emojis (💲, 💲💲, 💲💲💲).
- * The most expensive options in the search have 3 dollar signs. The least expensive have 1 dollar sign.
+ * Rates a nightly price against the search's median nightly price, which a few very cheap or very
+ * expensive hotels barely move: 💲 under 0.75x the median, 💲💲 up to 1.5x, 💲💲💲 up to 3x, and
+ * 💲💲💲💲 above that.
  */
-export function getPriceDollarSigns(
-  nightlyPrice: number,
-  minPrice?: number,
-  maxPrice?: number
-): "💲" | "💲💲" | "💲💲💲" {
-  if (minPrice === undefined || maxPrice === undefined || maxPrice <= 0) {
-    const range = getSearchSetPriceRange();
-    minPrice = range.minPrice;
-    maxPrice = range.maxPrice;
-  }
-
-  if (maxPrice <= minPrice || minPrice <= 0) {
-    return "💲";
-  }
-
-  const ratio = (nightlyPrice - minPrice) / (maxPrice - minPrice);
-  if (ratio <= 0.33) return "💲";
-  if (ratio <= 0.66) return "💲💲";
-  return "💲💲💲";
+export function getPriceDollarSigns(nightlyPrice: number, medianPrice: number = getSearchSetMedianPrice()): DollarSigns {
+  if (!(medianPrice > 0) || !(nightlyPrice > 0)) return "💲";
+  const ratio = nightlyPrice / medianPrice;
+  if (ratio < 0.75) return "💲";
+  if (ratio <= 1.5) return "💲💲";
+  if (ratio <= 3) return "💲💲💲";
+  return "💲💲💲💲";
 }
 

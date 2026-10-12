@@ -273,21 +273,21 @@ test.describe('AA Hotels MPD Extension E2E Suite (search.aadvantagehotels.com)',
       );
     }
 
-    // The best marker is forest green, with the rate in its tooltip (data-aa-mpd is rounded, so
-    // several markers can share the top value)
-    const top = await page.evaluate(() => {
-      const colored = Array.from(document.querySelectorAll<HTMLElement>('[data-element-name="map-search-property-marker"][data-aa-mpd]'));
-      const max = Math.max(...colored.map((m) => Number(m.dataset.aaMpd)));
-      return colored
-        .filter((m) => Number(m.dataset.aaMpd) === max)
-        .map((m) => ({
-          color: m.querySelector<HTMLElement>('.propertyMarkerIcon-content')!.style.backgroundColor,
-          title: m.title,
-          mpd: m.dataset.aaMpd,
-        }));
-    });
-    expect(top.map((m) => m.color)).toContain('rgb(21, 128, 61)');
-    expect(top[0].title).toContain(`${top[0].mpd} miles/$`);
+    // Each marker is colored by its own rating (red under 12, amber from 12, green from 20), with
+    // the rate in its tooltip
+    const colored = await page.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>('[data-element-name="map-search-property-marker"][data-aa-mpd]')).map((m) => ({
+        color: m.querySelector<HTMLElement>('.propertyMarkerIcon-content')!.style.backgroundColor,
+        title: m.title,
+        mpd: Number(m.dataset.aaMpd),
+      }))
+    );
+    for (const m of colored) {
+      // data-aa-mpd is rounded to one decimal, so skip markers right at a threshold
+      if (Math.abs(m.mpd - 12) < 0.1 || Math.abs(m.mpd - 20) < 0.1) continue;
+      expect(m.color).toBe(m.mpd >= 20 ? 'rgb(21, 128, 61)' : m.mpd >= 12 ? 'rgb(217, 119, 6)' : 'rgb(185, 28, 28)');
+      expect(m.title).toContain(`${m.mpd.toFixed(1)} miles/$`);
+    }
 
     ensureScreenshotDir();
     await page.screenshot({ path: path.join(screenshotDir, 'e2e-map-view.png') });

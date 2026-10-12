@@ -7,9 +7,9 @@ import {
   getLocationBestMPD,
   getEnrichedHotel,
   getMpdDot,
-  getSearchSetMpdRange,
-  getSearchSetPriceRange,
+  getSearchSetMedianPrice,
   getPriceDollarSigns,
+  MAX_MILES_PER_BOOKING,
 } from "./registry";
 import {
   applyAllInPrice,
@@ -283,6 +283,25 @@ export function ensureChipStyles(): void {
       white-space: nowrap !important;
     }
 
+    .aa-mpd-chip-split {
+      white-space: normal !important;
+      max-width: 220px !important;
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      color: #0b3558 !important;
+      line-height: 1.3 !important;
+    }
+
+    /* Pill chips put the split note on its own line */
+    .aa-mpd-badge:has(> .aa-mpd-chip-split) {
+      flex-wrap: wrap !important;
+      border-radius: 12px !important;
+    }
+
+    .aa-mpd-badge > .aa-mpd-chip-split {
+      flex-basis: 100% !important;
+    }
+
     .aa-mpd-chip-rate {
       font-weight: 700 !important;
       display: inline-flex !important;
@@ -378,21 +397,28 @@ export function ensureChipStyles(): void {
   document.head.appendChild(style);
 }
 
+// AAdvantage Hotels awards at most MAX_MILES_PER_BOOKING per booking. Back-to-back bookings each
+// earn their full award, so a capped multi-night stay can earn more when split.
+export const SPLIT_NOTE = "✂️ Split into multiple bookings to earn more";
+
+/** Whether a rate's miles hit the per-booking cap on a stay that could be split into shorter ones. */
+export const isMilesCapped = (miles: number, nights: number): boolean =>
+  nights > 1 && miles >= MAX_MILES_PER_BOOKING;
+
 export function createOrUpdateChip(
   container: Element,
   mpd: number,
   price: number,
   enriched: EnrichedHotelRate | undefined,
   useAllInPricing: boolean,
-  minMpd?: number,
-  maxMpd?: number,
   includePrice: boolean = true,
-  nights: number = 1
+  nights: number = 1,
+  capped: boolean = false
 ): HTMLElement {
   ensureChipStyles();
 
   const formattedMPD = mpd.toFixed(1);
-  const dot = getMpdDot(mpd, minMpd, maxMpd);
+  const dot = getMpdDot(mpd);
   const nightlyPrice = calculateNightlyPrice(price, enriched, nights, useAllInPricing);
 
   let chip = container.querySelector<HTMLElement>(':scope > .aa-mpd-badge') ||
@@ -461,6 +487,7 @@ export function createOrUpdateChip(
       `      <span class="aa-mpd-chip-divider">|</span>`,
       `      <span class="aa-mpd-chip-value">${nightlyFormatted}</span>`,
       `    </div>`,
+      ...(capped ? [`    <div class="aa-mpd-chip-row aa-mpd-chip-split">${SPLIT_NOTE}</div>`] : []),
       `  </div>`,
       `</div>`,
     ].join('\n');
@@ -469,6 +496,7 @@ export function createOrUpdateChip(
     newHtml = [
       `<img class="aa-mpd-chip-icon aa-mpd-chip-icon-sm" src="${logoUrl}" alt="" aria-hidden="true" width="16" height="16" />`,
       `<span class="aa-mpd-chip-rate">${dot} ${formattedMPD} mpd</span>`,
+      ...(capped ? [`<span class="aa-mpd-chip-split">${SPLIT_NOTE}</span>`] : []),
     ].join(' ');
   }
 
@@ -479,45 +507,14 @@ export function createOrUpdateChip(
   return chip;
 }
 
-export function updateCardDots(
-  card: Element,
-  minMpd: number,
-  maxMpd: number,
-  minPrice?: number,
-  maxPrice?: number
-): void {
-  const chips = card.querySelectorAll<HTMLElement>('.aa-mpd-badge');
-  chips.forEach((chip) => {
-    const rate = Number(chip.dataset.rate);
-    if (isNaN(rate) || rate <= 0) return;
-
-    const dot = getMpdDot(rate, minMpd, maxMpd);
-    chip.dataset.dot = dot;
-
-    // Compact chip single rate text
-    const rateSpan = chip.querySelector('.aa-mpd-chip-rate');
-    if (rateSpan) {
-      const newText = `${dot} ${rate.toFixed(1)} mpd`;
-      if (rateSpan.textContent !== newText) {
-        rateSpan.textContent = newText;
-      }
-    }
-
-    // 3-row chip indicators
-    const indicators = chip.querySelectorAll<HTMLElement>('.aa-mpd-chip-indicator');
-    if (indicators.length >= 2) {
-      if (indicators[0].textContent !== dot) indicators[0].textContent = dot;
-      if (indicators[1].textContent !== dot) indicators[1].textContent = dot;
-    }
-
-    // 3-row chip dollar sign rating
+/** Re-rates a card's chips' nightly prices against the search's current median price. */
+export function updateCardPriceRatings(card: Element, medianPrice: number): void {
+  card.querySelectorAll<HTMLElement>(".aa-mpd-badge").forEach((chip) => {
     const nightlyPrice = Number(chip.dataset.nightlyPrice);
-    if (nightlyPrice > 0 && indicators.length >= 3) {
-      const dollars = getPriceDollarSigns(nightlyPrice, minPrice, maxPrice);
-      if (indicators[2].textContent !== dollars) {
-        indicators[2].textContent = dollars;
-      }
-    }
+    const indicator = chip.querySelector<HTMLElement>(".aa-mpd-chip-dollars");
+    if (!(nightlyPrice > 0) || !indicator) return;
+    const dollars = getPriceDollarSigns(nightlyPrice, medianPrice);
+    if (indicator.textContent !== dollars) indicator.textContent = dollars;
   });
 }
 
@@ -639,6 +636,16 @@ function badgeCard(
   const tiers = getMilesElements(card);
   (card as HTMLElement).dataset.aaMpdRate = String(cardMaxMPD);
 
+  // Miles behind the card's headline rate, to flag stays that hit the per-booking cap
+  const stayNights = enriched?.nights && enriched.nights > 0 ? enriched.nights : nights;
+  const tierMiles = tiers.map((tier) => extractNumber(tier) || 0).filter((miles) => miles > 0);
+  const cardMiles = enriched
+    ? milesForEarningLevel(enriched.baseMiles, enriched.tieredMiles, earningLevel)
+    : tierMiles.length > 0
+    ? earningLevel === "member" ? Math.min(...tierMiles) : Math.max(...tierMiles)
+    : 0;
+  const cardCapped = isMilesCapped(cardMiles, stayNights);
+
   if (cardMaxMPD > 0 && hotelId) {
     registerHotelMPD(hotelId, cardMaxMPD);
   }
@@ -660,10 +667,9 @@ function badgeCard(
         effectivePrice,
         enriched,
         useAllInPricing,
-        undefined,
-        undefined,
         true,
-        nights
+        nights,
+        cardCapped
       );
     }
   } else if (enriched) {
@@ -678,7 +684,7 @@ function badgeCard(
       if (tier !== target) tier.querySelectorAll(".aa-mpd-badge").forEach((b) => b.remove());
     });
     if (target && cardMaxMPD > 0) {
-      createOrUpdateChip(target, cardMaxMPD, effectivePrice, enriched, useAllInPricing, undefined, undefined, false, nights);
+      createOrUpdateChip(target, cardMaxMPD, effectivePrice, enriched, useAllInPricing, false, nights, cardCapped);
     }
   } else {
     // For room rows or cards without property-card-info, badge each tier element read from the card
@@ -693,10 +699,9 @@ function badgeCard(
         effectivePrice,
         enriched,
         useAllInPricing,
-        undefined,
-        undefined,
         false,
-        nights
+        nights,
+        isMilesCapped(miles, nights)
       );
     });
   }
@@ -766,11 +771,10 @@ export const updateCards = (
       }
     });
 
-    // Update relative dots on all cards based on current search set range
-    const { minMpd, maxMpd: rangeMax } = getSearchSetMpdRange();
-    const { minPrice, maxPrice } = getSearchSetPriceRange();
-    if ((minMpd > 0 && rangeMax > 0) || (minPrice > 0 && maxPrice > 0)) {
-      cards.forEach((card) => updateCardDots(card, minMpd, rangeMax, minPrice, maxPrice));
+    // Price ratings are relative to the search's median, which moves as more hotels load
+    const medianPrice = getSearchSetMedianPrice();
+    if (medianPrice > 0) {
+      cards.forEach((card) => updateCardPriceRatings(card, medianPrice));
     }
 
     // Cards render lazily, so the intercepted payload may know about better rates on this page or across location

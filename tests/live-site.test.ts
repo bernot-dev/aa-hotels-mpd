@@ -22,7 +22,7 @@ import {
   getSearchTotalResults,
   setSearchTotalResults,
 } from '../src/registry';
-import { updateMapPins, updateMapPopups, PIN_SELECTOR, POPUP_RATE_CLASS } from '../src/map';
+import { getPinColor, updateMapPins, updateMapPopups, PIN_SELECTOR, POPUP_RATE_CLASS } from '../src/map';
 import { processSearchPage } from '../src/search';
 import { CARD_SELECTOR, innermostCards, processCard } from '../src/cards';
 
@@ -284,7 +284,7 @@ describe('Live map markers (search-map-guest.html)', () => {
     expect(getHotelIdFromPin(marker)).toBe('123');
   });
 
-  it('colors every marker with a known rate, best in green', () => {
+  it('colors every marker with a known rate by its MPD rating', () => {
     const doc = new JSDOM(fs.readFileSync(path.join(fixturesDir, 'search-map-guest.html'), 'utf-8')).window.document;
     const markers = Array.from(doc.querySelectorAll<HTMLElement>('[data-element-name="map-search-property-marker"]'));
     expect(markers.length).toBeGreaterThan(0);
@@ -297,11 +297,10 @@ describe('Live map markers (search-map-guest.html)', () => {
     expect(known.length).toBeGreaterThan(0);
     known.forEach((m) => {
       expect(m.getAttribute('data-aa-mpd')).toBe(hotelMpdRegistry.get(m.getAttribute('data-id')!)!.toFixed(1));
-      expect(m.querySelector<HTMLElement>('.propertyMarkerIcon-content')!.style.backgroundColor).not.toBe('');
+      expect(m.querySelector<HTMLElement>('.propertyMarkerIcon-content')!.style.backgroundColor).toBe(
+        getPinColor(hotelMpdRegistry.get(m.getAttribute('data-id')!)!)
+      );
     });
-
-    const best = known.reduce((a, b) => (Number(b.getAttribute('data-aa-mpd')) > Number(a.getAttribute('data-aa-mpd')) ? b : a));
-    expect(best.querySelector<HTMLElement>('.propertyMarkerIcon-content')!.style.backgroundColor).toBe('rgb(21, 128, 61)');
   });
 });
 

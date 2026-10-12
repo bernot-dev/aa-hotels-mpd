@@ -10,6 +10,8 @@ import {
   getHotelIdFromPin,
   getHotelIdFromCard,
   getEnrichedHotel,
+  MPD_FAIR,
+  MPD_GOOD,
 } from "./registry";
 import { applyAllInPrice, candidatesFromHotel } from "./allin";
 import { getLogoUrl } from "./logo";
@@ -24,34 +26,21 @@ export {
 };
 
 /**
- * Maps a normalized ratio [0, 1] to an RGB color string.
- * 0.0 = Worst MPD (Crimson Red: #b91c1c / rgb(185, 28, 28))
- * 0.5 = Median MPD (Golden Amber: #d97706 / rgb(217, 119, 6))
- * 1.0 = Best MPD (Forest Green: #15803d / rgb(21, 128, 61))
- * Provides high contrast (>4.5:1 WCAG AA) against bold white text.
+ * Pin color for a rate, using the same fixed thresholds as the chips' MPD dots: red under
+ * MPD_FAIR, amber up to MPD_GOOD, green at MPD_GOOD and above. Each has high contrast (>4.5:1 WCAG
+ * AA) against bold white text.
  */
-export function getColorForRatio(ratio: number): string {
-  const clamped = Math.max(0, Math.min(1, isNaN(ratio) ? 0.5 : ratio));
-  let r: number, g: number, b: number;
-  if (clamped <= 0.5) {
-    const t = clamped / 0.5;
-    r = Math.round(185 + (217 - 185) * t);
-    g = Math.round(28 + (119 - 28) * t);
-    b = Math.round(28 + (6 - 28) * t);
-  } else {
-    const t = (clamped - 0.5) / 0.5;
-    r = Math.round(217 + (21 - 217) * t);
-    g = Math.round(119 + (128 - 119) * t);
-    b = Math.round(6 + (61 - 6) * t);
-  }
-  return `rgb(${r}, ${g}, ${b})`;
+export function getPinColor(mpd: number): string {
+  if (mpd >= MPD_GOOD) return "rgb(21, 128, 61)";
+  if (mpd >= MPD_FAIR) return "rgb(217, 119, 6)";
+  return "rgb(185, 28, 28)";
 }
 
 export const PIN_SELECTOR =
   '[data-element-name="map-search-property-marker"], [data-selenium^="propertyMarkerIcon-"], button[data-selenium*="pin"], [data-selenium*="pin"], [class*="map-pin"]';
 
 /**
- * Updates visible map pins with normalized background colors, and all-in prices when enabled.
+ * Colors visible map pins by their MPD rating, and shows all-in prices when enabled.
  */
 export function updateMapPins(root: Element = document.body, useAllInPricing: boolean = true): void {
   const pins = root.querySelectorAll<HTMLElement>(PIN_SELECTOR);
@@ -66,25 +55,11 @@ export function updateMapPins(root: Element = document.body, useAllInPricing: bo
     });
   }
 
-  const knownPins: { pin: HTMLElement; mpd: number }[] = [];
-
   pins.forEach((pin) => {
     const hotelId = getHotelIdFromPin(pin);
-    if (hotelId && hotelMpdRegistry.has(hotelId)) {
-      const mpd = hotelMpdRegistry.get(hotelId)!;
-      knownPins.push({ pin, mpd });
-    }
-  });
-
-  if (knownPins.length === 0) return;
-
-  const mpdValues = knownPins.map((p) => p.mpd);
-  const minMPD = Math.min(...mpdValues);
-  const maxMPD = Math.max(...mpdValues);
-
-  knownPins.forEach(({ pin, mpd }) => {
-    const ratio = maxMPD > minMPD ? (mpd - minMPD) / (maxMPD - minMPD) : 1.0;
-    const color = getColorForRatio(ratio);
+    const mpd = hotelId ? hotelMpdRegistry.get(hotelId) : undefined;
+    if (!mpd) return;
+    const color = getPinColor(mpd);
 
     // Agoda markers draw their bubble on an inner content element
     const bubble = pin.querySelector<HTMLElement>(".propertyMarkerIcon-content") || pin;

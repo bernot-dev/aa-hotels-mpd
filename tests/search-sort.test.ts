@@ -11,6 +11,7 @@ import {
   SORT_CONTAINER_ID,
   SORT_BAR_CONTAINER_SELECTOR,
   SORT_BAR_STYLE_ID,
+  MILES_EARNED_SORT_SELECTOR,
   type MpdSortController,
 } from '../src/sort';
 import { processSearchPage } from '../src/search';
@@ -140,6 +141,46 @@ describe('Modern sort-bar-container MPD sort', () => {
 
     const items = list.querySelectorAll('li');
     items.forEach((item) => expect(item.style.order).toBe(''));
+  });
+
+  it("has the site query its own 'Most miles earned' sort, without leaving the MPD sort", () => {
+    setupSortBarDOM();
+    controller = setupMpdSort();
+    controller.apply();
+    const milesEarned = document.querySelector<HTMLElement>(MILES_EARNED_SORT_SELECTOR)!;
+    let siteClicks = 0;
+    milesEarned.addEventListener('click', () => siteClicks++);
+
+    document.getElementById(SORT_BUTTON_ID)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    controller.apply();
+    controller.apply();
+
+    expect(siteClicks).toBe(1);
+    expect(localStorage.getItem(MPD_SORT_STORAGE_KEY)).toBe('1');
+    expect(document.querySelector(SORT_BAR_CONTAINER_SELECTOR)!.getAttribute('data-aa-mpd-active')).toBe('true');
+  });
+
+  it("doesn't re-query when the site already sorts by most miles earned", () => {
+    localStorage.setItem(MPD_SORT_STORAGE_KEY, '1');
+    setupSortBarDOM();
+    const milesEarned = document.querySelector<HTMLElement>(MILES_EARNED_SORT_SELECTOR)!;
+    milesEarned.setAttribute('aria-current', 'true');
+    let siteClicks = 0;
+    milesEarned.addEventListener('click', () => siteClicks++);
+
+    controller = setupMpdSort();
+    controller.apply();
+    expect(siteClicks).toBe(0);
+  });
+
+  it("still leaves the MPD sort when the user picks 'Most miles earned' themselves", () => {
+    setupSortBarDOM();
+    controller = setupMpdSort();
+    controller.apply();
+    document.getElementById(SORT_BUTTON_ID)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+    document.querySelector(MILES_EARNED_SORT_SELECTOR)!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(localStorage.getItem(MPD_SORT_STORAGE_KEY)).toBeNull();
   });
 
   it('automatically applies MPD sort on mount when preferred in localStorage', () => {

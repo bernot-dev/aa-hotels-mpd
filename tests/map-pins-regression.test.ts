@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  getColorForRatio,
+  getPinColor,
   hotelMpdRegistry,
   registerHotelMPD,
   clearHotelMpdRegistry,
@@ -19,34 +19,23 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
     document.body.innerHTML = '';
   });
 
-  describe('getColorForRatio', () => {
-    it('returns crimson red at ratio 0 (worst MPD)', () => {
-      expect(getColorForRatio(0)).toBe('rgb(185, 28, 28)');
-    });
-
-    it('returns golden amber at ratio 0.5 (median MPD)', () => {
-      expect(getColorForRatio(0.5)).toBe('rgb(217, 119, 6)');
-    });
-
-    it('returns forest green at ratio 1.0 (best MPD)', () => {
-      expect(getColorForRatio(1.0)).toBe('rgb(21, 128, 61)');
-    });
-
-    it('clamps values below 0 to red and above 1 to green', () => {
-      expect(getColorForRatio(-0.5)).toBe('rgb(185, 28, 28)');
-      expect(getColorForRatio(1.5)).toBe('rgb(21, 128, 61)');
+  describe('getPinColor', () => {
+    it('uses the fixed MPD thresholds: red under 12, amber from 12, green from 20', () => {
+      expect(getPinColor(5)).toBe('rgb(185, 28, 28)');
+      expect(getPinColor(11.9)).toBe('rgb(185, 28, 28)');
+      expect(getPinColor(12)).toBe('rgb(217, 119, 6)');
+      expect(getPinColor(19.9)).toBe('rgb(217, 119, 6)');
+      expect(getPinColor(20)).toBe('rgb(21, 128, 61)');
+      expect(getPinColor(35)).toBe('rgb(21, 128, 61)');
     });
   });
 
   describe('Map Pin Decoration & Normalization', () => {
-    it('normalizes colors across visible pins so lowest is red and highest is green', () => {
+    it('colors each pin by its own MPD rating, not relative to the other pins', () => {
       const mapContainer = document.createElement('div');
       mapContainer.setAttribute('data-testid', 'search-results-map');
 
-      // Create 3 pins:
-      // Pin 1: 5.0 miles/$ (worst)
-      // Pin 2: 10.0 miles/$ (middle)
-      // Pin 3: 15.0 miles/$ (best)
+      // Create 3 pins: 5.0, 15.0 and 25.0 miles/$
       const pin1 = document.createElement('button');
       pin1.setAttribute('data-selenium', 'map-pin-101');
       pin1.setAttribute('data-hotel-id', '101');
@@ -74,25 +63,25 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
       document.body.appendChild(mapContainer);
 
       registerHotelMPD('101', 5.0);
-      registerHotelMPD('102', 10.0);
-      registerHotelMPD('103', 15.0);
+      registerHotelMPD('102', 15.0);
+      registerHotelMPD('103', 25.0);
 
       updateMapPins(mapContainer);
 
-      // Pin 1 (worst) must be red
+      // Under 12: red
       expect(pin1.style.backgroundColor).toBe('rgb(185, 28, 28)');
       expect(pin1.getAttribute('data-aa-mpd')).toBe('5.0');
       expect(pin1.title).toContain('5.0 miles/$ ($200)');
       expect(pin1.style.color).toBe('rgb(255, 255, 255)');
 
-      // Pin 3 (best) must be green
+      // 20 and up: green
       expect(pin3.style.backgroundColor).toBe('rgb(21, 128, 61)');
-      expect(pin3.getAttribute('data-aa-mpd')).toBe('15.0');
-      expect(pin3.title).toContain('15.0 miles/$ ($100)');
+      expect(pin3.getAttribute('data-aa-mpd')).toBe('25.0');
+      expect(pin3.title).toContain('25.0 miles/$ ($100)');
 
-      // Pin 2 (middle) must be amber
+      // 12 up to 20: amber
       expect(pin2.style.backgroundColor).toBe('rgb(217, 119, 6)');
-      expect(pin2.getAttribute('data-aa-mpd')).toBe('10.0');
+      expect(pin2.getAttribute('data-aa-mpd')).toBe('15.0');
 
       // Pin without known MPD must remain unstyled
       expect(pinUnknown.getAttribute('data-aa-mpd')).toBeNull();
@@ -110,8 +99,8 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
       updateMapPins(document.body);
 
       expect(pin.getAttribute('data-aa-mpd')).toBe('8.5');
-      // Single pin ratio defaults to 1.0 (green)
-      expect(pin.style.backgroundColor).toBe('rgb(21, 128, 61)');
+      // A lone pin is still rated on the fixed scale: 8.5 is red
+      expect(pin.style.backgroundColor).toBe('rgb(185, 28, 28)');
     });
   });
 
@@ -161,7 +150,7 @@ describe('Map Pin Color Scale & Preview MPD Regression Tests', () => {
 
       // 3. Verify pin on map was updated with color and attributes
       expect(pin.getAttribute('data-aa-mpd')).toBe('8.4');
-      expect(pin.style.backgroundColor).toBe('rgb(21, 128, 61)'); // Single pin ratio = 1.0 (green)
+      expect(pin.style.backgroundColor).toBe('rgb(185, 28, 28)'); // 8.4 is under 12: red
       expect(pin.title).toContain('8.4 miles/$ ($499)');
     });
   });
