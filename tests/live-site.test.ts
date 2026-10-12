@@ -1,6 +1,6 @@
 // Regression tests against real captures of the redesigned search.aadvantagehotels.com
 // (Agoda white label). Regenerate the fixtures with `node scripts/fetch-guest-fixtures.mjs`.
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
@@ -21,7 +21,7 @@ import {
   getSearchTotalResults,
   setSearchTotalResults,
 } from '../src/registry';
-import { updateMapPins, PIN_SELECTOR } from '../src/map';
+import { updateMapPins, updateMapPopups, PIN_SELECTOR, POPUP_RATE_CLASS } from '../src/map';
 import { processSearchPage } from '../src/search';
 
 const fixturesDir = path.resolve(__dirname, '../fixtures');
@@ -300,6 +300,44 @@ describe('Live map markers (search-map-guest.html)', () => {
 
     const best = known.reduce((a, b) => (Number(b.getAttribute('data-aa-mpd')) > Number(a.getAttribute('data-aa-mpd')) ? b : a));
     expect(best.querySelector<HTMLElement>('.propertyMarkerIcon-content')!.style.backgroundColor).toBe('rgb(21, 128, 61)');
+  });
+});
+
+describe('Map pin hover preview (search-map-popup-guest.html)', () => {
+  const popupHtml = fs.readFileSync(path.join(fixturesDir, 'search-map-popup-guest.html'), 'utf-8');
+  const rateRow = () => document.querySelector<HTMLElement>(`.${POPUP_RATE_CLASS}`);
+
+  beforeEach(() => {
+    clearHotelMpdRegistry();
+    document.body.innerHTML = popupHtml;
+  });
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it("shows the hotel's MPD with the logo between the name and the rating", () => {
+    hotelMpdRegistry.set('2616566', 17.43);
+    updateMapPopups();
+
+    const row = rateRow()!;
+    expect(row.textContent).toBe('17.4 mpd');
+    expect(row.querySelector('img')).not.toBeNull();
+    expect(row.previousElementSibling!.classList.contains('hotelName-container')).toBe(true);
+    expect(row.nextElementSibling!.classList.contains('rating-container')).toBe(true);
+  });
+
+  it('updates the rate in place and adds no second row', () => {
+    hotelMpdRegistry.set('2616566', 17.43);
+    updateMapPopups();
+    hotelMpdRegistry.set('2616566', 18.04);
+    updateMapPopups();
+    expect(document.querySelectorAll(`.${POPUP_RATE_CLASS}`)).toHaveLength(1);
+    expect(rateRow()!.textContent).toBe('18.0 mpd');
+  });
+
+  it('shows nothing for a hotel without a known rate', () => {
+    updateMapPopups();
+    expect(rateRow()).toBeNull();
   });
 });
 

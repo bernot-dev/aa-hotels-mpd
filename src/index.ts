@@ -11,7 +11,7 @@ import {
   getLocationBestMPD,
   setSearchTotalResults,
 } from "./registry";
-import { updateMapPins } from "./map";
+import { updateMapPins, updateMapPopups } from "./map";
 import { ingestRoomRates } from "./allin";
 import type { RoomRate } from "./interceptor";
 import { updateSummaryBanner, runBackgroundSearchQueries, abortBackgroundSearchQueries } from "./search-query";
@@ -66,6 +66,7 @@ if (typeof window !== "undefined") {
     // 2. Update map pins & summary banner
     if (updated > 0 || hotelMpdRegistry.size > 0) {
       updateMapPins(document.body, useAllInPricing);
+      updateMapPopups(document);
       const summaryBanner = document.getElementById("aa-mpd-search-summary");
       const highest = Math.max(bestCardMpd, getLocationBestMPD(), getCurrentPageBestMPD());
       if (summaryBanner && highest > 0) {

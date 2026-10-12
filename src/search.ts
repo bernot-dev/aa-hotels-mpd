@@ -1,7 +1,7 @@
 import { updateCards, CARD_SELECTOR, BOOST_STYLE_ID } from "./cards";
 import { getNights } from "./nights";
 import { loadPricingSettings } from "./settings";
-import { updateMapPins } from "./map";
+import { updateMapPins, updateMapPopups } from "./map";
 import { resetRateCollector, queueRatesForDispatch } from "./capture/collector";
 import { extractRatesFromSearchCards } from "./capture/rates";
 import { extractSearchCriteria } from "./capture/criteria";
@@ -151,6 +151,7 @@ export const processSearchPage = async (
     // 2. Recolor map pins anywhere in the page (map preview cards are the same
     // property cards, so updateCards already badges them with the user's pricing settings)
     updateMapPins(document.body, useAllInPricing);
+    updateMapPopups(document);
 
     // 3. Capture newly resolved rates into database
     try {
