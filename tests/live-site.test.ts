@@ -15,6 +15,7 @@ import { updateSummaryBanner } from '../src/search-query';
 import {
   clearHotelMpdRegistry,
   getCurrentPageBestMPD,
+  getHotelIdFromCard,
   getHotelIdFromPin,
   hotelMpdRegistry,
   ingestHotelRates,
@@ -23,6 +24,7 @@ import {
 } from '../src/registry';
 import { updateMapPins, updateMapPopups, PIN_SELECTOR, POPUP_RATE_CLASS } from '../src/map';
 import { processSearchPage } from '../src/search';
+import { CARD_SELECTOR, innermostCards, processCard } from '../src/cards';
 
 const fixturesDir = path.resolve(__dirname, '../fixtures');
 const searchCall = JSON.parse(fs.readFileSync(path.join(fixturesDir, 'search-graphql-guest.json'), 'utf-8'));
@@ -305,7 +307,8 @@ describe('Live map markers (search-map-guest.html)', () => {
 
 describe('Map pin hover preview (search-map-popup-guest.html)', () => {
   const popupHtml = fs.readFileSync(path.join(fixturesDir, 'search-map-popup-guest.html'), 'utf-8');
-  const rateRow = () => document.querySelector<HTMLElement>(`.${POPUP_RATE_CLASS}`);
+  const rate = () => document.querySelector<HTMLElement>(`.${POPUP_RATE_CLASS}`);
+  const starRow = () => document.querySelector<HTMLElement>('.rating-container')!;
 
   beforeEach(() => {
     clearHotelMpdRegistry();
@@ -315,29 +318,65 @@ describe('Map pin hover preview (search-map-popup-guest.html)', () => {
     document.body.innerHTML = '';
   });
 
-  it("shows the hotel's MPD with the logo between the name and the rating", () => {
+  it("shows the hotel's MPD with the logo in the star rating row, between the name and the guest rating", () => {
     hotelMpdRegistry.set('2616566', 17.43);
     updateMapPopups();
 
-    const row = rateRow()!;
-    expect(row.textContent).toBe('17.4 mpd');
-    expect(row.querySelector('img')).not.toBeNull();
-    expect(row.previousElementSibling!.classList.contains('hotelName-container')).toBe(true);
-    expect(row.nextElementSibling!.classList.contains('rating-container')).toBe(true);
+    expect(rate()!.textContent).toBe('17.4 mpd');
+    expect(rate()!.querySelector('img')).not.toBeNull();
+    expect(rate()!.parentElement).toBe(starRow());
+    // The preview has a fixed height: the row keeps its 12px + 6px margin footprint
+    expect(starRow().style.height).toBe('18px');
+    expect(starRow().style.marginBottom).toBe('0px');
+    expect(starRow().nextElementSibling!.classList.contains('review-container')).toBe(true);
   });
 
-  it('updates the rate in place and adds no second row', () => {
+  it('updates the rate in place and adds no second one', () => {
     hotelMpdRegistry.set('2616566', 17.43);
     updateMapPopups();
     hotelMpdRegistry.set('2616566', 18.04);
     updateMapPopups();
     expect(document.querySelectorAll(`.${POPUP_RATE_CLASS}`)).toHaveLength(1);
-    expect(rateRow()!.textContent).toBe('18.0 mpd');
+    expect(rate()!.textContent).toBe('18.0 mpd');
   });
 
-  it('shows nothing for a hotel without a known rate', () => {
+  it('goes under the name when the preview has no star rating row', () => {
+    starRow().remove();
+    hotelMpdRegistry.set('2616566', 17.43);
     updateMapPopups();
-    expect(rateRow()).toBeNull();
+    expect(rate()!.previousElementSibling!.classList.contains('hotelName-container')).toBe(true);
+  });
+
+  it('shows nothing, and restores the star row, for a hotel without a known rate', () => {
+    hotelMpdRegistry.set('2616566', 17.43);
+    updateMapPopups();
+    hotelMpdRegistry.delete('2616566');
+    updateMapPopups();
+    expect(rate()).toBeNull();
+    expect(starRow().getAttribute('style') || '').toBe('');
+  });
+});
+
+describe('Map sidebar cards (search-map-guest.html)', () => {
+  beforeEach(() => clearHotelMpdRegistry());
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  it('badges every sidebar card the search data covers with its rate', () => {
+    document.body.innerHTML = new JSDOM(fs.readFileSync(path.join(fixturesDir, 'search-map-guest.html'), 'utf-8')).window.document.body.innerHTML;
+    ingestHotelRates(extractHotelRatesFromPayload(searchCall.response));
+
+    const sidebar = Array.from(document.querySelectorAll('[data-element-name="map-search-property-list"]'));
+    const covered = sidebar.filter((card) => getHotelIdFromCard(card) && hotelMpdRegistry.has(getHotelIdFromCard(card)!));
+    expect(covered.length).toBeGreaterThan(0);
+
+    innermostCards(document.querySelectorAll(CARD_SELECTOR)).forEach((card) => processCard(card, 1, false, true));
+    covered.forEach((card) => {
+      const chips = card.querySelectorAll<HTMLElement>('.aa-mpd-badge');
+      expect(chips).toHaveLength(1);
+      expect(chips[0].dataset.rate).toBe(hotelMpdRegistry.get(getHotelIdFromCard(card)!)!.toFixed(1));
+    });
   });
 });
 

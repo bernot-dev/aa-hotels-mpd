@@ -106,48 +106,79 @@ export function updateMapPins(root: Element = document.body, useAllInPricing: bo
 
 export const POPUP_RATE_CLASS = "aa-mpd-popup-rate";
 
+// The preview has a fixed height, so the rate goes in the star rating row (12px tall plus a 6px
+// margin), which keeps the guest rating below it in place
+const STAR_ROW_STYLES: Record<string, string> = {
+  display: "flex",
+  "align-items": "center",
+  gap: "6px",
+  height: "18px",
+  "margin-bottom": "0px",
+};
+
+function setStarRowLayout(starRow: HTMLElement, on: boolean): void {
+  Object.keys(STAR_ROW_STYLES).forEach((prop) => {
+    if (on) starRow.style.setProperty(prop, STAR_ROW_STYLES[prop]);
+    else starRow.style.removeProperty(prop);
+  });
+}
+
+function createPopupRate(): HTMLElement {
+  const rate = document.createElement("span");
+  rate.className = POPUP_RATE_CLASS;
+  rate.dataset.aaMpd = "true";
+  Object.assign(rate.style, {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "3px",
+    height: "18px",
+    fontSize: "12px",
+    fontWeight: "600",
+    lineHeight: "14px",
+    color: "#0f172a",
+    whiteSpace: "nowrap",
+  });
+  const logo = document.createElement("img");
+  logo.src = getLogoUrl(32);
+  logo.alt = "";
+  logo.setAttribute("aria-hidden", "true");
+  logo.width = 14;
+  logo.height = 14;
+  rate.append(logo, document.createElement("span"));
+  return rate;
+}
+
 /**
- * Shows each hotel's MPD (the same rate that colors its pin) between the name and the rating in the
- * preview the site opens when hovering a map pin.
+ * Shows each hotel's MPD (the same rate that colors its pin) between the name and the guest rating
+ * in the preview the site opens when hovering a map pin.
  */
 export function updateMapPopups(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>(".propertyMarkerPopup-popup[data-hotelid]").forEach((popup) => {
     const mpd = hotelMpdRegistry.get(popup.dataset.hotelid || "");
     const name = popup.querySelector(".hotelName-container");
-    let row = popup.querySelector<HTMLElement>(`.${POPUP_RATE_CLASS}`);
+    const starRow = popup.querySelector<HTMLElement>(".rating-container");
+    let rate = popup.querySelector<HTMLElement>(`.${POPUP_RATE_CLASS}`);
     if (!mpd || !name) {
-      row?.remove();
+      rate?.remove();
+      if (starRow) setStarRowLayout(starRow, false);
       return;
     }
 
-    if (!row) {
-      row = document.createElement("div");
-      row.className = POPUP_RATE_CLASS;
-      row.dataset.aaMpd = "true";
-      Object.assign(row.style, {
-        display: "flex",
-        alignItems: "center",
-        gap: "4px",
-        margin: "2px 0",
-        fontSize: "12px",
-        fontWeight: "600",
-        lineHeight: "16px",
-        color: "#0f172a",
-      });
-      const logo = document.createElement("img");
-      logo.src = getLogoUrl(32);
-      logo.alt = "";
-      logo.setAttribute("aria-hidden", "true");
-      logo.width = 16;
-      logo.height = 16;
-      row.append(logo, document.createElement("span"));
+    rate = rate || createPopupRate();
+    if (starRow) {
+      setStarRowLayout(starRow, true);
+      if (rate.parentElement !== starRow || rate.nextSibling) starRow.appendChild(rate);
+    } else if (rate.previousElementSibling !== name) {
+      // No star rating row: the rate takes its place under the name
+      name.insertAdjacentElement("afterend", rate);
     }
-    if (row.previousElementSibling !== name) name.insertAdjacentElement("afterend", row);
+    rate.style.display = starRow ? "inline-flex" : "flex";
 
     const text = `${mpd.toFixed(1)} mpd`;
-    const label = row.querySelector("span")!;
+    const label = rate.querySelector("span")!;
     if (label.textContent !== text) label.textContent = text;
-    row.title = `${mpd.toFixed(1)} miles per dollar`;
+    const title = `${mpd.toFixed(1)} miles per dollar`;
+    if (rate.title !== title) rate.title = title;
   });
 }
 

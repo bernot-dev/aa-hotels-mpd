@@ -148,8 +148,8 @@ export const processSearchPage = async (
     callback();
     searchExpansion.onMutation();
 
-    // 2. Recolor map pins anywhere in the page (map preview cards are the same
-    // property cards, so updateCards already badges them with the user's pricing settings)
+    // 2. Recolor map pins and add rates to their hover previews (the map's sidebar cards match
+    // CARD_SELECTOR, so updateCards already badges them with the user's pricing settings)
     updateMapPins(document.body, useAllInPricing);
     updateMapPopups(document);
 

@@ -333,7 +333,9 @@ export function getHotelIdFromCard(card: Element): string | null {
       current.getAttribute("data-property-id") ||
       current.getAttribute("data-propertyid") ||
       current.getAttribute("data-hotel-id") ||
-      current.getAttribute("data-hotelid");
+      current.getAttribute("data-hotelid") ||
+      // Map sidebar cards
+      (current.getAttribute("data-element-name") === "map-search-property-list" ? current.getAttribute("data-value") : null);
     if (directId && /^\d+$/.test(directId)) return directId;
 
     // 2. Element ID e.g. hotel-12345, property-12345

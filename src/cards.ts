@@ -31,8 +31,9 @@ export const extractNumber = (e: Element): number | null => {
   return match ? Number(match) : null;
 };
 
+// Search list cards, and the cards in the map view's sidebar
 export const CARD_SELECTOR =
-  'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"]';
+  'li.PropertyCardItem, [data-selenium="hotel-item"], [data-element-name="property-card"], [data-element-name="map-search-property-list"]';
 export const ROOM_CARD_SELECTOR =
   '[data-selenium="ChildRoomsList-room"], [data-selenium="master-room-card"], [data-selenium="room-card"], [data-element-name="room-card"], .MasterRoom';
 export const PRICE_SELECTOR =
